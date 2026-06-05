@@ -435,12 +435,6 @@ async function replaceRemoteState(state) {
     });
 }
 
-async function clearRemoteState() {
-    return requestJson("/state", {
-        method: "DELETE"
-    });
-}
-
 function render() {
     if (authState.status === "checking") {
         document.getElementById("app").innerHTML = `
@@ -611,10 +605,6 @@ function renderSidebar() {
                     </button>
                 `).join("")}
             </nav>
-            <div class="sidebar-bottom">
-                <button class="side-btn" data-action="export-json" title="Xuất dữ liệu" aria-label="Xuất dữ liệu"><i class="fa-solid fa-download"></i></button>
-                <button class="side-btn" data-action="import-json" title="Nhập dữ liệu" aria-label="Nhập dữ liệu"><i class="fa-solid fa-upload"></i></button>
-            </div>
         </aside>
     `;
 }
@@ -638,23 +628,12 @@ function renderTopbar() {
                 <button class="text-btn" data-auth-action="logout" title="Đăng xuất">
                     <i class="fa-solid fa-right-from-bracket"></i><span>Đăng xuất</span>
                 </button>
-                <button class="text-btn" data-action="export-csv" title="Xuất CSV tab hiện tại">
-                    <i class="fa-solid fa-file-csv"></i><span>CSV</span>
-                </button>
-                <button class="text-btn" data-action="export-json" title="Xuất JSON">
-                    <i class="fa-solid fa-download"></i><span>Xuất</span>
+                <button class="text-btn" data-action="export-excel" title="Xuất Excel gồm toàn bộ 6 sheet dữ liệu">
+                    <i class="fa-solid fa-file-excel"></i><span>Xuất Excel</span>
                 </button>
                 <button class="text-btn" data-action="import-json" title="Nhập JSON">
                     <i class="fa-solid fa-upload"></i><span>Nhập</span>
                 </button>
-                <button class="danger-btn" data-action="clear-data" title="Xóa dữ liệu trên Railway DB">
-                    <i class="fa-solid fa-trash"></i><span>Xóa</span>
-                </button>
-                ${ui.activeTab !== "dashboard" ? `
-                    <button class="primary-btn" data-action="open-create" title="Thêm bản ghi">
-                        <i class="fa-solid fa-plus"></i><span>Thêm</span>
-                    </button>
-                ` : ""}
             </div>
         </header>
     `;
@@ -1433,10 +1412,8 @@ function handleAction(event) {
     if (action === "delete-row") return deleteRow(id);
     if (action === "close-modal") return closeModal();
     if (action === "reset-filters") return resetFilters();
-    if (action === "export-json") return exportJson();
+    if (action === "export-excel") return exportExcel();
     if (action === "import-json") return document.getElementById("importDataInput")?.click();
-    if (action === "clear-data") return clearData();
-    if (action === "export-csv") return exportCsv();
 }
 
 function openCreate() {
@@ -1558,28 +1535,33 @@ function resetFilters() {
     render();
 }
 
-function exportJson() {
-    const blob = new Blob([JSON.stringify(appState, null, 2)], { type: "application/json" });
-    downloadBlob(blob, `squad2-uat-data-${todayStamp()}.json`);
-    showToast("Đã xuất dữ liệu JSON.");
-}
-
-function exportCsv() {
-    if (ui.activeTab === "dashboard") {
-        showToast("Chọn một tab dữ liệu để xuất CSV.");
-        return;
+async function exportExcel() {
+    if (ui.saving) return;
+    ui.saving = true;
+    showToast("Đang tạo file Excel từ Railway DB...");
+    try {
+        const response = await fetch(`${API_BASE}/export/excel`, {
+            credentials: "same-origin"
+        });
+        if (!response.ok) {
+            let message = `Không xuất được Excel (${response.status}).`;
+            try {
+                const data = await response.json();
+                message = data.error || message;
+            } catch {
+                // Keep the HTTP status message when the response is not JSON.
+            }
+            throw new Error(message);
+        }
+        const disposition = response.headers.get("Content-Disposition") || "";
+        const filename = disposition.match(/filename="([^"]+)"/i)?.[1] || `squad2-uat-${todayStamp()}.xlsx`;
+        downloadBlob(await response.blob(), filename);
+        showToast("Đã xuất file Excel gồm 6 sheet dữ liệu.");
+    } catch (error) {
+        showToast(error.message || "Không xuất được file Excel.");
+    } finally {
+        ui.saving = false;
     }
-    const mod = modules[ui.activeTab];
-    const rows = getFilteredRows(mod);
-    const headers = mod.fields.map((field) => field.label);
-    const keys = mod.fields.map((field) => field.key);
-    const csv = [
-        headers.map(csvEscape).join(","),
-        ...rows.map((row) => keys.map((key) => csvEscape(row[key])).join(","))
-    ].join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
-    downloadBlob(blob, `${mod.collection}-${todayStamp()}.csv`);
-    showToast("Đã xuất CSV.");
 }
 
 function handleImport(event) {
@@ -1627,34 +1609,6 @@ function handleImport(event) {
         }
     };
     reader.readAsText(file, "utf-8");
-}
-
-async function clearData() {
-    const hasData = Object.keys(modules).some((id) => appState[modules[id].collection].length);
-    if (!hasData) {
-        showToast("Hiện chưa có dữ liệu để xóa.");
-        return;
-    }
-    if (!ensureDbReady() || ui.saving) return;
-    if (!confirm("Xóa toàn bộ dữ liệu đang lưu trên Railway DB?")) return;
-    ui.saving = true;
-    try {
-        const result = await clearRemoteState();
-        appState = normalizeState(result.state || emptyState());
-        setDataStatus("online", "Railway Postgres đang hoạt động");
-        localStorage.setItem(MIGRATION_FLAG_KEY, "cleared");
-        cacheState();
-        ui.query = "";
-        ui.filters = {};
-        ui.columnFilters = {};
-        showToast("Đã xóa dữ liệu trên Railway DB.");
-    } catch (error) {
-        setDataStatus("offline", error.message || "Không xóa được dữ liệu");
-        showToast(`Không xóa được dữ liệu: ${error.message}`);
-    } finally {
-        ui.saving = false;
-        render();
-    }
 }
 
 function getFilteredRows(mod) {
@@ -1866,11 +1820,6 @@ function downloadBlob(blob, filename) {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-}
-
-function csvEscape(value) {
-    const text = String(value ?? "");
-    return `"${text.replaceAll('"', '""')}"`;
 }
 
 function todayStamp() {

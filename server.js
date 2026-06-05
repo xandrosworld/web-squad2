@@ -4,6 +4,7 @@ const path = require("path");
 require("dotenv").config();
 
 const express = require("express");
+const ExcelJS = require("exceljs");
 const { Pool } = require("pg");
 
 const app = express();
@@ -87,6 +88,99 @@ const collectionRules = {
     }
   }
 };
+const excelSheets = [
+  {
+    collection: "features",
+    name: "Chức năng",
+    columns: [
+      ["code", "Mã chức năng", 18],
+      ["sprint", "Sprint", 14],
+      ["name", "Tên chức năng", 34],
+      ["group", "Nhóm chức năng", 24],
+      ["owner", "Chủ quản NV", 20],
+      ["handoffDate", "Ngày bàn giao UAT", 18, "date"],
+      ["priority", "Mức độ ưu tiên", 18],
+      ["status", "Trạng thái", 18],
+      ["testerMain", "Tester chính", 20],
+      ["testerSupport", "Tester hỗ trợ", 20]
+    ]
+  },
+  {
+    collection: "plans",
+    name: "Sprint Plan",
+    columns: [
+      ["sprint", "Sprint", 14],
+      ["feature", "Chức năng", 34],
+      ["owner", "Chủ quản", 20],
+      ["t1", "T1", 14, "date"],
+      ["t2", "T2", 14, "date"],
+      ["t3", "T3", 14, "date"],
+      ["t4", "T4", 14, "date"],
+      ["t5", "T5", 14, "date"],
+      ["t6", "T6", 14, "date"],
+      ["note", "Ghi chú", 36]
+    ]
+  },
+  {
+    collection: "matrix",
+    name: "Ma trận",
+    columns: [
+      ["group", "Nhóm chức năng", 28],
+      ["t1", "T1", 20],
+      ["t2", "T2", 20],
+      ["t3", "T3", 20],
+      ["t4", "T4", 20],
+      ["t5", "T5", 20],
+      ["t6", "T6", 20]
+    ]
+  },
+  {
+    collection: "daily",
+    name: "Daily UAT",
+    columns: [
+      ["date", "Ngày", 14, "date"],
+      ["feature", "Chức năng", 34],
+      ["owner", "Chủ quản", 20],
+      ["tester", "Tester", 20],
+      ["totalCases", "Tổng testcase", 16, "number"],
+      ["executedCases", "Đã thực hiện", 16, "number"],
+      ["criticalBugs", "Lỗi nghiêm trọng", 18, "number"],
+      ["highBugs", "Lỗi mức cao", 16, "number"],
+      ["blocker", "Vướng mắc", 36]
+    ]
+  },
+  {
+    collection: "weekly",
+    name: "Weekly",
+    columns: [
+      ["week", "Tuần", 14],
+      ["group", "Nhóm chức năng", 28],
+      ["totalCases", "Tổng testcase", 16, "number"],
+      ["executedCases", "Đã thực hiện", 16, "number"],
+      ["coverageRate", "Tỷ lệ bao phủ (%)", 18, "number"],
+      ["successRate", "Tỷ lệ thành công (%)", 20, "number"],
+      ["criticalBugs", "Lỗi nghiêm trọng", 18, "number"],
+      ["reopenedBugs", "Lỗi mở lại", 16, "number"],
+      ["assessment", "Đánh giá", 18],
+      ["note", "Ghi chú", 36]
+    ]
+  },
+  {
+    collection: "readiness",
+    name: "Readiness",
+    columns: [
+      ["sprint", "Sprint", 14],
+      ["coverageRate", "Tỷ lệ bao phủ (%)", 18, "number"],
+      ["successRate", "Tỷ lệ thành công (%)", 20, "number"],
+      ["openCriticalBugs", "Lỗi nghiêm trọng tồn đọng", 24, "number"],
+      ["readinessLevel", "Mức độ sẵn sàng (%)", 22, "number"],
+      ["trainingReadiness", "Sẵn sàng đào tạo (%)", 22, "number"],
+      ["pilotReadiness", "Sẵn sàng Pilot/Go-live (%)", 26, "number"],
+      ["decision", "Quyết định", 20],
+      ["note", "Ghi chú", 36]
+    ]
+  }
+];
 
 let pool;
 let schemaPromise;
@@ -247,6 +341,18 @@ app.get("/api/state", asyncHandler(async (req, res) => {
   res.json({ state });
 }));
 
+app.get("/api/export/excel", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const state = await readState(getPool());
+  const workbook = buildExcelWorkbook(state);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const filename = `squad2-uat-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(Buffer.from(buffer));
+}));
+
 app.put("/api/state", asyncHandler(async (req, res) => {
   const state = normalizeState(req.body.state || req.body);
   for (const collection of collections) {
@@ -267,24 +373,6 @@ app.put("/api/state", asyncHandler(async (req, res) => {
     const nextState = await readState(client);
     await client.query("commit");
     res.json({ state: nextState });
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    client.release();
-  }
-}));
-
-app.delete("/api/state", asyncHandler(async (req, res) => {
-  await ensureSchema();
-  const client = await getPool().connect();
-  try {
-    await client.query("begin");
-    await client.query("delete from uat_records");
-    await touchMeta(client);
-    const state = await readState(client);
-    await client.query("commit");
-    res.json({ state });
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -467,6 +555,69 @@ function ensureSchema() {
     });
   }
   return schemaPromise;
+}
+
+function buildExcelWorkbook(state) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Squad 2 UAT Command Center";
+  workbook.created = new Date();
+  workbook.modified = new Date();
+
+  for (const sheetConfig of excelSheets) {
+    const worksheet = workbook.addWorksheet(sheetConfig.name, {
+      views: [{ state: "frozen", ySplit: 1 }]
+    });
+    worksheet.columns = sheetConfig.columns.map(([key, header, width]) => ({ key, header, width }));
+    worksheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: sheetConfig.columns.length }
+    };
+    worksheet.getRow(1).height = 24;
+    worksheet.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF006B68" } };
+      cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+      cell.border = {
+        bottom: { style: "thin", color: { argb: "FF004D4A" } }
+      };
+    });
+
+    for (const record of state[sheetConfig.collection] || []) {
+      const rowData = {};
+      for (const [key, , , type] of sheetConfig.columns) {
+        rowData[key] = excelCellValue(record[key], type);
+      }
+      const row = worksheet.addRow(rowData);
+      row.alignment = { vertical: "top", wrapText: true };
+      for (const [key, , , type] of sheetConfig.columns) {
+        if (type === "date") row.getCell(key).numFmt = "dd/mm/yyyy";
+        if (type === "number") row.getCell(key).numFmt = "0.##";
+      }
+    }
+
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      if (rowNumber % 2 === 0) {
+        row.eachCell((cell) => {
+          cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F8F7" } };
+        });
+      }
+    });
+  }
+  return workbook;
+}
+
+function excelCellValue(value, type) {
+  if (value == null || value === "") return "";
+  if (type === "number") {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : String(value);
+  }
+  if (type === "date") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : date;
+  }
+  return String(value);
 }
 
 async function readState(db) {

@@ -15,10 +15,14 @@
   },
   "dependencies": {
     "dotenv": "^16.4.7",
+    "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "pg": "^8.13.1"
   },
   "devDependencies": {
     "playwright-core": "^1.60.0"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
   }
 }

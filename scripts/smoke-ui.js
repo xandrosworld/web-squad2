@@ -1,4 +1,5 @@
 const { chromium } = require("playwright-core");
+const ExcelJS = require("exceljs");
 
 const defaultChromePaths = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -71,6 +72,41 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   const title = await page.title();
   if (!title.includes("Squad 2 UAT")) {
     throw new Error(`Unexpected page title: ${title}`);
+  }
+
+  for (const removedSelector of [
+    ".sidebar-bottom",
+    ".topbar [data-action=\"export-csv\"]",
+    ".topbar [data-action=\"clear-data\"]",
+    ".topbar [data-action=\"open-create\"]"
+  ]) {
+    if (await page.locator(removedSelector).count()) {
+      throw new Error(`Removed control is still visible: ${removedSelector}`);
+    }
+  }
+
+  const excelButton = page.locator(".topbar [data-action=\"export-excel\"]");
+  if (await excelButton.count() !== 1) {
+    throw new Error("Topbar did not render exactly one Excel export button.");
+  }
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    excelButton.click()
+  ]);
+  if (!download.suggestedFilename().endsWith(".xlsx")) {
+    throw new Error(`Excel export returned unexpected filename: ${download.suggestedFilename()}`);
+  }
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(await download.path());
+  const expectedSheets = ["Chức năng", "Sprint Plan", "Ma trận", "Daily UAT", "Weekly", "Readiness"];
+  const actualSheets = workbook.worksheets.map((sheet) => sheet.name);
+  if (JSON.stringify(actualSheets) !== JSON.stringify(expectedSheets)) {
+    throw new Error(`Unexpected Excel sheets: ${actualSheets.join(", ")}`);
+  }
+  for (const sheet of workbook.worksheets) {
+    if (sheet.rowCount < 1 || sheet.columnCount < 1) {
+      throw new Error(`Excel sheet ${sheet.name} is missing headers.`);
+    }
   }
 
   await page.locator("[data-auth-action=\"open-profile\"]").click();
