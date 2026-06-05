@@ -20,6 +20,13 @@ const sessionSecret = process.env.SESSION_SECRET || crypto
   .createHash("sha256")
   .update(`${databaseUrl || "local"}:${authPassword || "squad2-session"}`)
   .digest("hex");
+const maxAvatarDataLength = Number(process.env.MAX_AVATAR_DATA_LENGTH || 350000);
+const defaultUsers = [
+  { username: "yenuth@bidv.com.vn", email: "yenuth@bidv.com.vn", name: "yenuth", password: "123456" },
+  { username: "thanhmt@bidv.com.vn", email: "thanhmt@bidv.com.vn", name: "thanhmt", password: "123456" },
+  { username: "tuanpa13@bidv.com.vn", email: "tuanpa13@bidv.com.vn", name: "tuanpa13", password: "123456" },
+  { username: "giangnc2@bidv.com.vn", email: "giangnc2@bidv.com.vn", name: "giangnc2", password: "123456" }
+];
 
 const collections = ["features", "plans", "matrix", "daily", "weekly", "readiness"];
 const collectionSet = new Set(collections);
@@ -134,7 +141,7 @@ app.post("/api/auth/login", asyncHandler(async (req, res) => {
   }
 
   const result = await getPool().query(`
-    select id, username, email, name, role, password_hash, active
+    select id, username, email, name, role, password_hash, active, avatar_data
     from app_users
     where lower(username) = $1 or lower(coalesce(email, '')) = $1
     limit 1
@@ -156,10 +163,60 @@ app.post("/api/auth/logout", (req, res) => {
 
 app.use("/api", requireApiAuth);
 
+app.patch("/api/auth/profile", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const name = normalizeDisplayName(req.body.name, req.user.name || req.user.username);
+  const avatarData = Object.prototype.hasOwnProperty.call(req.body, "avatarData")
+    ? normalizeAvatarData(req.body.avatarData)
+    : req.user.avatarData || "";
+  const result = await getPool().query(`
+    update app_users
+    set name = $1,
+        avatar_data = $2,
+        updated_at = now()
+    where id = $3 and active = true
+    returning id, username, email, name, role, active, avatar_data, created_at, updated_at
+  `, [name, avatarData || null, req.user.id]);
+
+  if (!result.rows[0]) throw httpError(404, "Không tìm thấy tài khoản.");
+  const user = toPublicUser(result.rows[0]);
+  setSessionCookie(req, res, signSession(user));
+  res.json({ user });
+}));
+
+app.post("/api/auth/change-password", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const currentPassword = String(req.body.currentPassword || "");
+  const newPassword = String(req.body.newPassword || "");
+  validatePassword(newPassword);
+  if (!currentPassword) throw httpError(400, "Vui lòng nhập mật khẩu hiện tại.");
+
+  const result = await getPool().query(`
+    select id, password_hash
+    from app_users
+    where id = $1 and active = true
+    limit 1
+  `, [req.user.id]);
+  const user = result.rows[0];
+  if (!user || !(await verifyPassword(currentPassword, user.password_hash))) {
+    throw httpError(401, "Mật khẩu hiện tại không đúng.");
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  await getPool().query(`
+    update app_users
+    set password_hash = $1,
+        password_changed_at = now(),
+        updated_at = now()
+    where id = $2
+  `, [passwordHash, req.user.id]);
+  res.json({ ok: true });
+}));
+
 app.get("/api/auth/users", requireAdmin, asyncHandler(async (req, res) => {
   await ensureSchema();
   const result = await getPool().query(`
-    select id, username, email, name, role, active, created_at, updated_at
+    select id, username, email, name, role, active, avatar_data, created_at, updated_at
     from app_users
     order by created_at asc
   `);
@@ -179,7 +236,7 @@ app.post("/api/auth/users", requireAdmin, asyncHandler(async (req, res) => {
   const result = await getPool().query(`
     insert into app_users (id, username, email, name, role, password_hash, active)
     values ($1, $2, $3, $4, $5, $6, true)
-    returning id, username, email, name, role, active, created_at, updated_at
+    returning id, username, email, name, role, active, avatar_data, created_at, updated_at
   `, [id, username, email, name, role, passwordHash]);
   res.status(201).json({ user: toPublicUser(result.rows[0]) });
 }));
@@ -389,12 +446,21 @@ function ensureSchema() {
         name text not null,
         role text not null default 'user',
         password_hash text not null,
+        avatar_data text,
+        password_changed_at timestamptz,
         active boolean not null default true,
         created_at timestamptz not null default now(),
         updated_at timestamptz not null default now()
       );
+
+      alter table app_users
+        add column if not exists avatar_data text;
+
+      alter table app_users
+        add column if not exists password_changed_at timestamptz;
     `);
       await ensureSeedAdmin();
+      await ensureDefaultUsers();
     })().catch((error) => {
       schemaPromise = null;
       throw error;
@@ -562,6 +628,20 @@ async function ensureSeedAdmin() {
   `, [crypto.randomUUID(), username, email, name, passwordHash]);
 }
 
+async function ensureDefaultUsers() {
+  for (const user of defaultUsers) {
+    const username = String(user.username).trim().toLowerCase();
+    const email = String(user.email || username).trim().toLowerCase();
+    const name = String(user.name || username.split("@")[0]).trim();
+    const passwordHash = await hashPassword(String(user.password));
+    await getPool().query(`
+      insert into app_users (id, username, email, name, role, password_hash, active)
+      values ($1, $2, $3, $4, 'user', $5, true)
+      on conflict (username) do nothing
+    `, [crypto.randomUUID(), username, email, name, passwordHash]);
+  }
+}
+
 async function requireApiAuth(req, res, next) {
   try {
     await ensureSchema();
@@ -590,7 +670,7 @@ async function getUserFromRequest(req) {
   const session = verifySession(token);
   if (!session) return null;
   const result = await getPool().query(`
-    select id, username, email, name, role, active
+    select id, username, email, name, role, active, avatar_data
     from app_users
     where id = $1 and active = true
     limit 1
@@ -606,6 +686,7 @@ function toPublicUser(user) {
     email: user.email || "",
     name: user.name || user.username,
     role: normalizeRole(user.role || "user"),
+    avatarData: user.avatar_data || user.avatarData || "",
     active: user.active !== false
   };
 }
@@ -614,7 +695,32 @@ function validateNewUser({ username, email, name, password }) {
   if (!username || username.length < 3) throw httpError(400, "Username phải có ít nhất 3 ký tự.");
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw httpError(400, "Email không hợp lệ.");
   if (!name) throw httpError(400, "Tên hiển thị là bắt buộc.");
-  if (!password || password.length < 8) throw httpError(400, "Mật khẩu phải có ít nhất 8 ký tự.");
+  validatePassword(password);
+}
+
+function validatePassword(password) {
+  if (!password || String(password).length < 6) {
+    throw httpError(400, "Mật khẩu phải có ít nhất 6 ký tự.");
+  }
+}
+
+function normalizeDisplayName(name, fallback) {
+  const value = String(name || "").trim();
+  if (!value) throw httpError(400, "Tên hiển thị là bắt buộc.");
+  if (value.length > 80) throw httpError(400, "Tên hiển thị tối đa 80 ký tự.");
+  return value || fallback;
+}
+
+function normalizeAvatarData(value) {
+  const avatarData = String(value || "").trim();
+  if (!avatarData) return "";
+  if (avatarData.length > maxAvatarDataLength) {
+    throw httpError(400, "Ảnh đại diện quá lớn. Vui lòng chọn ảnh dưới 250KB.");
+  }
+  if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(avatarData)) {
+    throw httpError(400, "Ảnh đại diện phải là PNG, JPG, WEBP hoặc GIF.");
+  }
+  return avatarData;
 }
 
 function normalizeRole(role) {

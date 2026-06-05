@@ -40,8 +40,8 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
     const status = response.status();
     if (status < 400) return;
     if (url.endsWith("/favicon.ico")) return;
-    if (!requireDb && url.endsWith("/api/state") && status === 503) {
-      warnings.push("DB check skipped: /api/state returned 503 in local/offline mode.");
+    if (!requireDb && (url.endsWith("/api/state") || url.endsWith("/api/auth/me")) && status === 503) {
+      warnings.push(`DB check skipped: ${new URL(url).pathname} returned 503 in local/offline mode.`);
       return;
     }
     errors.push(`${status} ${url}`);
@@ -71,6 +71,21 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   if (!title.includes("Squad 2 UAT")) {
     throw new Error(`Unexpected page title: ${title}`);
   }
+
+  await page.locator("[data-auth-action=\"open-profile\"]").click();
+  await page.waitForSelector("#profileForm", { timeout: 5000 });
+  await page.waitForSelector("#passwordForm", { timeout: 5000 });
+  assertReadableText(await page.locator("#profileModal").innerText(), "profile modal");
+  if (await page.locator("#avatarInput").count() !== 1) {
+    throw new Error("Profile modal did not render avatar upload input.");
+  }
+  for (const field of ["#profileName", "#currentPassword", "#newPassword", "#confirmPassword"]) {
+    if (await page.locator(field).count() !== 1) {
+      throw new Error(`Profile modal missing ${field}.`);
+    }
+  }
+  await page.locator("[data-auth-action=\"close-profile\"]").click();
+  await page.waitForSelector("#profileForm", { state: "detached", timeout: 5000 });
 
   for (const tab of moduleTabs) {
     await page.locator(`.tabbar button[data-tab="${tab}"]`).click();

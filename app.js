@@ -289,6 +289,10 @@ let ui = {
     filters: {},
     columnFilters: {},
     modal: null,
+    profileOpen: false,
+    profileAvatarDraft: null,
+    profileSaving: false,
+    passwordSaving: false,
     toast: null,
     saving: false
 };
@@ -476,6 +480,7 @@ function render() {
             </main>
         </div>
         ${renderModal()}
+        ${renderProfileModal()}
         <div class="toast ${ui.toast ? "show" : ""}">${e(ui.toast || "")}</div>
         <input id="importDataInput" class="hidden-input" type="file" accept="application/json,.json">
     `;
@@ -626,10 +631,10 @@ function renderTopbar() {
                 </div>
             </div>
             <div class="top-actions">
-                <span class="user-chip" title="${e(authState.user?.username || "")}">
-                    <i class="fa-solid fa-user-shield"></i>
+                <button class="user-chip" type="button" data-auth-action="open-profile" title="Hồ sơ ${e(authState.user?.username || "")}">
+                    ${renderUserAvatar(authState.user, "small")}
                     <span>${e(authState.user?.name || authState.user?.username || "User")}</span>
-                </span>
+                </button>
                 <button class="text-btn" data-auth-action="logout" title="Đăng xuất">
                     <i class="fa-solid fa-right-from-bracket"></i><span>Đăng xuất</span>
                 </button>
@@ -992,6 +997,129 @@ function renderModal() {
     `;
 }
 
+function renderProfileModal() {
+    if (!ui.profileOpen) return `<div class="modal-backdrop" id="profileModal"></div>`;
+    const user = authState.user || {};
+    const avatarData = ui.profileAvatarDraft !== null ? ui.profileAvatarDraft : user.avatarData || "";
+    const displayUser = { ...user, avatarData };
+    return `
+        <div class="modal-backdrop open" id="profileModal" role="dialog" aria-modal="true">
+            <div class="modal profile-modal">
+                <div class="modal-head">
+                    <div class="modal-title">
+                        <span><i class="fa-solid fa-user-gear"></i></span>
+                        <div>
+                            <h2>Hồ sơ người dùng</h2>
+                            <p>Cập nhật thông tin cá nhân và bảo mật tài khoản.</p>
+                        </div>
+                    </div>
+                    <button class="icon-btn" type="button" data-auth-action="close-profile" title="Đóng" aria-label="Đóng">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="modal-body profile-body">
+                    <aside class="profile-summary">
+                        ${renderUserAvatar(displayUser, "large")}
+                        <div>
+                            <strong>${e(user.name || user.username || "User")}</strong>
+                            <span>${e(user.email || user.username || "")}</span>
+                            <small>${e(roleLabel(user.role))}</small>
+                        </div>
+                    </aside>
+                    <div class="profile-forms">
+                        <form id="profileForm" class="profile-card">
+                            <div class="profile-card-head">
+                                <i class="fa-solid fa-id-card"></i>
+                                <div>
+                                    <h3>Thông tin hiển thị</h3>
+                                    <p>Avatar và tên sẽ hiển thị trên thanh điều hướng.</p>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label for="profileName">Tên hiển thị</label>
+                                <input id="profileName" class="field-input" name="profileName" type="text" value="${e(user.name || "")}" maxlength="80" autocomplete="name" required>
+                            </div>
+                            <div class="profile-avatar-row">
+                                ${renderUserAvatar(displayUser, "medium")}
+                                <div class="profile-avatar-actions">
+                                    <button class="text-btn" type="button" data-auth-action="choose-avatar">
+                                        <i class="fa-solid fa-image"></i><span>Chọn ảnh</span>
+                                    </button>
+                                    <button class="ghost-btn" type="button" data-auth-action="clear-avatar">
+                                        <i class="fa-solid fa-eraser"></i><span>Xóa ảnh</span>
+                                    </button>
+                                    <small>PNG, JPG, WEBP hoặc GIF. Khuyến nghị dưới 250KB.</small>
+                                </div>
+                            </div>
+                            <input id="avatarInput" class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+                            <div class="profile-card-foot">
+                                <button class="primary-btn" type="submit" ${ui.profileSaving ? "disabled" : ""}>
+                                    <i class="fa-solid fa-floppy-disk"></i><span>${ui.profileSaving ? "Đang lưu" : "Lưu hồ sơ"}</span>
+                                </button>
+                            </div>
+                        </form>
+
+                        <form id="passwordForm" class="profile-card">
+                            <div class="profile-card-head">
+                                <i class="fa-solid fa-key"></i>
+                                <div>
+                                    <h3>Đổi mật khẩu</h3>
+                                    <p>Mật khẩu mới cần có ít nhất 6 ký tự.</p>
+                                </div>
+                            </div>
+                            <div class="profile-password-grid">
+                                <div class="field">
+                                    <label for="currentPassword">Mật khẩu hiện tại</label>
+                                    <input id="currentPassword" class="field-input" name="currentPassword" type="password" autocomplete="current-password" required>
+                                </div>
+                                <div class="field">
+                                    <label for="newPassword">Mật khẩu mới</label>
+                                    <input id="newPassword" class="field-input" name="newPassword" type="password" autocomplete="new-password" minlength="6" required>
+                                </div>
+                                <div class="field">
+                                    <label for="confirmPassword">Nhập lại mật khẩu mới</label>
+                                    <input id="confirmPassword" class="field-input" name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required>
+                                </div>
+                            </div>
+                            <div class="profile-card-foot">
+                                <button class="primary-btn" type="submit" ${ui.passwordSaving ? "disabled" : ""}>
+                                    <i class="fa-solid fa-lock"></i><span>${ui.passwordSaving ? "Đang đổi" : "Đổi mật khẩu"}</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderUserAvatar(user, size = "small") {
+    const avatarData = user?.avatarData || "";
+    const className = `avatar avatar-${size}`;
+    if (avatarData) {
+        return `<span class="${className}"><img src="${e(avatarData)}" alt="Avatar ${e(user?.name || user?.username || "")}"></span>`;
+    }
+    return `<span class="${className}">${e(userInitials(user))}</span>`;
+}
+
+function userInitials(user) {
+    const source = String(user?.name || user?.email || user?.username || "U").trim();
+    const words = source.includes("@") ? [source.split("@")[0]] : source.split(/\s+/);
+    const initials = words.slice(0, 2).map((word) => word[0]).join("");
+    return initials.toUpperCase() || "U";
+}
+
+function roleLabel(role) {
+    const labels = {
+        admin: "Quản trị viên",
+        manager: "Quản lý",
+        user: "Người dùng",
+        viewer: "Người xem"
+    };
+    return labels[role] || labels.user;
+}
+
 function renderField(field, row) {
     const value = row?.[field.key] ?? "";
     const required = field.required ? "required" : "";
@@ -1102,6 +1230,18 @@ function bindAuthEvents() {
     document.querySelectorAll("[data-auth-action]").forEach((button) => {
         button.addEventListener("click", handleAuthAction);
     });
+    const profileForm = document.getElementById("profileForm");
+    if (profileForm) profileForm.addEventListener("submit", handleProfileSubmit);
+    const passwordForm = document.getElementById("passwordForm");
+    if (passwordForm) passwordForm.addEventListener("submit", handlePasswordSubmit);
+    const avatarInput = document.getElementById("avatarInput");
+    if (avatarInput) avatarInput.addEventListener("change", handleAvatarInput);
+    const profileModal = document.getElementById("profileModal");
+    if (profileModal) {
+        profileModal.addEventListener("click", (event) => {
+            if (event.target === profileModal) closeProfile();
+        });
+    }
 }
 
 async function initAuth() {
@@ -1150,6 +1290,25 @@ async function handleLogin(event) {
 
 async function handleAuthAction(event) {
     const action = event.currentTarget.dataset.authAction;
+    if (action === "open-profile") {
+        ui.profileOpen = true;
+        ui.profileAvatarDraft = null;
+        render();
+        return;
+    }
+    if (action === "close-profile") {
+        closeProfile();
+        return;
+    }
+    if (action === "choose-avatar") {
+        document.getElementById("avatarInput")?.click();
+        return;
+    }
+    if (action === "clear-avatar") {
+        ui.profileAvatarDraft = "";
+        render();
+        return;
+    }
     if (action !== "logout") return;
     try {
         await requestJson("/auth/logout", { method: "POST", skipAuthRedirect: true });
@@ -1160,10 +1319,110 @@ async function handleAuthAction(event) {
     appState = emptyState();
     localStorage.removeItem(STORAGE_KEY);
     ui.modal = null;
+    ui.profileOpen = false;
+    ui.profileAvatarDraft = null;
     ui.query = "";
     ui.filters = {};
     ui.columnFilters = {};
     render();
+}
+
+function closeProfile() {
+    ui.profileOpen = false;
+    ui.profileAvatarDraft = null;
+    ui.profileSaving = false;
+    ui.passwordSaving = false;
+    render();
+}
+
+async function handleProfileSubmit(event) {
+    event.preventDefault();
+    if (ui.profileSaving) return;
+    const form = event.currentTarget;
+    const name = form.elements.profileName.value.trim();
+    if (!name) {
+        showToast("Vui lòng nhập tên hiển thị.");
+        return;
+    }
+
+    ui.profileSaving = true;
+    try {
+        const avatarData = ui.profileAvatarDraft !== null ? ui.profileAvatarDraft : authState.user?.avatarData || "";
+        const data = await requestJson("/auth/profile", {
+            method: "PATCH",
+            body: JSON.stringify({ name, avatarData })
+        });
+        authState = { ...authState, user: data.user };
+        ui.profileAvatarDraft = null;
+        showToast("Đã cập nhật hồ sơ.");
+    } catch (error) {
+        showToast(error.message || "Không cập nhật được hồ sơ.");
+    } finally {
+        ui.profileSaving = false;
+        render();
+    }
+}
+
+async function handlePasswordSubmit(event) {
+    event.preventDefault();
+    if (ui.passwordSaving) return;
+    const form = event.currentTarget;
+    const currentPassword = form.elements.currentPassword.value;
+    const newPassword = form.elements.newPassword.value;
+    const confirmPassword = form.elements.confirmPassword.value;
+    if (newPassword.length < 6) {
+        showToast("Mật khẩu mới phải có ít nhất 6 ký tự.");
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        showToast("Mật khẩu mới nhập lại chưa khớp.");
+        return;
+    }
+
+    ui.passwordSaving = true;
+    try {
+        await requestJson("/auth/change-password", {
+            method: "POST",
+            body: JSON.stringify({ currentPassword, newPassword })
+        });
+        form.reset();
+        showToast("Đã đổi mật khẩu.");
+    } catch (error) {
+        showToast(error.message || "Không đổi được mật khẩu.");
+    } finally {
+        ui.passwordSaving = false;
+        render();
+    }
+}
+
+async function handleAvatarInput(event) {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+        showToast("Vui lòng chọn file ảnh.");
+        event.currentTarget.value = "";
+        return;
+    }
+    if (file.size > 250 * 1024) {
+        showToast("Ảnh đại diện nên dưới 250KB.");
+        event.currentTarget.value = "";
+        return;
+    }
+    try {
+        ui.profileAvatarDraft = await readFileAsDataUrl(file);
+        render();
+    } catch {
+        showToast("Không đọc được file ảnh.");
+    }
+}
+
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+    });
 }
 
 function handleAction(event) {
@@ -1697,7 +1956,12 @@ function formatUpdatedAt() {
 }
 
 document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && ui.modal) closeModal();
+    if (event.key !== "Escape") return;
+    if (ui.profileOpen) {
+        closeProfile();
+        return;
+    }
+    if (ui.modal) closeModal();
 });
 
 window.addEventListener("storage", (event) => {
@@ -1714,7 +1978,7 @@ window.addEventListener("hashchange", () => {
 });
 
 function refreshFromDbIfIdle() {
-    if (ui.modal || ui.saving || document.hidden) return;
+    if (ui.modal || ui.profileOpen || ui.saving || document.hidden) return;
     hydrateState(false);
 }
 

@@ -613,6 +613,7 @@ button {
     color: #334155;
     font-size: 12px;
     font-weight: 800;
+    cursor: pointer;
 }
 
 .user-chip span {
@@ -620,6 +621,51 @@ button {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.user-chip:hover {
+    background: #eef8f7;
+    border-color: #bfe7e3;
+    color: var(--bidv-teal);
+}
+
+.avatar {
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex: 0 0 auto;
+    background: linear-gradient(135deg, var(--bidv-teal) 0%, var(--bidv-teal-2) 62%, var(--bidv-yellow) 100%);
+    color: #ffffff;
+    font-weight: 900;
+    letter-spacing: 0;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+.avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.avatar-small {
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+}
+
+.avatar-medium {
+    width: 58px;
+    height: 58px;
+    font-size: 19px;
+}
+
+.avatar-large {
+    width: 96px;
+    height: 96px;
+    font-size: 30px;
 }
 
 .icon-btn,
@@ -1512,6 +1558,10 @@ button {
     overflow: hidden;
 }
 
+.profile-modal {
+    width: min(900px, 100%);
+}
+
 .modal-head {
     min-height: 72px;
     padding: 14px 18px;
@@ -1556,6 +1606,135 @@ button {
 .modal-body {
     padding: 18px;
     overflow: auto;
+}
+
+.profile-body {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+    background: #f8fafc;
+}
+
+.profile-summary {
+    min-height: 270px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    text-align: center;
+}
+
+.profile-summary strong {
+    display: block;
+    color: #111827;
+    font-size: 17px;
+    line-height: 24px;
+    word-break: break-word;
+}
+
+.profile-summary span,
+.profile-summary small {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 18px;
+    word-break: break-word;
+}
+
+.profile-summary small {
+    margin-top: 6px;
+    color: var(--bidv-teal);
+    font-weight: 900;
+}
+
+.profile-forms {
+    display: grid;
+    gap: 12px;
+}
+
+.profile-card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #ffffff;
+    padding: 14px;
+    display: grid;
+    gap: 14px;
+}
+
+.profile-card-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.profile-card-head > i {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    background: var(--bidv-teal-soft);
+    color: var(--bidv-teal);
+    flex: 0 0 auto;
+}
+
+.profile-card-head h3 {
+    margin: 0;
+    color: #111827;
+    font-size: 15px;
+    line-height: 20px;
+}
+
+.profile-card-head p {
+    margin: 2px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.profile-avatar-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+}
+
+.profile-avatar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.profile-avatar-actions small {
+    flex-basis: 100%;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 16px;
+}
+
+.profile-password-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.profile-card-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.profile-card-foot button:disabled {
+    cursor: wait;
+    opacity: 0.72;
 }
 
 .record-form-layout {
@@ -1681,6 +1860,10 @@ button {
         position: static;
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
+
+    .profile-password-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 820px) {
@@ -1758,6 +1941,10 @@ button {
         justify-content: flex-end;
     }
 
+    .user-chip {
+        max-width: 170px;
+    }
+
     .top-actions .text-btn span,
     .top-actions .primary-btn span,
     .top-actions .danger-btn span {
@@ -1771,6 +1958,14 @@ button {
 
     .command-band {
         display: grid;
+    }
+
+    .profile-body {
+        grid-template-columns: 1fr;
+    }
+
+    .profile-summary {
+        min-height: 0;
     }
 
     .screen-title {
@@ -1826,6 +2021,22 @@ button {
     .login-submit,
     .login-input-wrap input {
         height: 46px;
+    }
+
+    .profile-avatar-row {
+        align-items: flex-start;
+    }
+
+    .profile-avatar-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        width: 100%;
+    }
+
+    .profile-avatar-actions .text-btn,
+    .profile-avatar-actions .ghost-btn,
+    .profile-card-foot .primary-btn {
+        width: 100%;
     }
 
     .brand-title strong {
