@@ -3,6 +3,8 @@ const MIGRATION_FLAG_KEY = `${STORAGE_KEY}_remote_migration_checked`;
 const LEGACY_BACKUP_KEY = `${STORAGE_KEY}_legacy_backup`;
 const API_BASE = "/api";
 const SYNC_INTERVAL_MS = 30000;
+const GROUP_CHAT_POLL_INTERVAL_MS = 15000;
+const GROUP_CHAT_LIMIT = 50;
 const MAX_AVATAR_FILE_SIZE_MB = 6;
 const MAX_AVATAR_FILE_SIZE_BYTES = MAX_AVATAR_FILE_SIZE_MB * 1024 * 1024;
 
@@ -292,6 +294,8 @@ let ui = {
     columnFilters: {},
     modal: null,
     profileOpen: false,
+    groupChatOpen: false,
+    groupChatDraft: "",
     profileAvatarDraft: null,
     profileSaving: false,
     passwordSaving: false,
@@ -302,6 +306,13 @@ let dataStatus = {
     mode: "loading",
     message: "Đang kết nối Railway DB",
     lastSyncAt: null
+};
+let groupChatState = {
+    messages: [],
+    loading: false,
+    sending: false,
+    error: null,
+    lastFetchedAt: null
 };
 
 function normalizeState(raw) {
@@ -396,6 +407,9 @@ async function requestJson(path, options = {}) {
         if (response.status === 401 && !skipAuthRedirect && authState.status === "authenticated") {
             authState = { status: "guest", user: null, error: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." };
             appState = emptyState();
+            ui.groupChatOpen = false;
+            ui.groupChatDraft = "";
+            resetGroupChatState();
             localStorage.removeItem(STORAGE_KEY);
             render();
         }
@@ -477,6 +491,7 @@ function render() {
         </div>
         ${renderModal()}
         ${renderProfileModal()}
+        ${renderFloatingGroupChat()}
         <div class="toast ${ui.toast ? "show" : ""}">${e(ui.toast || "")}</div>
         <input id="importDataInput" class="hidden-input" type="file" accept="application/json,.json">
     `;
@@ -658,7 +673,7 @@ function renderCommandBand() {
             <div class="command-meta">
                 ${renderDbStatusPill()}
                 ${renderDataHealthPill(totalRecords)}
-                <span class="pill"><i class="fa-regular fa-clock"></i>${e(formatUpdatedAt())}</span>
+                ${renderDataUpdatedAtPill()}
             </div>
         </div>
     `;
@@ -1477,6 +1492,92 @@ function renderProfileModal() {
     `;
 }
 
+function renderFloatingGroupChat() {
+    const unreadClass = groupChatState.error ? "warn" : "";
+    if (!ui.groupChatOpen) {
+        return `
+            <div class="floating-hub">
+                <button class="chat-fab ${unreadClass}" type="button" data-chat-action="open" title="Chat nhóm" aria-label="Chat nhóm">
+                    <i class="fa-solid fa-comments"></i>
+                </button>
+            </div>
+        `;
+    }
+
+    return `
+        <div class="floating-hub">
+            <section class="group-chat-panel" aria-label="Chat nhóm">
+                <div class="group-chat-head">
+                    <div>
+                        <h2><i class="fa-solid fa-comments"></i> Chat nhóm</h2>
+                        <span>${groupChatState.lastFetchedAt ? `Cập nhật ${e(formatShortDateTime(groupChatState.lastFetchedAt))}` : "Tất cả người dùng trong hệ thống"}</span>
+                    </div>
+                    <div class="group-chat-actions">
+                        <button class="icon-btn" type="button" data-chat-action="refresh" title="Tải lại" aria-label="Tải lại">
+                            <i class="fa-solid fa-rotate-right ${groupChatState.loading ? "fa-spin" : ""}"></i>
+                        </button>
+                        <button class="icon-btn" type="button" data-chat-action="close" title="Đóng" aria-label="Đóng">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="group-chat-body" id="groupChatBody">
+                    ${renderGroupChatMessages()}
+                </div>
+                <form class="group-chat-compose" id="groupChatForm">
+                    <textarea id="groupChatInput" class="group-chat-input" name="message" maxlength="1000" rows="2" placeholder="Nhập tin nhắn nhóm..." ${groupChatState.sending ? "disabled" : ""}>${e(ui.groupChatDraft)}</textarea>
+                    <button class="primary-btn group-chat-send" type="submit" ${groupChatState.sending ? "disabled" : ""} title="Gửi">
+                        <i class="fa-solid fa-paper-plane"></i><span>${groupChatState.sending ? "Đang gửi" : "Gửi"}</span>
+                    </button>
+                </form>
+            </section>
+        </div>
+    `;
+}
+
+function renderGroupChatMessages() {
+    if (groupChatState.loading && !groupChatState.messages.length) {
+        return `
+            <div class="group-chat-empty">
+                <i class="fa-solid fa-rotate fa-spin"></i>
+                <span>Đang tải tin nhắn...</span>
+            </div>
+        `;
+    }
+    if (groupChatState.error && !groupChatState.messages.length) {
+        return `
+            <div class="group-chat-empty">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>${e(groupChatState.error)}</span>
+            </div>
+        `;
+    }
+    if (!groupChatState.messages.length) {
+        return `
+            <div class="group-chat-empty">
+                <i class="fa-solid fa-comments"></i>
+                <span>Chưa có tin nhắn nhóm.</span>
+            </div>
+        `;
+    }
+    return groupChatState.messages.map((message) => {
+        const isOwn = message.user?.id && message.user.id === authState.user?.id;
+        const sender = message.user?.name || message.user?.username || "Người dùng";
+        return `
+            <article class="group-chat-message ${isOwn ? "own" : ""}">
+                <div class="group-chat-avatar">${e(userInitials(message.user))}</div>
+                <div class="group-chat-bubble">
+                    <div class="group-chat-meta">
+                        <strong>${e(isOwn ? "Bạn" : sender)}</strong>
+                        <span>${e(formatShortDateTime(message.createdAt))}</span>
+                    </div>
+                    <p>${e(message.body)}</p>
+                </div>
+            </article>
+        `;
+    }).join("");
+}
+
 function renderUserAvatar(user, size = "small") {
     const avatarData = user?.avatarData || "";
     const className = `avatar avatar-${size}`;
@@ -1566,6 +1667,27 @@ function bindEvents() {
         button.addEventListener("click", handleAction);
     });
 
+    document.querySelectorAll("[data-chat-action]").forEach((button) => {
+        button.addEventListener("click", handleChatAction);
+    });
+
+    const groupChatForm = document.getElementById("groupChatForm");
+    if (groupChatForm) groupChatForm.addEventListener("submit", handleGroupChatSubmit);
+
+    const groupChatInput = document.getElementById("groupChatInput");
+    if (groupChatInput) {
+        groupChatInput.addEventListener("input", (event) => {
+            ui.groupChatDraft = event.target.value;
+        });
+        groupChatInput.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" || event.shiftKey) return;
+            event.preventDefault();
+            groupChatForm?.requestSubmit();
+        });
+    }
+    const groupChatBody = document.getElementById("groupChatBody");
+    if (groupChatBody) groupChatBody.scrollTop = groupChatBody.scrollHeight;
+
     const search = document.getElementById("searchInput");
     if (search) {
         search.addEventListener("input", (event) => {
@@ -1638,6 +1760,9 @@ async function initAuth() {
     } catch {
         authState = { status: "guest", user: null, error: null };
         appState = emptyState();
+        ui.groupChatOpen = false;
+        ui.groupChatDraft = "";
+        resetGroupChatState();
         render();
     }
 }
@@ -1667,6 +1792,9 @@ async function handleLogin(event) {
     } catch (error) {
         authState = { status: "guest", user: null, error: error.message || "Không đăng nhập được." };
         appState = emptyState();
+        ui.groupChatOpen = false;
+        ui.groupChatDraft = "";
+        resetGroupChatState();
         render();
     }
 }
@@ -1703,11 +1831,92 @@ async function handleAuthAction(event) {
     localStorage.removeItem(STORAGE_KEY);
     ui.modal = null;
     ui.profileOpen = false;
+    ui.groupChatOpen = false;
+    ui.groupChatDraft = "";
     ui.profileAvatarDraft = null;
     ui.query = "";
     ui.filters = {};
     ui.columnFilters = {};
+    resetGroupChatState();
     render();
+}
+
+async function handleChatAction(event) {
+    const action = event.currentTarget.dataset.chatAction;
+    if (action === "open") {
+        ui.groupChatOpen = true;
+        render();
+        await fetchGroupChat();
+        return;
+    }
+    if (action === "close") {
+        ui.groupChatOpen = false;
+        render();
+        return;
+    }
+    if (action === "refresh") {
+        await fetchGroupChat();
+    }
+}
+
+async function fetchGroupChat({ silent = false } = {}) {
+    if (authState.status !== "authenticated") return;
+    if (!silent) {
+        groupChatState.loading = true;
+        groupChatState.error = null;
+        if (ui.groupChatOpen) render();
+    }
+    try {
+        const data = await requestJson(`/chat/group?limit=${GROUP_CHAT_LIMIT}`);
+        groupChatState.messages = Array.isArray(data.messages) ? data.messages : [];
+        groupChatState.error = null;
+        groupChatState.lastFetchedAt = new Date().toISOString();
+    } catch (error) {
+        groupChatState.error = error.message || "Không tải được chat nhóm.";
+        if (!silent) showToast(groupChatState.error);
+    } finally {
+        groupChatState.loading = false;
+        if (ui.groupChatOpen) render();
+    }
+}
+
+async function handleGroupChatSubmit(event) {
+    event.preventDefault();
+    if (groupChatState.sending) return;
+    const form = event.currentTarget;
+    const message = (form.elements.message?.value || "").trim();
+    ui.groupChatDraft = message;
+    if (!message) {
+        showToast("Vui lòng nhập tin nhắn.");
+        return;
+    }
+    groupChatState.sending = true;
+    render();
+    try {
+        const data = await requestJson("/chat/group", {
+            method: "POST",
+            body: JSON.stringify({ message })
+        });
+        groupChatState.messages = [...groupChatState.messages, data.message].slice(-GROUP_CHAT_LIMIT);
+        groupChatState.error = null;
+        groupChatState.lastFetchedAt = new Date().toISOString();
+        ui.groupChatDraft = "";
+    } catch (error) {
+        showToast(error.message || "Không gửi được tin nhắn.");
+    } finally {
+        groupChatState.sending = false;
+        render();
+    }
+}
+
+function resetGroupChatState() {
+    groupChatState = {
+        messages: [],
+        loading: false,
+        sending: false,
+        error: null,
+        lastFetchedAt: null
+    };
 }
 
 function closeProfile() {
@@ -2249,6 +2458,14 @@ function renderDataHealthPill(totalRecords) {
     return `<span class="pill good"><i class="fa-solid fa-database"></i>${e(totalRecords)} bản ghi</span>`;
 }
 
+function renderDataUpdatedAtPill() {
+    return `
+        <span class="pill" title="Thời điểm dữ liệu UAT thay đổi lần cuối, không phải giờ hiện tại.">
+            <i class="fa-regular fa-clock"></i>${e(formatUpdatedAt())}
+        </span>
+    `;
+}
+
 function canModifyRecord(row) {
     if (authState.user?.role === "admin") return true;
     return row?._ownership?.canEdit === true;
@@ -2364,25 +2581,32 @@ function formatShortDateTime(value) {
         day: "2-digit",
         month: "2-digit",
         hour: "2-digit",
-        minute: "2-digit"
+        minute: "2-digit",
+        timeZone: "Asia/Ho_Chi_Minh"
     }).format(date);
 }
 
 function formatUpdatedAt() {
-    if (!appState.updatedAt) return "Chưa cập nhật";
+    if (!appState.updatedAt) return "Dữ liệu chưa cập nhật";
     const date = new Date(appState.updatedAt);
-    if (Number.isNaN(date.getTime())) return "Chưa cập nhật";
-    return `Cập nhật ${new Intl.DateTimeFormat("vi-VN", {
+    if (Number.isNaN(date.getTime())) return "Dữ liệu chưa cập nhật";
+    return `Dữ liệu cập nhật ${new Intl.DateTimeFormat("vi-VN", {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
         hour: "2-digit",
-        minute: "2-digit"
+        minute: "2-digit",
+        timeZone: "Asia/Ho_Chi_Minh"
     }).format(date)}`;
 }
 
 document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
+    if (ui.groupChatOpen) {
+        ui.groupChatOpen = false;
+        render();
+        return;
+    }
     if (ui.profileOpen) {
         closeProfile();
         return;
@@ -2408,8 +2632,14 @@ function refreshFromDbIfIdle() {
     hydrateState(false);
 }
 
+function refreshGroupChatIfOpen() {
+    if (!ui.groupChatOpen || authState.status !== "authenticated" || document.hidden || groupChatState.sending) return;
+    fetchGroupChat({ silent: true });
+}
+
 window.addEventListener("focus", refreshFromDbIfIdle);
 window.setInterval(refreshFromDbIfIdle, SYNC_INTERVAL_MS);
+window.setInterval(refreshGroupChatIfOpen, GROUP_CHAT_POLL_INTERVAL_MS);
 
 render();
 initAuth();

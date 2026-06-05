@@ -356,6 +356,48 @@ app.get("/api/export/excel", asyncHandler(async (req, res) => {
   res.send(Buffer.from(buffer));
 }));
 
+app.get("/api/chat/group", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const limit = Math.max(10, Math.min(100, Number(req.query.limit || 50)));
+  const result = await getPool().query(`
+    select messages.id,
+           messages.body,
+           messages.created_at,
+           users.id as user_id,
+           users.name as user_name,
+           users.email as user_email,
+           users.username as username
+    from group_chat_messages messages
+    left join app_users users on users.id = messages.created_by
+    order by messages.created_at desc
+    limit $1
+  `, [limit]);
+  res.json({ messages: result.rows.reverse().map(toGroupChatMessage) });
+}));
+
+app.post("/api/chat/group", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const body = normalizeChatMessage(req.body.message || req.body.body);
+  const id = crypto.randomUUID();
+  const result = await getPool().query(`
+    with inserted as (
+      insert into group_chat_messages (id, body, created_by)
+      values ($1, $2, $3)
+      returning id, body, created_by, created_at
+    )
+    select inserted.id,
+           inserted.body,
+           inserted.created_at,
+           users.id as user_id,
+           users.name as user_name,
+           users.email as user_email,
+           users.username as username
+    from inserted
+    left join app_users users on users.id = inserted.created_by
+  `, [id, body, req.user.id]);
+  res.status(201).json({ message: toGroupChatMessage(result.rows[0]) });
+}));
+
 app.put("/api/state", requireAdmin, asyncHandler(async (req, res) => {
   const state = normalizeState(req.body.state || req.body);
   for (const collection of collections) {
@@ -566,6 +608,16 @@ function ensureSchema() {
 
       create index if not exists idx_uat_records_created_by
         on uat_records (created_by);
+
+      create table if not exists group_chat_messages (
+        id text primary key,
+        body text not null,
+        created_by text,
+        created_at timestamptz not null default now()
+      );
+
+      create index if not exists idx_group_chat_messages_created
+        on group_chat_messages (created_at desc);
     `);
       await ensureSeedAdmin();
       await ensureDefaultUsers();
@@ -955,6 +1007,27 @@ function toPublicUser(user) {
     avatarData: user.avatar_data || user.avatarData || "",
     active: user.active !== false
   };
+}
+
+function toGroupChatMessage(row) {
+  return {
+    id: row.id,
+    body: row.body || "",
+    createdAt: row.created_at?.toISOString?.() || new Date().toISOString(),
+    user: {
+      id: row.user_id || "",
+      name: row.user_name || row.username || "Người dùng",
+      email: row.user_email || "",
+      username: row.username || ""
+    }
+  };
+}
+
+function normalizeChatMessage(value) {
+  const body = String(value || "").trim();
+  if (!body) throw httpError(400, "Tin nhắn không được để trống.");
+  if (body.length > 1000) throw httpError(400, "Tin nhắn tối đa 1000 ký tự.");
+  return body;
 }
 
 function validateNewUser({ username, email, name, password }) {
