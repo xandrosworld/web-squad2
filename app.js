@@ -597,7 +597,7 @@ function renderLoginPage() {
                         <div class="login-divider"><span>Tài khoản hệ thống</span></div>
                         <div class="login-account-note">
                             <i class="fa-solid fa-shield-halved"></i>
-                            <span>Tài khoản được cấp bởi quản trị viên. Không còn dùng vai trò demo.</span>
+                            <span>Tài khoản được cấp bởi quản trị viên. Dữ liệu vận hành được lưu tập trung trên hệ thống.</span>
                         </div>
 
                         <div class="login-foot">
