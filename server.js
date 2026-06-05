@@ -366,7 +366,8 @@ app.get("/api/chat/group", asyncHandler(async (req, res) => {
            users.id as user_id,
            users.name as user_name,
            users.email as user_email,
-           users.username as username
+           users.username as username,
+           users.avatar_data as user_avatar_data
     from group_chat_messages messages
     left join app_users users on users.id = messages.created_by
     order by messages.created_at desc
@@ -391,7 +392,8 @@ app.post("/api/chat/group", asyncHandler(async (req, res) => {
            users.id as user_id,
            users.name as user_name,
            users.email as user_email,
-           users.username as username
+           users.username as username,
+           users.avatar_data as user_avatar_data
     from inserted
     left join app_users users on users.id = inserted.created_by
   `, [id, body, req.user.id]);
@@ -1018,7 +1020,8 @@ function toGroupChatMessage(row) {
       id: row.user_id || "",
       name: row.user_name || row.username || "Người dùng",
       email: row.user_email || "",
-      username: row.username || ""
+      username: row.username || "",
+      avatarData: row.user_avatar_data || ""
     }
   };
 }

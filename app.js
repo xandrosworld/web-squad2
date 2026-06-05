@@ -673,7 +673,7 @@ function renderCommandBand() {
             <div class="command-meta">
                 ${renderDbStatusPill()}
                 ${renderDataHealthPill(totalRecords)}
-                ${renderDataUpdatedAtPill()}
+                ${renderDbSyncPill()}
             </div>
         </div>
     `;
@@ -1565,7 +1565,7 @@ function renderGroupChatMessages() {
         const sender = message.user?.name || message.user?.username || "Người dùng";
         return `
             <article class="group-chat-message ${isOwn ? "own" : ""}">
-                <div class="group-chat-avatar">${e(userInitials(message.user))}</div>
+                ${renderGroupChatAvatar(message.user)}
                 <div class="group-chat-bubble">
                     <div class="group-chat-meta">
                         <strong>${e(isOwn ? "Bạn" : sender)}</strong>
@@ -1576,6 +1576,15 @@ function renderGroupChatMessages() {
             </article>
         `;
     }).join("");
+}
+
+function renderGroupChatAvatar(user) {
+    const avatarData = user?.avatarData || "";
+    const label = e(user?.name || user?.username || "Người dùng");
+    if (avatarData) {
+        return `<div class="group-chat-avatar"><img src="${e(avatarData)}" alt="Avatar ${label}"></div>`;
+    }
+    return `<div class="group-chat-avatar">${e(userInitials(user))}</div>`;
 }
 
 function renderUserAvatar(user, size = "small") {
@@ -1919,6 +1928,24 @@ function resetGroupChatState() {
     };
 }
 
+function syncCurrentUserInGroupChat(user) {
+    if (!user?.id || !groupChatState.messages.length) return;
+    groupChatState.messages = groupChatState.messages.map((message) => {
+        if (message.user?.id !== user.id) return message;
+        return {
+            ...message,
+            user: {
+                ...(message.user || {}),
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                username: user.username,
+                avatarData: user.avatarData || ""
+            }
+        };
+    });
+}
+
 function closeProfile() {
     ui.profileOpen = false;
     ui.profileAvatarDraft = null;
@@ -1945,8 +1972,10 @@ async function handleProfileSubmit(event) {
             body: JSON.stringify({ name, avatarData })
         });
         authState = { ...authState, user: data.user };
+        syncCurrentUserInGroupChat(data.user);
         ui.profileAvatarDraft = null;
         showToast("Đã cập nhật hồ sơ.");
+        if (ui.groupChatOpen) fetchGroupChat({ silent: true });
     } catch (error) {
         showToast(error.message || "Không cập nhật được hồ sơ.");
     } finally {
@@ -2458,10 +2487,10 @@ function renderDataHealthPill(totalRecords) {
     return `<span class="pill good"><i class="fa-solid fa-database"></i>${e(totalRecords)} bản ghi</span>`;
 }
 
-function renderDataUpdatedAtPill() {
+function renderDbSyncPill() {
     return `
-        <span class="pill" title="Thời điểm dữ liệu UAT thay đổi lần cuối, không phải giờ hiện tại.">
-            <i class="fa-regular fa-clock"></i>${e(formatUpdatedAt())}
+        <span class="pill" title="Thời điểm trình duyệt lấy dữ liệu mới nhất từ DB.">
+            <i class="fa-regular fa-clock"></i>${e(formatLastSyncAt())}
         </span>
     `;
 }
@@ -2586,11 +2615,11 @@ function formatShortDateTime(value) {
     }).format(date);
 }
 
-function formatUpdatedAt() {
-    if (!appState.updatedAt) return "Dữ liệu chưa cập nhật";
-    const date = new Date(appState.updatedAt);
-    if (Number.isNaN(date.getTime())) return "Dữ liệu chưa cập nhật";
-    return `Dữ liệu cập nhật ${new Intl.DateTimeFormat("vi-VN", {
+function formatLastSyncAt() {
+    if (!dataStatus.lastSyncAt) return "Chưa đồng bộ";
+    const date = new Date(dataStatus.lastSyncAt);
+    if (Number.isNaN(date.getTime())) return "Chưa đồng bộ";
+    return `Đồng bộ ${new Intl.DateTimeFormat("vi-VN", {
         day: "2-digit",
         month: "2-digit",
         year: "numeric",
