@@ -373,6 +373,7 @@ async function hydrateState(showNotice = false) {
         render();
         if (showNotice) showToast("Đã kết nối Railway DB.");
     } catch (error) {
+        if (error.status === 401) return;
         setDataStatus("offline", error.message || "Không kết nối được Railway DB");
         render();
         showToast("Không kết nối được Railway DB. Vui lòng kiểm tra biến DATABASE_URL hoặc deployment.");
@@ -413,7 +414,9 @@ async function requestJson(path, options = {}) {
             localStorage.removeItem(STORAGE_KEY);
             render();
         }
-        throw new Error(data.error || `API lỗi ${response.status}`);
+        const error = new Error(data.error || `API lỗi ${response.status}`);
+        error.status = response.status;
+        throw error;
     }
     return data;
 }
@@ -2657,6 +2660,7 @@ window.addEventListener("hashchange", () => {
 });
 
 function refreshFromDbIfIdle() {
+    if (authState.status !== "authenticated") return;
     if (ui.modal || ui.profileOpen || ui.saving || document.hidden) return;
     hydrateState(false);
 }
