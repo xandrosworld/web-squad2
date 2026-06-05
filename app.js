@@ -522,71 +522,10 @@ function renderGroupDistribution() {
     `;
 }
 
-function renderInsights(metrics) {
-    const items = [];
-    if (metrics.criticalBugs > 0) {
-        items.push(["Lỗi nghiêm trọng", `${metrics.criticalBugs} lỗi Sev 1 đang cần theo dõi.`]);
-    }
-    if (appState.readiness.some((row) => row.decision === "Chưa sẵn sàng" || row.decision === "Có điều kiện")) {
-        items.push(["Readiness", "Có sprint chưa đạt trạng thái sẵn sàng đầy đủ."]);
-    }
-    const blocked = appState.daily.filter((row) => row.blocker).length;
-    if (blocked > 0) {
-        items.push(["Vướng mắc daily", `${blocked} bản ghi daily có vướng mắc.`]);
-    }
-    if (!items.length) {
-        return renderEmpty("fa-shield-halved", "Chưa có cảnh báo", "Các cảnh báo sẽ xuất hiện sau khi có dữ liệu.", true);
-    }
-    return `
-        <div class="insight-list">
-            ${items.map(([title, text]) => `
-                <div class="insight">
-                    <strong>${e(title)}</strong>
-                    <span>${e(text)}</span>
-                </div>
-            `).join("")}
-        </div>
-    `;
-}
-
-function renderTimeline() {
-    const rows = [];
-    Object.keys(modules).forEach((id) => {
-        const mod = modules[id];
-        appState[mod.collection].forEach((row) => {
-            rows.push({
-                at: row.updatedAt || row.createdAt || "",
-                title: recordTitle(row, mod),
-                sub: mod.shortLabel
-            });
-        });
-    });
-    const recent = rows
-        .filter((row) => row.at)
-        .sort((a, b) => new Date(b.at) - new Date(a.at))
-        .slice(0, 5);
-    if (!recent.length) {
-        return renderEmpty("fa-clock", "Chưa có hoạt động", "Lịch sử cập nhật sẽ xuất hiện sau khi có bản ghi.", true);
-    }
-    return `
-        <div class="timeline">
-            ${recent.map((item) => `
-                <div class="timeline-item">
-                    <div class="timeline-date">${e(formatShortDateTime(item.at))}</div>
-                    <div class="timeline-card">
-                        <strong>${e(item.title)}</strong>
-                        <span>${e(item.sub)}</span>
-                    </div>
-                </div>
-            `).join("")}
-        </div>
-    `;
-}
-
 function renderModule(mod) {
     const rows = getFilteredRows(mod);
     return `
-        <div class="content-grid">
+        <div class="content-grid content-grid-single">
             <section class="panel">
                 <div class="panel-head">
                     <div class="panel-title">
@@ -605,32 +544,6 @@ function renderModule(mod) {
                     ${rows.length ? renderTable(mod, rows) : renderEmpty(mod.emptyIcon, mod.emptyTitle, mod.emptyText)}
                 </div>
             </section>
-            <aside class="side-stack">
-                <section class="panel">
-                    <div class="panel-head">
-                        <div class="panel-title">
-                            <i class="fa-solid fa-chart-simple"></i>
-                            <div>
-                                <h2>Tổng quan tab</h2>
-                                <span>Chỉ số nhanh</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="panel-body">${renderModuleSummary(mod)}</div>
-                </section>
-                <section class="panel">
-                    <div class="panel-head">
-                        <div class="panel-title">
-                            <i class="fa-solid fa-filter"></i>
-                            <div>
-                                <h2>Bộ lọc</h2>
-                                <span>Theo dữ liệu đang có</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="panel-body">${renderFilterSummary(mod)}</div>
-                </section>
-            </aside>
         </div>
     `;
 }
@@ -692,54 +605,6 @@ function renderTable(mod, rows) {
                     `).join("")}
                 </tbody>
             </table>
-        </div>
-    `;
-}
-
-function renderModuleSummary(mod) {
-    const rows = appState[mod.collection];
-    if (!rows.length) return renderEmpty("fa-chart-simple", "Chưa có số liệu", "Tổng quan sẽ cập nhật sau khi có dữ liệu.", true);
-    const cards = [
-        ["Tổng bản ghi", rows.length],
-        ["Đang hiển thị", getFilteredRows(mod).length]
-    ];
-    if (mod.collection === "daily") {
-        const total = sum(rows, "totalCases");
-        const done = sum(rows, "executedCases");
-        cards.push(["Testcase", total], ["Hoàn thành", `${percent(done, total)}%`]);
-    }
-    if (mod.collection === "features") {
-        cards.push(["Hoàn thành", rows.filter((row) => row.status === "Hoàn thành").length]);
-    }
-    if (mod.collection === "readiness") {
-        cards.push(["Sẵn sàng", rows.filter((row) => row.decision === "Sẵn sàng").length]);
-    }
-    return `
-        <div class="summary-grid">
-            ${cards.map(([label, value]) => `
-                <div class="mini-stat">
-                    <span>${e(label)}</span>
-                    <strong>${e(value)}</strong>
-                </div>
-            `).join("")}
-        </div>
-    `;
-}
-
-function renderFilterSummary(mod) {
-    const filters = mod.filters || [];
-    if (!filters.length) return renderEmpty("fa-filter", "Không có bộ lọc", "Tab này chỉ dùng tìm kiếm.", true);
-    return `
-        <div class="insight-list">
-            ${filters.map((filter) => {
-                const values = uniqueValues(appState[mod.collection], filter.key);
-                return `
-                    <div class="insight">
-                        <strong>${e(filter.label)}</strong>
-                        <span>${values.length ? e(values.join(", ")) : "Chưa có dữ liệu"}</span>
-                    </div>
-                `;
-            }).join("")}
         </div>
     `;
 }
