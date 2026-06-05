@@ -28,6 +28,7 @@ const defaultUsers = [
   { username: "tuanpa13@bidv.com.vn", email: "tuanpa13@bidv.com.vn", name: "tuanpa13", password: "123456" },
   { username: "giangnc2@bidv.com.vn", email: "giangnc2@bidv.com.vn", name: "giangnc2", password: "123456" }
 ];
+const adminIdentities = ["yenuth@bidv.com.vn", "thanhmt@bidv.com.vn"];
 
 const collections = ["features", "plans", "matrix", "daily", "weekly", "readiness"];
 const collectionSet = new Set(collections);
@@ -322,7 +323,7 @@ app.post("/api/auth/users", requireAdmin, asyncHandler(async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const email = String(req.body.email || "").trim().toLowerCase() || null;
   const name = String(req.body.name || username || email || "").trim();
-  const role = normalizeRole(req.body.role || "user");
+  const role = roleForIdentity(username, email);
   const password = String(req.body.password || "");
   validateNewUser({ username, email, name, password });
   const passwordHash = await hashPassword(password);
@@ -337,7 +338,7 @@ app.post("/api/auth/users", requireAdmin, asyncHandler(async (req, res) => {
 
 app.get("/api/state", asyncHandler(async (req, res) => {
   await ensureSchema();
-  const state = await readState(getPool());
+  const state = await readState(getPool(), req.user);
   res.json({ state });
 }));
 
@@ -353,7 +354,7 @@ app.get("/api/export/excel", asyncHandler(async (req, res) => {
   res.send(Buffer.from(buffer));
 }));
 
-app.put("/api/state", asyncHandler(async (req, res) => {
+app.put("/api/state", requireAdmin, asyncHandler(async (req, res) => {
   const state = normalizeState(req.body.state || req.body);
   for (const collection of collections) {
     state[collection].forEach((record) => validateRecordForCollection(collection, record));
@@ -366,11 +367,11 @@ app.put("/api/state", asyncHandler(async (req, res) => {
     for (const collection of collections) {
       for (const inputRecord of state[collection]) {
         const record = normalizeRecord(inputRecord);
-        await upsertRecord(client, collection, record);
+        await createRecord(client, collection, record, req.user);
       }
     }
     await touchMeta(client);
-    const nextState = await readState(client);
+    const nextState = await readState(client, req.user);
     await client.query("commit");
     res.json({ state: nextState });
   } catch (error) {
@@ -389,10 +390,10 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
   const client = await getPool().connect();
   try {
     await client.query("begin");
-    const saved = await upsertRecord(client, collection, record);
+    const saved = await createRecord(client, collection, record, req.user);
     const updatedAt = await touchMeta(client);
     await client.query("commit");
-    res.status(201).json({ record: saved, updatedAt });
+    res.status(201).json({ record: decorateRecord(saved, req.user), updatedAt });
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -409,10 +410,14 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
   const client = await getPool().connect();
   try {
     await client.query("begin");
-    const saved = await upsertRecord(client, collection, record);
+    const current = await getRecordForUpdate(client, collection, req.params.id);
+    assertCanModifyRecord(req.user, current);
+    record.createdAt = current.data?.createdAt || current.created_at?.toISOString?.() || record.createdAt;
+    record.updatedAt = new Date().toISOString();
+    const saved = await updateRecord(client, collection, record, req.user.id, current);
     const updatedAt = await touchMeta(client);
     await client.query("commit");
-    res.json({ record: saved, updatedAt });
+    res.json({ record: decorateRecord(saved, req.user), updatedAt });
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -427,6 +432,8 @@ app.delete("/api/records/:collection/:id", asyncHandler(async (req, res) => {
   const client = await getPool().connect();
   try {
     await client.query("begin");
+    const current = await getRecordForUpdate(client, collection, req.params.id);
+    assertCanModifyRecord(req.user, current);
     await client.query("delete from uat_records where collection = $1 and id = $2", [collection, req.params.id]);
     const updatedAt = await touchMeta(client);
     await client.query("commit");
@@ -513,6 +520,8 @@ function ensureSchema() {
         collection text not null,
         id text not null,
         data jsonb not null,
+        created_by text,
+        updated_by text,
         created_at timestamptz not null default now(),
         updated_at timestamptz not null default now(),
         primary key (collection, id)
@@ -546,9 +555,19 @@ function ensureSchema() {
 
       alter table app_users
         add column if not exists password_changed_at timestamptz;
+
+      alter table uat_records
+        add column if not exists created_by text;
+
+      alter table uat_records
+        add column if not exists updated_by text;
+
+      create index if not exists idx_uat_records_created_by
+        on uat_records (created_by);
     `);
       await ensureSeedAdmin();
       await ensureDefaultUsers();
+      await ensureExclusiveAdminRoles();
     })().catch((error) => {
       schemaPromise = null;
       throw error;
@@ -620,16 +639,29 @@ function excelCellValue(value, type) {
   return String(value);
 }
 
-async function readState(db) {
+async function readState(db, viewer = null) {
   const state = emptyState();
   const [recordResult, metaResult] = await Promise.all([
-    db.query("select collection, data from uat_records order by collection asc, updated_at desc"),
+    db.query(`
+      select records.collection,
+             records.data,
+             records.created_by,
+             records.updated_by,
+             records.created_at,
+             records.updated_at,
+             creator.name as creator_name,
+             creator.email as creator_email,
+             creator.username as creator_username
+      from uat_records records
+      left join app_users creator on creator.id = records.created_by
+      order by records.collection asc, records.updated_at desc
+    `),
     db.query("select value from app_meta where key = 'state'")
   ]);
 
   for (const row of recordResult.rows) {
     if (collectionSet.has(row.collection)) {
-      state[row.collection].push(row.data);
+      state[row.collection].push(viewer ? decorateRecord(row, viewer) : row.data);
     }
   }
 
@@ -638,18 +670,81 @@ async function readState(db) {
   return state;
 }
 
-async function upsertRecord(client, collection, record) {
-  const createdAt = toDate(record.createdAt);
+async function createRecord(client, collection, record, actor) {
+  const now = new Date();
+  record.createdAt = now.toISOString();
+  record.updatedAt = now.toISOString();
+  const result = await client.query(`
+    insert into uat_records (collection, id, data, created_by, updated_by, created_at, updated_at)
+    values ($1, $2, $3::jsonb, $4, $4, $5, $5)
+    on conflict (collection, id) do nothing
+    returning data, created_by, updated_by, created_at, updated_at
+  `, [collection, record.id, JSON.stringify(record), actor.id, now]);
+  if (!result.rows[0]) throw httpError(409, "Bản ghi đã tồn tại.");
+  return {
+    ...result.rows[0],
+    creator_name: actor.name,
+    creator_email: actor.email,
+    creator_username: actor.username
+  };
+}
+
+async function updateRecord(client, collection, record, actorId, current) {
   const updatedAt = toDate(record.updatedAt);
   const result = await client.query(`
-    insert into uat_records (collection, id, data, created_at, updated_at)
-    values ($1, $2, $3::jsonb, $4, $5)
-    on conflict (collection, id) do update
-      set data = excluded.data,
-          updated_at = excluded.updated_at
-    returning data
-  `, [collection, record.id, JSON.stringify(record), createdAt, updatedAt]);
-  return result.rows[0].data;
+    update uat_records
+    set data = $1::jsonb,
+        updated_by = $2,
+        updated_at = $3
+    where collection = $4 and id = $5
+    returning data, created_by, updated_by, created_at, updated_at
+  `, [JSON.stringify(record), actorId, updatedAt, collection, record.id]);
+  if (!result.rows[0]) throw httpError(404, "Không tìm thấy bản ghi.");
+  return {
+    ...result.rows[0],
+    creator_name: current.creator_name,
+    creator_email: current.creator_email,
+    creator_username: current.creator_username
+  };
+}
+
+async function getRecordForUpdate(client, collection, id) {
+  const result = await client.query(`
+    select records.data,
+           records.created_by,
+           records.updated_by,
+           records.created_at,
+           records.updated_at,
+           creator.name as creator_name,
+           creator.email as creator_email,
+           creator.username as creator_username
+    from uat_records records
+    left join app_users creator on creator.id = records.created_by
+    where records.collection = $1 and records.id = $2
+    for update of records
+  `, [collection, id]);
+  if (!result.rows[0]) throw httpError(404, "Không tìm thấy bản ghi.");
+  return result.rows[0];
+}
+
+function assertCanModifyRecord(user, record) {
+  if (user?.role === "admin" || (record.created_by && record.created_by === user?.id)) return;
+  throw httpError(403, "Bạn chỉ có thể sửa hoặc xóa bản ghi do chính mình tạo.");
+}
+
+function decorateRecord(row, viewer) {
+  const isOwner = Boolean(row.created_by && row.created_by === viewer?.id);
+  const canEdit = Boolean(viewer && (viewer.role === "admin" || isOwner));
+  return {
+    ...(row.data || {}),
+    _ownership: {
+      createdByName: row.creator_name || row.creator_username || "Không xác định",
+      createdByEmail: row.creator_email || "",
+      isOwner,
+      canEdit,
+      canDelete: canEdit
+    }
+  };
 }
 
 async function touchMeta(client) {
@@ -692,13 +787,14 @@ function normalizeRecord(input, forcedId) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw httpError(400, "Record không hợp lệ.");
   }
+  const { _ownership, ...recordData } = input;
   const now = new Date().toISOString();
-  const id = forcedId || input.id || crypto.randomUUID();
+  const id = forcedId || recordData.id || crypto.randomUUID();
   return {
-    ...input,
+    ...recordData,
     id: String(id),
-    createdAt: isValidDateString(input.createdAt) ? input.createdAt : now,
-    updatedAt: isValidDateString(input.updatedAt) ? input.updatedAt : now
+    createdAt: isValidDateString(recordData.createdAt) ? recordData.createdAt : now,
+    updatedAt: isValidDateString(recordData.updatedAt) ? recordData.updatedAt : now
   };
 }
 
@@ -765,18 +861,17 @@ async function ensureSeedAdmin() {
   if (!username) return;
   const email = username.includes("@") ? username : null;
   const name = process.env.APP_ADMIN_NAME || "Squad 2 Administrator";
+  const role = roleForIdentity(username, email);
   const passwordHash = await hashPassword(String(authPassword));
   await getPool().query(`
     insert into app_users (id, username, email, name, role, password_hash, active)
-    values ($1, $2, $3, $4, 'admin', $5, true)
+    values ($1, $2, $3, $4, $5, $6, true)
     on conflict (username) do update
       set email = coalesce(app_users.email, excluded.email),
-          name = excluded.name,
-          role = 'admin',
-          password_hash = excluded.password_hash,
+          role = excluded.role,
           active = true,
           updated_at = now()
-  `, [crypto.randomUUID(), username, email, name, passwordHash]);
+  `, [crypto.randomUUID(), username, email, name, role, passwordHash]);
 }
 
 async function ensureDefaultUsers() {
@@ -784,13 +879,31 @@ async function ensureDefaultUsers() {
     const username = String(user.username).trim().toLowerCase();
     const email = String(user.email || username).trim().toLowerCase();
     const name = String(user.name || username.split("@")[0]).trim();
+    const role = roleForIdentity(username, email);
     const passwordHash = await hashPassword(String(user.password));
     await getPool().query(`
       insert into app_users (id, username, email, name, role, password_hash, active)
-      values ($1, $2, $3, $4, 'user', $5, true)
-      on conflict (username) do nothing
-    `, [crypto.randomUUID(), username, email, name, passwordHash]);
+      values ($1, $2, $3, $4, $5, $6, true)
+      on conflict (username) do update
+        set email = excluded.email,
+            role = excluded.role,
+            active = true,
+            updated_at = now()
+    `, [crypto.randomUUID(), username, email, name, role, passwordHash]);
   }
+}
+
+async function ensureExclusiveAdminRoles() {
+  await getPool().query(`
+    update app_users
+    set role = case
+          when lower(username) = any($1::text[])
+            or lower(coalesce(email, '')) = any($1::text[])
+          then 'admin'
+          else 'user'
+        end,
+        updated_at = now()
+  `, [adminIdentities]);
 }
 
 async function requireApiAuth(req, res, next) {
@@ -877,6 +990,11 @@ function normalizeAvatarData(value) {
 function normalizeRole(role) {
   const value = String(role || "user").toLowerCase();
   return ["admin", "manager", "user", "viewer"].includes(value) ? value : "user";
+}
+
+function roleForIdentity(username, email) {
+  const identities = [username, email].map((value) => String(value || "").trim().toLowerCase());
+  return identities.some((identity) => adminIdentities.includes(identity)) ? "admin" : "user";
 }
 
 function signSession(user) {

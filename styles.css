@@ -1141,6 +1141,17 @@ button {
     border-radius: 7px;
 }
 
+.permission-lock {
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+    display: grid;
+    place-items: center;
+    background: #f1f5f9;
+    color: #94a3b8;
+    font-size: 12px;
+}
+
 .tag {
     display: inline-flex;
     align-items: center;

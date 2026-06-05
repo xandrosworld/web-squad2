@@ -340,7 +340,7 @@ async function hydrateState(showNotice = false) {
         const data = await requestJson("/state");
         const remoteState = normalizeState(data.state || data);
         const cachedState = loadCachedState();
-        if (stateRecordCount(remoteState) === 0 && stateRecordCount(cachedState) > 0 && !localStorage.getItem(MIGRATION_FLAG_KEY)) {
+        if (authState.user?.role === "admin" && stateRecordCount(remoteState) === 0 && stateRecordCount(cachedState) > 0 && !localStorage.getItem(MIGRATION_FLAG_KEY)) {
             localStorage.setItem(LEGACY_BACKUP_KEY, JSON.stringify(cachedState));
             const shouldMigrate = confirm("Phát hiện dữ liệu cũ đang lưu trên trình duyệt. Đưa dữ liệu này lên Railway DB ngay bây giờ?");
             localStorage.setItem(MIGRATION_FLAG_KEY, shouldMigrate ? "uploaded" : "skipped");
@@ -631,9 +631,11 @@ function renderTopbar() {
                 <button class="text-btn" data-action="export-excel" title="Xuất Excel gồm toàn bộ 6 sheet dữ liệu">
                     <i class="fa-solid fa-file-excel"></i><span>Xuất Excel</span>
                 </button>
-                <button class="text-btn" data-action="import-json" title="Nhập JSON">
-                    <i class="fa-solid fa-upload"></i><span>Nhập</span>
-                </button>
+                ${authState.user?.role === "admin" ? `
+                    <button class="text-btn" data-action="import-json" title="Nhập JSON">
+                        <i class="fa-solid fa-upload"></i><span>Nhập</span>
+                    </button>
+                ` : ""}
             </div>
         </header>
     `;
@@ -866,21 +868,31 @@ function renderTable(mod, rows) {
                     </tr>
                 </thead>
                 <tbody>
-                    ${rows.length ? rows.map((row) => `
-                        <tr>
-                            ${mod.columns.map((col) => `<td>${renderCell(row, col)}</td>`).join("")}
-                            <td>
-                                <div class="row-actions">
-                                    <button class="icon-btn" data-action="open-edit" data-id="${e(row.id)}" title="Sửa" aria-label="Sửa">
-                                        <i class="fa-solid fa-pen"></i>
-                                    </button>
-                                    <button class="icon-btn" data-action="delete-row" data-id="${e(row.id)}" title="Xóa" aria-label="Xóa">
-                                        <i class="fa-solid fa-trash"></i>
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    `).join("") : `
+                    ${rows.length ? rows.map((row) => {
+                        const canEdit = canModifyRecord(row);
+                        const owner = recordOwnerLabel(row);
+                        return `
+                            <tr>
+                                ${mod.columns.map((col) => `<td>${renderCell(row, col)}</td>`).join("")}
+                                <td>
+                                    <div class="row-actions">
+                                        ${canEdit ? `
+                                            <button class="icon-btn" data-action="open-edit" data-id="${e(row.id)}" title="Sửa" aria-label="Sửa">
+                                                <i class="fa-solid fa-pen"></i>
+                                            </button>
+                                            <button class="icon-btn" data-action="delete-row" data-id="${e(row.id)}" title="Xóa" aria-label="Xóa">
+                                                <i class="fa-solid fa-trash"></i>
+                                            </button>
+                                        ` : `
+                                            <span class="permission-lock" title="Bản ghi do ${e(owner)} tạo. Chỉ người tạo hoặc admin được sửa.">
+                                                <i class="fa-solid fa-lock"></i>
+                                            </span>
+                                        `}
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                    }).join("") : `
                         <tr>
                             <td colspan="${mod.columns.length + 1}">
                                 ${renderEmpty(mod.emptyIcon, mod.emptyTitle, mod.emptyText, true, mod)}
@@ -1413,7 +1425,10 @@ function handleAction(event) {
     if (action === "close-modal") return closeModal();
     if (action === "reset-filters") return resetFilters();
     if (action === "export-excel") return exportExcel();
-    if (action === "import-json") return document.getElementById("importDataInput")?.click();
+    if (action === "import-json") {
+        if (authState.user?.role !== "admin") return showToast("Chỉ admin được nhập dữ liệu.");
+        return document.getElementById("importDataInput")?.click();
+    }
 }
 
 function openCreate() {
@@ -1424,6 +1439,12 @@ function openCreate() {
 
 function openEdit(id) {
     if (!id) return;
+    const mod = modules[ui.activeTab];
+    const row = mod ? appState[mod.collection].find((item) => item.id === id) : null;
+    if (!row || !canModifyRecord(row)) {
+        showToast("Bạn chỉ có thể sửa bản ghi do chính mình tạo.");
+        return;
+    }
     ui.modal = { tab: ui.activeTab, id };
     render();
 }
@@ -1461,6 +1482,10 @@ async function handleSubmit(event) {
     try {
         if (ui.modal.id) {
             const current = appState[mod.collection].find((row) => row.id === ui.modal.id);
+            if (!current || !canModifyRecord(current)) {
+                showToast("Bạn chỉ có thể sửa bản ghi do chính mình tạo.");
+                return;
+            }
             const record = {
                 ...(current || {}),
                 ...payload,
@@ -1502,6 +1527,10 @@ async function deleteRow(id) {
     if (!mod || !id || !ensureDbReady() || ui.saving) return;
     const row = appState[mod.collection].find((item) => item.id === id);
     if (!row) return;
+    if (!canModifyRecord(row)) {
+        showToast("Bạn chỉ có thể xóa bản ghi do chính mình tạo.");
+        return;
+    }
     if (!confirm(`Xóa "${recordTitle(row, mod)}"?`)) return;
     ui.saving = true;
     try {
@@ -1565,6 +1594,11 @@ async function exportExcel() {
 }
 
 function handleImport(event) {
+    if (authState.user?.role !== "admin") {
+        showToast("Chỉ admin được nhập và thay thế toàn bộ dữ liệu.");
+        event.target.value = "";
+        return;
+    }
     if (!ensureDbReady() || ui.saving) {
         event.target.value = "";
         return;
@@ -1779,6 +1813,15 @@ function renderDbStatusPill() {
 function renderDataHealthPill(totalRecords) {
     if (totalRecords === 0) return `<span class="pill warn"><i class="fa-solid fa-database"></i>0 bản ghi</span>`;
     return `<span class="pill good"><i class="fa-solid fa-database"></i>${e(totalRecords)} bản ghi</span>`;
+}
+
+function canModifyRecord(row) {
+    if (authState.user?.role === "admin") return true;
+    return row?._ownership?.canEdit === true;
+}
+
+function recordOwnerLabel(row) {
+    return row?._ownership?.createdByName || row?._ownership?.createdByEmail || "admin";
 }
 
 function recordTitle(row, mod) {
