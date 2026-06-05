@@ -258,6 +258,11 @@ const tabs = [
     { id: "readiness", label: "Readiness", icon: modules.readiness.icon }
 ];
 
+function getInitialTab() {
+    const id = (window.location.hash || "").replace("#", "");
+    return tabs.some((tab) => tab.id === id) ? id : "dashboard";
+}
+
 const emptyState = () => ({
     features: [],
     plans: [],
@@ -270,9 +275,10 @@ const emptyState = () => ({
 
 let appState = loadState();
 let ui = {
-    activeTab: "dashboard",
+    activeTab: getInitialTab(),
     query: "",
     filters: {},
+    columnFilters: {},
     modal: null,
     toast: null
 };
@@ -456,14 +462,40 @@ function renderDashboard() {
                         <i class="fa-solid fa-chart-pie"></i>
                         <div>
                             <h2>Tiến độ UAT toàn Squad</h2>
-                            <span>Dashboard tự cập nhật theo dữ liệu đã nhập</span>
+                            <span>Tiến độ, chất lượng kiểm thử và readiness tổng hợp</span>
                         </div>
                     </div>
                 </div>
                 <div class="panel-body">
-                    ${hasAnyData ? renderMainDashboard(metrics) : renderEmpty("fa-chart-pie", "Chưa có dữ liệu điều hành", "Các chỉ số sẽ tự động cập nhật sau khi có bản ghi.")}
+                    ${hasAnyData ? renderMainDashboard(metrics) : renderKickoffPanel()}
                 </div>
             </section>
+        </div>
+    `;
+}
+
+function renderKickoffPanel() {
+    return `
+        <div class="kickoff">
+            <div class="kickoff-hero">
+                <div class="kickoff-icon"><i class="fa-solid fa-rocket"></i></div>
+                <div>
+                    <h3>Workspace UAT đã sẵn sàng</h3>
+                    <p>Khởi tạo dữ liệu UAT theo 6 phân hệ vận hành của Squad 2.</p>
+                </div>
+            </div>
+            <div class="module-launch-grid">
+                ${Object.keys(modules).map((id) => {
+                    const mod = modules[id];
+                    return `
+                        <button class="module-launch-card" data-tab="${id}">
+                            <span><i class="fa-solid ${mod.icon}"></i></span>
+                            <strong>${e(mod.label)}</strong>
+                            <small>${e(mod.description)}</small>
+                        </button>
+                    `;
+                }).join("")}
+            </div>
         </div>
     `;
 }
@@ -524,6 +556,7 @@ function renderGroupDistribution() {
 
 function renderModule(mod) {
     const rows = getFilteredRows(mod);
+    const total = appState[mod.collection].length;
     return `
         <div class="content-grid content-grid-single">
             <section class="panel">
@@ -532,7 +565,7 @@ function renderModule(mod) {
                         <i class="fa-solid ${mod.icon}"></i>
                         <div>
                             <h2>${e(mod.label)}</h2>
-                            <span>${e(appState[mod.collection].length)} bản ghi · ${e(rows.length)} đang hiển thị</span>
+                            <span>${e(total)} bản ghi · ${e(rows.length)} đang hiển thị</span>
                         </div>
                     </div>
                     <button class="primary-btn" data-action="open-create">
@@ -540,38 +573,30 @@ function renderModule(mod) {
                     </button>
                 </div>
                 <div class="panel-body">
-                    ${renderToolbar(mod)}
-                    ${rows.length ? renderTable(mod, rows) : renderEmpty(mod.emptyIcon, mod.emptyTitle, mod.emptyText)}
+                    ${renderToolbar(mod, rows.length, total)}
+                    ${renderTable(mod, rows)}
                 </div>
             </section>
         </div>
     `;
 }
 
-function renderToolbar(mod) {
+function renderToolbar(mod, visibleCount, totalCount) {
+    const activeFilters = countActiveFilters(mod);
     return `
         <div class="toolbar">
             <div class="input-wrap">
                 <i class="fa-solid fa-magnifying-glass"></i>
                 <input id="searchInput" class="search-input" value="${e(ui.query)}" placeholder="Tìm kiếm" autocomplete="off">
             </div>
-            ${(mod.filters || []).map((filter, index) => renderFilterSelect(mod, filter, index)).join("")}
+            <div class="toolbar-status">
+                <span class="pill"><i class="fa-solid fa-table-list"></i>${e(visibleCount)}/${e(totalCount)} bản ghi</span>
+                ${activeFilters ? `<span class="pill warn"><i class="fa-solid fa-filter"></i>${e(activeFilters)} lọc</span>` : ""}
+            </div>
             <button class="ghost-btn" data-action="reset-filters" title="Xóa lọc">
-                <i class="fa-solid fa-rotate-left"></i><span>Làm mới</span>
+                <i class="fa-solid fa-rotate-left"></i><span>Xóa lọc</span>
             </button>
         </div>
-    `;
-}
-
-function renderFilterSelect(mod, filter, index) {
-    const key = `${mod.collection}:${filter.key}`;
-    const value = ui.filters[key] || "";
-    const options = uniqueValues(appState[mod.collection], filter.key);
-    return `
-        <select id="filter_${index}" class="field-select" data-filter-key="${e(filter.key)}">
-            <option value="">${e(filter.label)}</option>
-            ${options.map((option) => `<option value="${e(option)}" ${option === value ? "selected" : ""}>${e(option)}</option>`).join("")}
-        </select>
     `;
 }
 
@@ -583,12 +608,16 @@ function renderTable(mod, rows) {
                 <colgroup>${colgroup}</colgroup>
                 <thead>
                     <tr>
-                        ${mod.columns.map((col) => `<th>${e(col.label)}</th>`).join("")}
+                        ${mod.columns.map((col) => `<th><span class="th-label">${e(col.label)}</span></th>`).join("")}
                         <th class="col-actions">Thao tác</th>
+                    </tr>
+                    <tr class="filter-row">
+                        ${mod.columns.map((col) => `<th>${renderColumnFilter(mod, col)}</th>`).join("")}
+                        <th class="col-actions"></th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${rows.map((row) => `
+                    ${rows.length ? rows.map((row) => `
                         <tr>
                             ${mod.columns.map((col) => `<td>${renderCell(row, col)}</td>`).join("")}
                             <td>
@@ -602,10 +631,35 @@ function renderTable(mod, rows) {
                                 </div>
                             </td>
                         </tr>
-                    `).join("")}
+                    `).join("") : `
+                        <tr>
+                            <td colspan="${mod.columns.length + 1}">
+                                ${renderEmpty(mod.emptyIcon, mod.emptyTitle, mod.emptyText, true, mod)}
+                            </td>
+                        </tr>
+                    `}
                 </tbody>
             </table>
         </div>
+    `;
+}
+
+function renderColumnFilter(mod, col) {
+    const key = columnFilterKey(mod, col);
+    const inputId = `colFilter_${mod.collection}_${col.key}`;
+    const value = ui.columnFilters[key] || "";
+    const field = getFieldForColumn(mod, col);
+    const options = getColumnFilterOptions(mod, col, field);
+    if (options.length) {
+        return `
+            <select id="${e(inputId)}" class="column-filter" data-column-filter="${e(col.key)}" aria-label="Lọc ${e(col.label)}">
+                <option value="">Tất cả</option>
+                ${options.map((option) => `<option value="${e(option)}" ${String(option) === String(value) ? "selected" : ""}>${e(option)}</option>`).join("")}
+            </select>
+        `;
+    }
+    return `
+        <input id="${e(inputId)}" class="column-filter" data-column-filter="${e(col.key)}" value="${e(value)}" placeholder="Lọc" aria-label="Lọc ${e(col.label)}">
     `;
 }
 
@@ -616,23 +670,57 @@ function renderModal() {
         ? appState[mod.collection].find((item) => item.id === ui.modal.id)
         : null;
     const title = row ? `Sửa ${mod.shortLabel}` : `Thêm ${mod.shortLabel}`;
+    const requiredFields = mod.fields.filter((field) => field.required);
     return `
         <div class="modal-backdrop open" id="recordModal" role="dialog" aria-modal="true">
             <form class="modal" id="recordForm">
                 <div class="modal-head">
-                    <h2>${e(title)}</h2>
+                    <div class="modal-title">
+                        <span><i class="fa-solid ${mod.icon}"></i></span>
+                        <div>
+                            <h2>${e(title)}</h2>
+                            <p>${e(mod.description)}</p>
+                        </div>
+                    </div>
                     <button class="icon-btn" type="button" data-action="close-modal" title="Đóng" aria-label="Đóng">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
                 <div class="modal-body">
-                    <div class="form-grid">
-                        ${mod.fields.map((field) => renderField(field, row)).join("")}
+                    <div class="record-form-layout">
+                        <div class="form-grid">
+                            ${mod.fields.map((field) => renderField(field, row)).join("")}
+                        </div>
+                        <aside class="record-rail">
+                            <div class="rail-card">
+                                <span>Phân hệ</span>
+                                <strong>${e(mod.label)}</strong>
+                            </div>
+                            <div class="rail-card">
+                                <span>Trường bắt buộc</span>
+                                <strong>${e(requiredFields.length)}</strong>
+                                <small>${requiredFields.map((field) => e(field.label)).join(", ") || "Không có"}</small>
+                            </div>
+                            ${row ? `
+                                <div class="rail-card">
+                                    <span>Cập nhật</span>
+                                    <strong>${e(formatShortDateTime(row.updatedAt || row.createdAt))}</strong>
+                                    <small>${e(recordTitle(row, mod))}</small>
+                                </div>
+                            ` : `
+                                <div class="rail-card is-new">
+                                    <span>Trạng thái</span>
+                                    <strong>Bản ghi mới</strong>
+                                    <small>Sẽ lưu vào trình duyệt sau khi xác nhận.</small>
+                                </div>
+                            `}
+                        </aside>
                     </div>
                 </div>
                 <div class="modal-foot">
                     <button class="ghost-btn" type="button" data-action="close-modal">Hủy</button>
-                    <button class="primary-btn" type="submit"><i class="fa-solid fa-floppy-disk"></i><span>Lưu</span></button>
+                    ${!row ? `<button class="text-btn" type="submit" data-save-mode="add-more"><i class="fa-solid fa-plus"></i><span>Lưu & thêm tiếp</span></button>` : ""}
+                    <button class="primary-btn" type="submit" data-save-mode="close"><i class="fa-solid fa-floppy-disk"></i><span>Lưu</span></button>
                 </div>
             </form>
         </div>
@@ -642,7 +730,7 @@ function renderModal() {
 function renderField(field, row) {
     const value = row?.[field.key] ?? "";
     const required = field.required ? "required" : "";
-    const label = `${e(field.label)}${field.required ? " *" : ""}`;
+    const label = e(field.label);
     const wrapper = `field ${field.full ? "full" : ""}`;
     let control = "";
     if (field.type === "select") {
@@ -663,19 +751,24 @@ function renderField(field, row) {
     }
     return `
         <div class="${wrapper}">
-            <label>${label}</label>
+            <label>${label}${field.required ? `<span class="required-chip">Bắt buộc</span>` : ""}</label>
             ${control}
         </div>
     `;
 }
 
-function renderEmpty(icon, title, text, compact = false) {
+function renderEmpty(icon, title, text, compact = false, mod = null) {
     return `
         <div class="empty-state ${compact ? "compact" : ""}">
             <div>
-                <i class="fa-solid ${icon}"></i>
+                <i class="empty-icon fa-solid ${icon}"></i>
                 <h3>${e(title)}</h3>
                 <p>${e(text)}</p>
+                ${mod ? `
+                    <button class="primary-btn empty-action" data-action="open-create">
+                        <i class="fa-solid fa-plus"></i><span>Thêm bản ghi</span>
+                    </button>
+                ` : ""}
             </div>
         </div>
     `;
@@ -686,6 +779,7 @@ function bindEvents() {
         button.addEventListener("click", () => {
             ui.activeTab = button.dataset.tab;
             ui.query = "";
+            history.replaceState(null, "", `#${ui.activeTab}`);
             render();
         });
     });
@@ -709,6 +803,16 @@ function bindEvents() {
             ui.filters[key] = event.target.value;
             render();
         });
+    });
+
+    document.querySelectorAll("[data-column-filter]").forEach((input) => {
+        const updateColumnFilter = (event) => {
+            const mod = modules[ui.activeTab];
+            if (!mod) return;
+            ui.columnFilters[columnFilterKey(mod, { key: event.target.dataset.columnFilter })] = event.target.value;
+            render();
+        };
+        input.addEventListener(input.tagName === "SELECT" ? "change" : "input", updateColumnFilter);
     });
 
     const form = document.getElementById("recordForm");
@@ -760,6 +864,7 @@ function handleSubmit(event) {
     event.preventDefault();
     const mod = modules[ui.modal.tab];
     const form = event.currentTarget;
+    const saveMode = event.submitter?.dataset.saveMode || "close";
     const payload = {};
     for (const field of mod.fields) {
         const input = form.elements[field.key];
@@ -769,6 +874,12 @@ function handleSubmit(event) {
             value = Number(value);
         }
         payload[field.key] = value;
+    }
+
+    const validationErrors = validateRecord(mod, payload);
+    if (validationErrors.length) {
+        showToast(validationErrors[0]);
+        return;
     }
 
     const now = new Date().toISOString();
@@ -788,8 +899,8 @@ function handleSubmit(event) {
         showToast("Đã thêm bản ghi.");
     }
 
-    ui.modal = null;
     saveState();
+    ui.modal = saveMode === "add-more" ? { tab: mod.collection, id: null } : null;
     render();
 }
 
@@ -812,6 +923,9 @@ function resetFilters() {
         Object.keys(ui.filters)
             .filter((key) => key.startsWith(`${mod.collection}:`))
             .forEach((key) => delete ui.filters[key]);
+        Object.keys(ui.columnFilters)
+            .filter((key) => key.startsWith(`${mod.collection}:`))
+            .forEach((key) => delete ui.columnFilters[key]);
     }
     render();
 }
@@ -876,6 +990,7 @@ function clearData() {
     localStorage.removeItem(STORAGE_KEY);
     ui.query = "";
     ui.filters = {};
+    ui.columnFilters = {};
     showToast("Đã xóa dữ liệu local.");
     render();
 }
@@ -886,11 +1001,62 @@ function getFilteredRows(mod) {
     return rows.filter((row) => {
         const matchQuery = !query || Object.values(row).some((value) => String(value ?? "").toLowerCase().includes(query));
         if (!matchQuery) return false;
-        return (mod.filters || []).every((filter) => {
+        const matchLegacyFilters = (mod.filters || []).every((filter) => {
             const selected = ui.filters[`${mod.collection}:${filter.key}`];
             return !selected || row[filter.key] === selected;
         });
+        if (!matchLegacyFilters) return false;
+        return mod.columns.every((col) => {
+            const selected = ui.columnFilters[columnFilterKey(mod, col)];
+            if (!selected) return true;
+            return String(getColumnRawValue(row, col) ?? "").toLowerCase().includes(String(selected).toLowerCase());
+        });
     });
+}
+
+function countActiveFilters(mod) {
+    const legacyCount = Object.keys(ui.filters)
+        .filter((key) => key.startsWith(`${mod.collection}:`) && ui.filters[key])
+        .length;
+    const columnCount = Object.keys(ui.columnFilters)
+        .filter((key) => key.startsWith(`${mod.collection}:`) && ui.columnFilters[key])
+        .length;
+    return legacyCount + columnCount + (ui.query.trim() ? 1 : 0);
+}
+
+function columnFilterKey(mod, col) {
+    return `${mod.collection}:${col.key}`;
+}
+
+function getFieldForColumn(mod, col) {
+    return mod.fields.find((field) => field.key === col.key);
+}
+
+function getColumnFilterOptions(mod, col, field) {
+    if (field?.type === "select" && field.options?.length) return field.options;
+    const values = uniqueValues(appState[mod.collection], col.key);
+    if (values.length > 0 && values.length <= 8) return values;
+    return [];
+}
+
+function getColumnRawValue(row, col) {
+    if (col.key === "progress") return percent(row.executedCases, row.totalCases);
+    return row[col.key];
+}
+
+function validateRecord(mod, payload) {
+    const errors = [];
+    const percentFields = mod.fields.filter((field) => field.type === "percent");
+    percentFields.forEach((field) => {
+        const value = payload[field.key];
+        if (value !== "" && (Number(value) < 0 || Number(value) > 100)) {
+            errors.push(`${field.label} phải nằm trong khoảng 0-100%.`);
+        }
+    });
+    if (payload.totalCases !== "" && payload.executedCases !== "" && Number(payload.executedCases) > Number(payload.totalCases)) {
+        errors.push("Số testcase đã thực hiện không được lớn hơn tổng testcase.");
+    }
+    return errors;
 }
 
 function calculateMetrics() {
@@ -1119,6 +1285,19 @@ function formatUpdatedAt() {
 
 document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && ui.modal) closeModal();
+});
+
+window.addEventListener("storage", (event) => {
+    if (event.key !== STORAGE_KEY) return;
+    appState = loadState();
+    ui.modal = null;
+    render();
+});
+
+window.addEventListener("hashchange", () => {
+    ui.activeTab = getInitialTab();
+    ui.query = "";
+    render();
 });
 
 render();
