@@ -94,7 +94,7 @@ const collectionRules = {
 const excelSheets = [
   {
     collection: "features",
-    name: "Chức năng",
+    name: "01_DanhMuc_UAT",
     columns: [
       ["code", "Mã chức năng", 18],
       ["sprint", "Sprint", 14],
@@ -110,7 +110,7 @@ const excelSheets = [
   },
   {
     collection: "plans",
-    name: "Sprint Plan",
+    name: "02_PhanCong_Sprint",
     columns: [
       ["sprint", "Sprint", 14],
       ["feature", "Chức năng", 34],
@@ -126,7 +126,7 @@ const excelSheets = [
   },
   {
     collection: "matrix",
-    name: "Ma trận",
+    name: "03_MaTran_NangLuc",
     columns: [
       ["group", "Nhóm chức năng", 28],
       ["t1", "T1", 20],
@@ -139,7 +139,7 @@ const excelSheets = [
   },
   {
     collection: "daily",
-    name: "Daily UAT",
+    name: "04_DieuHanh_HangNgay",
     columns: [
       ["date", "Ngày", 14, "date"],
       ["feature", "Chức năng", 34],
@@ -147,6 +147,7 @@ const excelSheets = [
       ["tester", "Tester", 20],
       ["totalCases", "Tổng testcase", 16, "number"],
       ["executedCases", "Đã thực hiện", 16, "number"],
+      ["progress", "% hoàn thành", 16, "number"],
       ["criticalBugs", "Lỗi nghiêm trọng", 18, "number"],
       ["highBugs", "Lỗi mức cao", 16, "number"],
       ["blocker", "Vướng mắc", 36]
@@ -154,33 +155,29 @@ const excelSheets = [
   },
   {
     collection: "weekly",
-    name: "Weekly",
+    name: "05_ChatLuong_Tuan",
     columns: [
       ["week", "Tuần", 14],
       ["group", "Nhóm chức năng", 28],
       ["totalCases", "Tổng testcase", 16, "number"],
       ["executedCases", "Đã thực hiện", 16, "number"],
-      ["coverageRate", "Tỷ lệ bao phủ (%)", 18, "number"],
-      ["successRate", "Tỷ lệ thành công (%)", 20, "number"],
+      ["coverageRate", "Tỷ lệ bao phủ", 18, "number"],
+      ["successRate", "Tỷ lệ thành công", 20, "number"],
       ["criticalBugs", "Lỗi nghiêm trọng", 18, "number"],
       ["reopenedBugs", "Lỗi mở lại", 16, "number"],
-      ["assessment", "Đánh giá", 18],
-      ["note", "Ghi chú", 36]
+      ["assessment", "Đánh giá", 18]
     ]
   },
   {
     collection: "readiness",
-    name: "Readiness",
+    name: "06_KetThuc_Sprint",
     columns: [
       ["sprint", "Sprint", 14],
-      ["coverageRate", "Tỷ lệ bao phủ (%)", 18, "number"],
-      ["successRate", "Tỷ lệ thành công (%)", 20, "number"],
+      ["coverageRate", "Tỷ lệ bao phủ", 18, "number"],
+      ["successRate", "Tỷ lệ thành công", 20, "number"],
       ["openCriticalBugs", "Lỗi nghiêm trọng tồn đọng", 24, "number"],
-      ["readinessLevel", "Mức độ sẵn sàng (%)", 22, "number"],
-      ["trainingReadiness", "Sẵn sàng đào tạo (%)", 22, "number"],
-      ["pilotReadiness", "Sẵn sàng Pilot/Go-live (%)", 26, "number"],
-      ["decision", "Quyết định", 20],
-      ["note", "Ghi chú", 36]
+      ["readinessLevel", "Mức độ sẵn sàng", 22, "number"],
+      ["decision", "Quyết định", 20]
     ]
   }
 ];
@@ -533,7 +530,7 @@ app.use((error, req, res, next) => {
 });
 
 const server = app.listen(port, "0.0.0.0", () => {
-  console.log(`Squad2 UAT Command Center listening on port ${port}`);
+  console.log(`Squad2 UAT Workbook listening on port ${port}`);
   if (!databaseUrl) {
     console.warn("DATABASE_URL is not configured. API writes will fail until it is set.");
   }
@@ -637,7 +634,7 @@ function ensureSchema() {
 
 function buildExcelWorkbook(state) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Squad 2 UAT Command Center";
+  workbook.creator = "Squad 2 UAT Workbook";
   workbook.created = new Date();
   workbook.modified = new Date();
 
@@ -663,7 +660,7 @@ function buildExcelWorkbook(state) {
     for (const record of state[sheetConfig.collection] || []) {
       const rowData = {};
       for (const [key, , , type] of sheetConfig.columns) {
-        rowData[key] = excelCellValue(record[key], type);
+        rowData[key] = excelCellValue(excelRecordValue(record, key), type);
       }
       const row = worksheet.addRow(rowData);
       row.alignment = { vertical: "top", wrapText: true };
@@ -682,7 +679,61 @@ function buildExcelWorkbook(state) {
       }
     });
   }
+  addDashboardWorksheet(workbook, state);
   return workbook;
+}
+
+function addDashboardWorksheet(workbook, state) {
+  const worksheet = workbook.addWorksheet("07_Dashboard");
+  const metrics = calculateWorkbookMetrics(state);
+  const rows = [
+    ["Tiến độ UAT toàn Squad", `${metrics.squadProgress}%`, "Sheet 01_DanhMuc_UAT"],
+    ["Tỷ lệ bao phủ kiểm thử", `${metrics.coverage}%`, "Sheet 04-06"],
+    ["Tỷ lệ thành công", `${metrics.successRate}%`, "Sheet 05-06"],
+    ["Lỗi nghiêm trọng tồn đọng", metrics.criticalBugs, "Sheet 04-06"],
+    ["Mức độ sẵn sàng đào tạo", `${metrics.trainingReadiness}%`, "Sheet 06_KetThuc_Sprint"],
+    ["Mức độ sẵn sàng Pilot/Go-live", `${metrics.pilotReadiness}%`, "Sheet 06_KetThuc_Sprint"]
+  ];
+
+  worksheet.columns = [
+    { key: "metric", width: 34 },
+    { key: "value", width: 18 },
+    { key: "source", width: 28 }
+  ];
+  worksheet.mergeCells("A1:C1");
+  worksheet.getCell("A1").value = "BẢNG ĐIỀU HÀNH TỔNG HỢP SQUAD 2";
+  worksheet.getCell("A1").font = { bold: true, size: 14, color: { argb: "FF111827" } };
+  worksheet.getCell("A1").alignment = { vertical: "middle" };
+  worksheet.getRow(1).height = 26;
+
+  worksheet.getRow(2).values = ["Chỉ số", "Giá trị", "Nguồn"];
+  worksheet.getRow(2).height = 22;
+  worksheet.getRow(2).eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF006B68" } };
+    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+  });
+
+  rows.forEach(([metric, value, source]) => {
+    const row = worksheet.addRow({ metric, value, source });
+    row.alignment = { vertical: "middle", wrapText: true };
+  });
+
+  worksheet.eachRow((row, rowNumber) => {
+    row.eachCell((cell) => {
+      cell.border = {
+        bottom: { style: "thin", color: { argb: "FFE5E7EB" } }
+      };
+      if (rowNumber > 2 && rowNumber % 2 === 0) {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F8F7" } };
+      }
+    });
+  });
+}
+
+function excelRecordValue(record, key) {
+  if (key === "progress") return percent(record.executedCases, record.totalCases);
+  return record[key];
 }
 
 function excelCellValue(value, type) {
@@ -696,6 +747,68 @@ function excelCellValue(value, type) {
     return Number.isNaN(date.getTime()) ? String(value) : date;
   }
   return String(value);
+}
+
+function calculateWorkbookMetrics(state) {
+  const features = Array.isArray(state.features) ? state.features : [];
+  const daily = Array.isArray(state.daily) ? state.daily : [];
+  const weekly = Array.isArray(state.weekly) ? state.weekly : [];
+  const readiness = Array.isArray(state.readiness) ? state.readiness : [];
+  const completedFeatures = features.filter((row) => row.status === "Hoàn thành").length;
+  const statusDrivenProgress = features.length ? percent(completedFeatures, features.length) : 0;
+  const dailyTotal = sumBy(daily, "totalCases");
+  const dailyDone = sumBy(daily, "executedCases");
+  const weeklyCoverage = average(weekly.map((row) => resolveRate(row.coverageRate, row.executedCases, row.totalCases)));
+  const readinessCoverage = average(readiness.map((row) => row.coverageRate));
+  const coverage = dailyTotal ? percent(dailyDone, dailyTotal) : round(weeklyCoverage || readinessCoverage || 0);
+  const successRate = round(average([
+    ...weekly.map((row) => row.successRate),
+    ...readiness.map((row) => row.successRate)
+  ]) || 0);
+  const latestReadiness = getLatestRecord(readiness);
+  const readinessCritical = sumBy(readiness, "openCriticalBugs");
+  const dailyCritical = sumBy(daily, "criticalBugs");
+  const readinessFallback = round(latestReadiness?.readinessLevel || average([coverage, successRate]));
+
+  return {
+    squadProgress: statusDrivenProgress || coverage,
+    coverage,
+    successRate,
+    criticalBugs: readinessCritical || dailyCritical,
+    trainingReadiness: round(latestReadiness?.trainingReadiness || readinessFallback || 0),
+    pilotReadiness: round(latestReadiness?.pilotReadiness || readinessFallback || 0)
+  };
+}
+
+function sumBy(rows, key) {
+  return rows.reduce((total, row) => total + Number(row?.[key] || 0), 0);
+}
+
+function average(values) {
+  const numeric = values.map(Number).filter((value) => Number.isFinite(value) && value > 0);
+  if (!numeric.length) return 0;
+  return numeric.reduce((total, value) => total + value, 0) / numeric.length;
+}
+
+function percent(done, total) {
+  const totalNumber = Number(total || 0);
+  if (!totalNumber) return 0;
+  return round((Number(done || 0) / totalNumber) * 100);
+}
+
+function resolveRate(value, done, total) {
+  if (value !== undefined && value !== null && value !== "") return Number(value) || 0;
+  return percent(done, total);
+}
+
+function round(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return 0;
+  return Math.round(number);
+}
+
+function getLatestRecord(rows) {
+  return [...rows].sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0))[0] || null;
 }
 
 async function readState(db, viewer = null) {

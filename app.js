@@ -41,14 +41,14 @@ const assessmentOptions = ["Tốt", "Cần theo dõi", "Rủi ro", "Blocker"];
 
 const modules = {
     features: {
-        label: "Danh mục chức năng",
-        shortLabel: "Chức năng",
+        label: "01_DanhMuc_UAT",
+        shortLabel: "01 Danh mục",
         icon: "fa-layer-group",
         collection: "features",
-        description: "Quản lý phạm vi UAT, chủ quản nghiệp vụ, ưu tiên và tester.",
+        description: "Sheet 01 quản lý mã chức năng, sprint, nhóm nghiệp vụ, chủ quản, tester và trạng thái UAT.",
         emptyIcon: "fa-list-check",
-        emptyTitle: "Chưa có chức năng UAT",
-        emptyText: "Danh mục sẽ hiển thị tại đây sau khi có bản ghi.",
+        emptyTitle: "Chưa có danh mục UAT",
+        emptyText: "Sheet 01 sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "code", label: "Mã chức năng", type: "text", required: true },
             { key: "sprint", label: "Sprint", type: "text" },
@@ -67,25 +67,27 @@ const modules = {
             { key: "status", label: "Trạng thái" }
         ],
         columns: [
-            { key: "code", label: "Mã", width: "110px", render: (row) => tag(row.code, "teal") },
-            { key: "name", label: "Tên chức năng", width: "240px", render: (row) => strongText(row.name, row.group) },
+            { key: "code", label: "Mã chức năng", width: "130px", render: (row) => tag(row.code, "teal") },
             { key: "sprint", label: "Sprint", width: "110px" },
+            { key: "name", label: "Tên chức năng", width: "240px", render: (row) => strongText(row.name) },
+            { key: "group", label: "Nhóm chức năng", width: "170px" },
             { key: "owner", label: "Chủ quản", width: "140px" },
             { key: "handoffDate", label: "Bàn giao", width: "120px", render: (row) => formatDate(row.handoffDate) },
             { key: "priority", label: "Ưu tiên", width: "110px", render: (row) => renderPriority(row.priority) },
             { key: "status", label: "Trạng thái", width: "140px", render: (row) => renderStatus(row.status) },
-            { key: "testerMain", label: "Tester", width: "130px" }
+            { key: "testerMain", label: "Tester chính", width: "130px" },
+            { key: "testerSupport", label: "Tester hỗ trợ", width: "140px" }
         ]
     },
     plans: {
-        label: "Kế hoạch Sprint",
-        shortLabel: "Sprint Plan",
+        label: "02_PhanCong_Sprint",
+        shortLabel: "02 Phân công",
         icon: "fa-calendar-days",
         collection: "plans",
-        description: "Lịch kiểm thử theo sprint, chức năng, chủ quản và mốc T1-T6.",
+        description: "Sheet 02 phân công chức năng theo sprint, chủ quản và các mốc T1-T6.",
         emptyIcon: "fa-calendar-plus",
-        emptyTitle: "Chưa có kế hoạch Sprint",
-        emptyText: "Kế hoạch sẽ hiển thị tại đây sau khi có bản ghi.",
+        emptyTitle: "Chưa có phân công Sprint",
+        emptyText: "Sheet 02 sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "sprint", label: "Sprint", type: "text", required: true },
             { key: "feature", label: "Chức năng", type: "text", required: true, full: true },
@@ -115,14 +117,14 @@ const modules = {
         ]
     },
     matrix: {
-        label: "Ma trận phân công",
-        shortLabel: "Ma trận",
+        label: "03_MaTran_NangLuc",
+        shortLabel: "03 Ma trận",
         icon: "fa-table-cells-large",
         collection: "matrix",
-        description: "Phân bổ nhóm chức năng theo các mốc T1-T6.",
+        description: "Sheet 03 theo dõi ma trận nhóm chức năng theo các mốc T1-T6.",
         emptyIcon: "fa-grip",
-        emptyTitle: "Chưa có ma trận phân công",
-        emptyText: "Ma trận sẽ hiển thị tại đây sau khi có bản ghi.",
+        emptyTitle: "Chưa có ma trận năng lực",
+        emptyText: "Sheet 03 sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "group", label: "Nhóm chức năng", type: "select", options: functionGroups, required: true },
             { key: "t1", label: "T1", type: "text" },
@@ -146,14 +148,14 @@ const modules = {
         ]
     },
     daily: {
-        label: "Theo dõi Daily UAT",
-        shortLabel: "Daily UAT",
+        label: "04_DieuHanh_HangNgay",
+        shortLabel: "04 Daily",
         icon: "fa-clipboard-check",
         collection: "daily",
-        description: "Ghi nhận testcase, tiến độ, lỗi nghiêm trọng và vướng mắc theo ngày.",
+        description: "Sheet 04 điều hành hằng ngày: testcase, tiến độ, lỗi nghiêm trọng, lỗi mức cao và vướng mắc.",
         emptyIcon: "fa-clipboard-list",
-        emptyTitle: "Chưa có nhật ký UAT",
-        emptyText: "Daily tracking sẽ hiển thị tại đây sau khi có bản ghi.",
+        emptyTitle: "Chưa có dữ liệu điều hành hằng ngày",
+        emptyText: "Sheet 04 sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "date", label: "Ngày", type: "date", required: true },
             { key: "feature", label: "Chức năng", type: "text", required: true, full: true },
@@ -171,36 +173,36 @@ const modules = {
         ],
         columns: [
             { key: "date", label: "Ngày", width: "118px", render: (row) => formatDate(row.date) },
-            { key: "feature", label: "Chức năng", width: "230px", render: (row) => strongText(row.feature, row.blocker) },
+            { key: "feature", label: "Chức năng", width: "230px", render: (row) => strongText(row.feature) },
             { key: "owner", label: "Chủ quản", width: "130px" },
             { key: "tester", label: "Tester", width: "120px" },
-            { key: "totalCases", label: "TC", width: "90px", render: (row) => numberText(row.totalCases) },
-            { key: "executedCases", label: "Done", width: "90px", render: (row) => numberText(row.executedCases) },
-            { key: "progress", label: "% HT", width: "150px", render: (row) => progressCell(percent(row.executedCases, row.totalCases)) },
-            { key: "criticalBugs", label: "Sev 1", width: "90px", render: (row) => bugTag(row.criticalBugs) },
-            { key: "highBugs", label: "High", width: "90px", render: (row) => bugTag(row.highBugs, "yellow") }
+            { key: "totalCases", label: "Tổng testcase", width: "130px", render: (row) => numberText(row.totalCases) },
+            { key: "executedCases", label: "Đã thực hiện", width: "120px", render: (row) => numberText(row.executedCases) },
+            { key: "progress", label: "% hoàn thành", width: "150px", render: (row) => progressCell(percent(row.executedCases, row.totalCases)) },
+            { key: "criticalBugs", label: "Lỗi nghiêm trọng", width: "140px", render: (row) => bugTag(row.criticalBugs) },
+            { key: "highBugs", label: "Lỗi mức cao", width: "120px", render: (row) => bugTag(row.highBugs, "yellow") },
+            { key: "blocker", label: "Vướng mắc", width: "220px" }
         ]
     },
     weekly: {
-        label: "Báo cáo tuần",
-        shortLabel: "Weekly",
+        label: "05_ChatLuong_Tuan",
+        shortLabel: "05 Tuần",
         icon: "fa-chart-line",
         collection: "weekly",
-        description: "Tổng hợp chất lượng kiểm thử theo tuần và nhóm chức năng.",
+        description: "Sheet 05 tổng hợp chất lượng kiểm thử theo tuần và nhóm chức năng.",
         emptyIcon: "fa-chart-column",
-        emptyTitle: "Chưa có báo cáo tuần",
-        emptyText: "Weekly report sẽ hiển thị tại đây sau khi có bản ghi.",
+        emptyTitle: "Chưa có dữ liệu chất lượng tuần",
+        emptyText: "Sheet 05 sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "week", label: "Tuần", type: "text", required: true },
             { key: "group", label: "Nhóm chức năng", type: "select", options: functionGroups, required: true },
             { key: "totalCases", label: "Tổng testcase", type: "number" },
             { key: "executedCases", label: "Đã thực hiện", type: "number" },
-            { key: "coverageRate", label: "Tỷ lệ bao phủ (%)", type: "percent" },
-            { key: "successRate", label: "Tỷ lệ thành công (%)", type: "percent" },
+            { key: "coverageRate", label: "Tỷ lệ bao phủ", type: "percent" },
+            { key: "successRate", label: "Tỷ lệ thành công", type: "percent" },
             { key: "criticalBugs", label: "Lỗi nghiêm trọng", type: "number" },
             { key: "reopenedBugs", label: "Lỗi mở lại", type: "number" },
-            { key: "assessment", label: "Đánh giá", type: "select", options: assessmentOptions },
-            { key: "note", label: "Ghi chú", type: "textarea", full: true }
+            { key: "assessment", label: "Đánh giá", type: "select", options: assessmentOptions }
         ],
         filters: [
             { key: "week", label: "Tuần" },
@@ -210,34 +212,31 @@ const modules = {
         columns: [
             { key: "week", label: "Tuần", width: "110px", render: (row) => tag(row.week, "teal") },
             { key: "group", label: "Nhóm chức năng", width: "190px" },
-            { key: "totalCases", label: "TC", width: "90px", render: (row) => numberText(row.totalCases) },
-            { key: "executedCases", label: "Done", width: "90px", render: (row) => numberText(row.executedCases) },
-            { key: "coverageRate", label: "Bao phủ", width: "150px", render: (row) => progressCell(resolveRate(row.coverageRate, row.executedCases, row.totalCases)) },
-            { key: "successRate", label: "Thành công", width: "150px", render: (row) => progressCell(row.successRate) },
-            { key: "criticalBugs", label: "Sev 1", width: "90px", render: (row) => bugTag(row.criticalBugs) },
-            { key: "reopenedBugs", label: "Reopen", width: "90px", render: (row) => bugTag(row.reopenedBugs, "blue") },
+            { key: "totalCases", label: "Tổng testcase", width: "130px", render: (row) => numberText(row.totalCases) },
+            { key: "executedCases", label: "Đã thực hiện", width: "120px", render: (row) => numberText(row.executedCases) },
+            { key: "coverageRate", label: "Tỷ lệ bao phủ", width: "150px", render: (row) => progressCell(resolveRate(row.coverageRate, row.executedCases, row.totalCases)) },
+            { key: "successRate", label: "Tỷ lệ thành công", width: "160px", render: (row) => progressCell(row.successRate) },
+            { key: "criticalBugs", label: "Lỗi nghiêm trọng", width: "140px", render: (row) => bugTag(row.criticalBugs) },
+            { key: "reopenedBugs", label: "Lỗi mở lại", width: "110px", render: (row) => bugTag(row.reopenedBugs, "blue") },
             { key: "assessment", label: "Đánh giá", width: "128px", render: (row) => renderAssessment(row.assessment) }
         ]
     },
     readiness: {
-        label: "Readiness Sprint",
-        shortLabel: "Readiness",
+        label: "06_KetThuc_Sprint",
+        shortLabel: "06 Kết thúc",
         icon: "fa-flag-checkered",
         collection: "readiness",
-        description: "Đánh giá mức độ sẵn sàng cho đào tạo, Pilot và Go-live.",
+        description: "Sheet 06 chốt sprint theo tỷ lệ bao phủ, tỷ lệ thành công, lỗi tồn đọng, mức độ sẵn sàng và quyết định.",
         emptyIcon: "fa-flag",
-        emptyTitle: "Chưa có đánh giá readiness",
-        emptyText: "Kết quả readiness sẽ hiển thị tại đây sau khi có bản ghi.",
+        emptyTitle: "Chưa có dữ liệu kết thúc Sprint",
+        emptyText: "Sheet 06 sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "sprint", label: "Sprint", type: "text", required: true },
-            { key: "coverageRate", label: "Tỷ lệ bao phủ (%)", type: "percent" },
-            { key: "successRate", label: "Tỷ lệ thành công (%)", type: "percent" },
+            { key: "coverageRate", label: "Tỷ lệ bao phủ", type: "percent" },
+            { key: "successRate", label: "Tỷ lệ thành công", type: "percent" },
             { key: "openCriticalBugs", label: "Lỗi nghiêm trọng tồn đọng", type: "number" },
-            { key: "readinessLevel", label: "Mức độ sẵn sàng (%)", type: "percent" },
-            { key: "trainingReadiness", label: "Sẵn sàng đào tạo (%)", type: "percent" },
-            { key: "pilotReadiness", label: "Sẵn sàng Pilot/Go-live (%)", type: "percent" },
-            { key: "decision", label: "Quyết định", type: "select", options: decisionOptions },
-            { key: "note", label: "Ghi chú", type: "textarea", full: true }
+            { key: "readinessLevel", label: "Mức độ sẵn sàng", type: "percent" },
+            { key: "decision", label: "Quyết định", type: "select", options: decisionOptions }
         ],
         filters: [
             { key: "sprint", label: "Sprint" },
@@ -245,25 +244,23 @@ const modules = {
         ],
         columns: [
             { key: "sprint", label: "Sprint", width: "110px", render: (row) => tag(row.sprint, "teal") },
-            { key: "coverageRate", label: "Bao phủ", width: "150px", render: (row) => progressCell(row.coverageRate) },
-            { key: "successRate", label: "Thành công", width: "150px", render: (row) => progressCell(row.successRate) },
-            { key: "openCriticalBugs", label: "Sev 1 tồn", width: "100px", render: (row) => bugTag(row.openCriticalBugs) },
-            { key: "readinessLevel", label: "Sẵn sàng", width: "150px", render: (row) => progressCell(row.readinessLevel) },
-            { key: "trainingReadiness", label: "Đào tạo", width: "150px", render: (row) => progressCell(row.trainingReadiness) },
-            { key: "pilotReadiness", label: "Pilot", width: "150px", render: (row) => progressCell(row.pilotReadiness) },
+            { key: "coverageRate", label: "Tỷ lệ bao phủ", width: "150px", render: (row) => progressCell(row.coverageRate) },
+            { key: "successRate", label: "Tỷ lệ thành công", width: "160px", render: (row) => progressCell(row.successRate) },
+            { key: "openCriticalBugs", label: "Lỗi nghiêm trọng tồn đọng", width: "190px", render: (row) => bugTag(row.openCriticalBugs) },
+            { key: "readinessLevel", label: "Mức độ sẵn sàng", width: "160px", render: (row) => progressCell(row.readinessLevel) },
             { key: "decision", label: "Quyết định", width: "140px", render: (row) => renderDecision(row.decision) }
         ]
     }
 };
 
 const tabs = [
-    { id: "dashboard", label: "Dashboard", icon: "fa-gauge-high" },
-    { id: "features", label: "Chức năng", icon: modules.features.icon },
-    { id: "plans", label: "Sprint Plan", icon: modules.plans.icon },
-    { id: "matrix", label: "Ma trận", icon: modules.matrix.icon },
-    { id: "daily", label: "Daily UAT", icon: modules.daily.icon },
-    { id: "weekly", label: "Weekly", icon: modules.weekly.icon },
-    { id: "readiness", label: "Readiness", icon: modules.readiness.icon }
+    { id: "features", label: "01 Danh mục", icon: modules.features.icon },
+    { id: "plans", label: "02 Phân công", icon: modules.plans.icon },
+    { id: "matrix", label: "03 Ma trận", icon: modules.matrix.icon },
+    { id: "daily", label: "04 Daily", icon: modules.daily.icon },
+    { id: "weekly", label: "05 Tuần", icon: modules.weekly.icon },
+    { id: "readiness", label: "06 Kết thúc", icon: modules.readiness.icon },
+    { id: "dashboard", label: "07 Dashboard", icon: "fa-gauge-high" }
 ];
 
 function getInitialTab() {
@@ -522,7 +519,7 @@ function renderAuthLoading() {
             </div>
             <div class="login-loading">
                 <img src="assets/bidv-logo-animated.svg" alt="BIDV">
-                <strong>Squad 2 UAT Command Center</strong>
+                <strong>Squad 2 UAT Workbook</strong>
                 <span>Đang kiểm tra phiên đăng nhập...</span>
             </div>
         </div>
@@ -546,15 +543,15 @@ function renderLoginPage() {
                             <img src="assets/bidv-logo-animated.svg" alt="BIDV">
                             <div class="login-logo-text">
                                 <span>Squad 2</span>
-                                <small>UAT Command Center</small>
+                                <small>UAT Workbook</small>
                             </div>
                         </div>
 
-                        <h1>Dashboard vận hành<br>UAT Squad 2</h1>
-                        <p>Theo dõi phạm vi UAT, kế hoạch Sprint, daily progress, chất lượng kiểm thử và readiness trước Pilot/Go-live.</p>
+                        <h1>Bảng điều hành<br>UAT Squad 2</h1>
+                        <p>Web hóa 7 sheet UAT: danh mục, phân công sprint, ma trận năng lực, điều hành hằng ngày, chất lượng tuần, kết thúc sprint và dashboard.</p>
 
                         <div class="login-stats">
-                            <div><strong>6</strong><span>Phân hệ quản trị</span></div>
+                            <div><strong>7</strong><span>Sheet UAT</span></div>
                             <div><strong>24/7</strong><span>Dữ liệu tập trung</span></div>
                             <div><strong>DB</strong><span>Railway Postgres</span></div>
                         </div>
@@ -569,7 +566,7 @@ function renderLoginPage() {
 
                         <div class="login-card-head">
                             <h2>Đăng nhập</h2>
-                            <p>Truy cập Squad 2 UAT Dashboard</p>
+                            <p>Truy cập Squad 2 UAT Workbook</p>
                         </div>
 
                         <form id="loginForm" class="login-form">
@@ -635,8 +632,8 @@ function renderTopbar() {
                 <img class="brand-logo" src="assets/logo-bidv.jpg" alt="BIDV">
                 <div class="brand-divider"></div>
                 <div class="brand-title">
-                    <strong>Squad 2 UAT Command Center</strong>
-                    <span>Agile Management Workspace</span>
+                    <strong>Squad 2 UAT Workbook</strong>
+                    <span>Web hóa 7 sheet UAT</span>
                 </div>
             </div>
             <div class="top-actions">
@@ -647,7 +644,7 @@ function renderTopbar() {
                 <button class="text-btn" data-auth-action="logout" title="Đăng xuất">
                     <i class="fa-solid fa-right-from-bracket"></i><span>Đăng xuất</span>
                 </button>
-                <button class="text-btn" data-action="export-excel" title="Xuất Excel gồm toàn bộ 6 sheet dữ liệu">
+                <button class="text-btn" data-action="export-excel" title="Xuất Excel đủ 7 sheet UAT">
                     <i class="fa-solid fa-file-excel"></i><span>Xuất Excel</span>
                 </button>
                 ${authState.user?.role === "admin" ? `
@@ -662,13 +659,13 @@ function renderTopbar() {
 
 function renderCommandBand() {
     const activeModule = modules[ui.activeTab];
-    const title = activeModule ? activeModule.label : "Bảng điều hành tổng hợp Squad 2";
-    const subtitle = activeModule ? activeModule.description : "Theo dõi tiến độ UAT, chất lượng kiểm thử, lỗi nghiêm trọng và readiness.";
+    const title = activeModule ? activeModule.label : "07_Dashboard";
+    const subtitle = activeModule ? activeModule.description : "BẢNG ĐIỀU HÀNH TỔNG HỢP SQUAD 2: tiến độ UAT, bao phủ kiểm thử, tỷ lệ thành công, lỗi tồn đọng và readiness.";
     const totalRecords = Object.keys(modules).reduce((sum, id) => sum + appState[modules[id].collection].length, 0);
     return `
         <div class="command-band">
             <div>
-                <div class="screen-kicker">BIDV · Squad 2</div>
+                <div class="screen-kicker">BIDV · Squad 2 · UAT Workbook</div>
                 <h1 class="screen-title">${e(title)}</h1>
                 <p class="screen-subtitle">${e(subtitle)}</p>
             </div>
@@ -684,12 +681,12 @@ function renderCommandBand() {
 function renderKpis() {
     const metrics = calculateMetrics();
     const cards = [
-        { label: "Chức năng UAT", value: metrics.features, foot: "Trong danh mục", icon: "fa-layer-group" },
-        { label: "Tiến độ thực hiện", value: `${metrics.coverage}%`, foot: "Theo testcase", icon: "fa-chart-simple" },
-        { label: "Tỷ lệ thành công", value: `${metrics.successRate}%`, foot: "Theo weekly/readiness", icon: "fa-circle-check" },
-        { label: "Lỗi Sev 1 tồn", value: metrics.criticalBugs, foot: "Theo daily/readiness", icon: "fa-triangle-exclamation" },
-        { label: "Sẵn sàng đào tạo", value: `${metrics.trainingReadiness}%`, foot: "Theo readiness", icon: "fa-graduation-cap" },
-        { label: "Pilot/Go-live", value: `${metrics.pilotReadiness}%`, foot: "Theo readiness", icon: "fa-rocket" }
+        { label: "Tiến độ UAT toàn Squad", value: `${metrics.squadProgress}%`, foot: "Theo trạng thái Sheet 01", icon: "fa-chart-simple" },
+        { label: "Tỷ lệ bao phủ kiểm thử", value: `${metrics.coverage}%`, foot: "Theo testcase Sheet 04-06", icon: "fa-layer-group" },
+        { label: "Tỷ lệ thành công", value: `${metrics.successRate}%`, foot: "Theo Sheet 05-06", icon: "fa-circle-check" },
+        { label: "Lỗi nghiêm trọng tồn đọng", value: metrics.criticalBugs, foot: "Theo Sheet 04-06", icon: "fa-triangle-exclamation" },
+        { label: "Mức độ sẵn sàng đào tạo", value: `${metrics.trainingReadiness}%`, foot: "Theo Sheet 06", icon: "fa-graduation-cap" },
+        { label: "Mức độ sẵn sàng Pilot/Go-live", value: `${metrics.pilotReadiness}%`, foot: "Theo Sheet 06", icon: "fa-rocket" }
     ];
     return `
         <div class="kpi-grid">
@@ -739,13 +736,13 @@ function renderKickoffPanel() {
                     <div class="kickoff-icon"><i class="fa-solid fa-gauge-high"></i></div>
                     <div>
                         <h3>Chưa có dữ liệu UAT để phân tích</h3>
-                        <p>Dashboard sẽ tự chuyển thành command center khi có dữ liệu phạm vi, sprint plan, daily UAT hoặc readiness.</p>
+                        <p>Sheet 07 sẽ tự tổng hợp khi có dữ liệu từ 01_DanhMuc_UAT đến 06_KetThuc_Sprint.</p>
                     </div>
                 </div>
                 <div class="kickoff-actions">
-                    <button class="text-btn" data-tab="features"><i class="fa-solid fa-layer-group"></i><span>Nhập danh mục</span></button>
-                    <button class="text-btn" data-tab="plans"><i class="fa-solid fa-calendar-days"></i><span>Lập Sprint Plan</span></button>
-                    <button class="text-btn" data-tab="daily"><i class="fa-solid fa-clipboard-check"></i><span>Cập nhật Daily</span></button>
+                    <button class="text-btn" data-tab="features"><i class="fa-solid fa-layer-group"></i><span>Nhập Sheet 01</span></button>
+                    <button class="text-btn" data-tab="plans"><i class="fa-solid fa-calendar-days"></i><span>Nhập Sheet 02</span></button>
+                    <button class="text-btn" data-tab="daily"><i class="fa-solid fa-clipboard-check"></i><span>Nhập Sheet 04</span></button>
                 </div>
             </div>
         </section>
@@ -775,7 +772,7 @@ function renderModuleProgressPanel() {
                     <i class="fa-solid fa-chart-simple"></i>
                     <div>
                         <h2>Tiến độ theo nhóm chức năng</h2>
-                        <span>Coverage, testcase và trạng thái UAT theo từng nhóm</span>
+                        <span>Tổng hợp từ Sheet 01, 03, 04 và 05</span>
                     </div>
                 </div>
             </div>
@@ -802,7 +799,7 @@ function renderModuleProgressPanel() {
                             </div>
                         `).join("")}
                     </div>
-                ` : renderEmpty("fa-layer-group", "Chưa có dữ liệu nhóm chức năng", "Nhập danh mục chức năng hoặc weekly report để xem tiến độ theo nhóm.", true)}
+                ` : renderEmpty("fa-layer-group", "Chưa có dữ liệu nhóm chức năng", "Nhập Sheet 01 hoặc Sheet 05 để xem tiến độ theo nhóm.", true)}
             </div>
         </section>
     `;
@@ -820,7 +817,7 @@ function renderReadinessHealthPanel(metrics) {
     const healthItems = [
         { label: "Coverage", value: metrics.coverage },
         { label: "Success rate", value: metrics.successRate },
-        { label: "Training", value: metrics.trainingReadiness },
+        { label: "Đào tạo", value: metrics.trainingReadiness },
         { label: "Pilot/Go-live", value: metrics.pilotReadiness }
     ];
     return `
@@ -829,15 +826,15 @@ function renderReadinessHealthPanel(metrics) {
                 <div class="panel-title">
                     <i class="fa-solid fa-flag-checkered"></i>
                     <div>
-                        <h2>Readiness health</h2>
-                        <span>${latestReadiness ? `Bản gần nhất: ${e(latestReadiness.sprint || "Readiness")}` : "Chưa có bản readiness"}</span>
+                        <h2>Kết thúc Sprint</h2>
+                        <span>${latestReadiness ? `Bản gần nhất: ${e(latestReadiness.sprint || "Sheet 06")}` : "Chưa có Sheet 06"}</span>
                     </div>
                 </div>
             </div>
             <div class="panel-body">
                 <div class="readiness-score ${e(recommendation.tone)}">
                     <div>
-                        <span>Go-live recommendation</span>
+                        <span>Khuyến nghị Pilot/Go-live</span>
                         <strong>${e(recommendation.label)}</strong>
                     </div>
                     <b>${e(clamp(readinessLevel))}%</b>
@@ -872,7 +869,7 @@ function renderRiskPanel(metrics) {
                     <i class="fa-solid fa-triangle-exclamation"></i>
                     <div>
                         <h2>Cần xử lý</h2>
-                        <span>Top rủi ro ảnh hưởng tới UAT readiness</span>
+                        <span>Rủi ro ảnh hưởng tới Sheet 07 Dashboard</span>
                     </div>
                 </div>
             </div>
@@ -902,7 +899,7 @@ function renderTimelinePanel() {
                     <i class="fa-solid fa-timeline"></i>
                     <div>
                         <h2>Timeline T1-T6</h2>
-                        <span>Mốc sprint gần nhất và trạng thái lịch</span>
+                        <span>Mốc gần nhất từ Sheet 02 Phân công Sprint</span>
                     </div>
                 </div>
             </div>
@@ -920,7 +917,7 @@ function renderTimelinePanel() {
                             </div>
                         `).join("")}
                     </div>
-                ` : renderEmpty("fa-calendar-days", "Chưa có timeline Sprint", "Nhập Sprint Plan để dashboard hiển thị các mốc T1-T6 gần nhất.", true)}
+                ` : renderEmpty("fa-calendar-days", "Chưa có timeline Sprint", "Nhập Sheet 02 để dashboard hiển thị các mốc T1-T6 gần nhất.", true)}
             </div>
         </section>
     `;
@@ -934,8 +931,8 @@ function renderActivityPanel() {
                 <div class="panel-title">
                     <i class="fa-solid fa-clock-rotate-left"></i>
                     <div>
-                        <h2>Hoạt động gần đây</h2>
-                        <span>Bản ghi mới cập nhật trong workspace</span>
+                        <h2>Cập nhật gần đây</h2>
+                        <span>Bản ghi mới cập nhật trong 6 sheet nhập liệu</span>
                     </div>
                 </div>
             </div>
@@ -1117,10 +1114,10 @@ function getDashboardRisks(metrics) {
         addRisk("yellow", "fa-screwdriver-wrench", `${waitingFeatures.length} chức năng chờ xử lý`, "Có trạng thái Chờ fix hoặc Tạm hoãn trong danh mục.");
     }
     if (riskyWeekly.length) {
-        addRisk("red", "fa-chart-line", `${riskyWeekly.length} báo cáo tuần có rủi ro`, "Weekly assessment đang ở mức Rủi ro hoặc Blocker.");
+        addRisk("red", "fa-chart-line", `${riskyWeekly.length} báo cáo tuần có rủi ro`, "Sheet 05 đang có đánh giá Rủi ro hoặc Blocker.");
     }
     if (blockerRows.length) {
-        addRisk("yellow", "fa-ban", `${blockerRows.length} vướng mắc Daily UAT`, "Daily log còn ghi nhận blocker cần làm rõ.");
+        addRisk("yellow", "fa-ban", `${blockerRows.length} vướng mắc hằng ngày`, "Sheet 04 còn ghi nhận blocker cần làm rõ.");
     }
     if (highIssues > 0) {
         addRisk("yellow", "fa-bug", `${highIssues} lỗi high/reopen`, "Theo dõi lỗi mức cao và lỗi mở lại để tránh trễ retest.");
@@ -1132,14 +1129,14 @@ function getDashboardRisks(metrics) {
         addRisk("yellow", "fa-circle-half-stroke", `Success rate ${metrics.successRate}%`, "Tỷ lệ pass chưa đủ chắc để khuyến nghị go-live.");
     }
     if (latestReadiness?.decision === "Chưa sẵn sàng" || latestReadiness?.decision === "Có điều kiện") {
-        addRisk(latestReadiness.decision === "Chưa sẵn sàng" ? "red" : "yellow", "fa-flag", latestReadiness.decision, latestReadiness.note || "Cập nhật điều kiện readiness trước mốc Pilot/Go-live.");
+        addRisk(latestReadiness.decision === "Chưa sẵn sàng" ? "red" : "yellow", "fa-flag", latestReadiness.decision, latestReadiness.note || "Cập nhật điều kiện Sheet 06 trước mốc Pilot/Go-live.");
     }
     if (latestReadiness && metrics.pilotReadiness > 0 && metrics.pilotReadiness < 80) {
-        addRisk("yellow", "fa-rocket", `Pilot readiness ${metrics.pilotReadiness}%`, "Chưa đạt ngưỡng khuyến nghị 80% cho Pilot/Go-live.");
+        addRisk("yellow", "fa-rocket", `Pilot/Go-live ${metrics.pilotReadiness}%`, "Chưa đạt ngưỡng khuyến nghị 80%.");
     }
 
     if (!risks.length) {
-        addRisk("green", "fa-circle-check", "Không có rủi ro đỏ", "Tiếp tục cập nhật Daily, Weekly và Readiness để giữ dashboard phản ánh đúng thực tế.");
+        addRisk("green", "fa-circle-check", "Không có rủi ro đỏ", "Tiếp tục cập nhật Sheet 04, 05 và 06 để dashboard phản ánh đúng thực tế.");
     }
     return risks.slice(0, 5);
 }
@@ -2217,7 +2214,7 @@ async function exportExcel() {
         const disposition = response.headers.get("Content-Disposition") || "";
         const filename = disposition.match(/filename="([^"]+)"/i)?.[1] || `squad2-uat-${todayStamp()}.xlsx`;
         downloadBlob(await response.blob(), filename);
-        showToast("Đã xuất file Excel gồm 6 sheet dữ liệu.");
+        showToast("Đã xuất file Excel đủ 7 sheet UAT.");
     } catch (error) {
         showToast(error.message || "Không xuất được file Excel.");
     } finally {
@@ -2343,6 +2340,8 @@ function validateRecord(mod, payload) {
 
 function calculateMetrics() {
     const features = appState.features.length;
+    const completedFeatures = appState.features.filter((row) => row.status === "Hoàn thành").length;
+    const statusDrivenProgress = features ? percent(completedFeatures, features) : 0;
     const dailyTotal = sum(appState.daily, "totalCases");
     const dailyDone = sum(appState.daily, "executedCases");
     const weeklyCoverage = average(appState.weekly.map((row) => resolveRate(row.coverageRate, row.executedCases, row.totalCases)));
@@ -2355,14 +2354,16 @@ function calculateMetrics() {
     const latestReadiness = getLatest(appState.readiness);
     const readinessCritical = sum(appState.readiness, "openCriticalBugs");
     const dailyCritical = sum(appState.daily, "criticalBugs");
+    const readinessFallback = round(latestReadiness?.readinessLevel || average([coverage, successRate]));
     return {
         features,
+        squadProgress: statusDrivenProgress || coverage,
         totalRecords: Object.keys(modules).reduce((total, id) => total + appState[modules[id].collection].length, 0),
         coverage,
         successRate,
         criticalBugs: readinessCritical || dailyCritical,
-        trainingReadiness: round(latestReadiness?.trainingReadiness || 0),
-        pilotReadiness: round(latestReadiness?.pilotReadiness || 0)
+        trainingReadiness: round(latestReadiness?.trainingReadiness || readinessFallback || 0),
+        pilotReadiness: round(latestReadiness?.pilotReadiness || readinessFallback || 0)
     };
 }
 

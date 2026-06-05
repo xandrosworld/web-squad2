@@ -2,7 +2,7 @@
   "name": "squad2-uat-command-center",
   "version": "1.0.0",
   "private": true,
-  "description": "Squad 2 UAT Command Center with Railway Postgres persistence",
+  "description": "Squad 2 UAT Workbook with Railway Postgres persistence",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
