@@ -376,7 +376,6 @@ async function hydrateState(showNotice = false) {
         if (error.status === 401) return;
         setDataStatus("offline", error.message || "Không kết nối được Railway DB");
         render();
-        showToast("Không kết nối được Railway DB. Vui lòng kiểm tra biến DATABASE_URL hoặc deployment.");
     }
 }
 
