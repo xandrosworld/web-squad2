@@ -300,18 +300,22 @@ app.use("/api", (req, res) => {
 
 app.use("/assets", express.static(path.join(publicDir, "assets")));
 app.get(["/", "/index.html"], (req, res) => {
+  setNoStore(res);
   res.sendFile(path.join(publicDir, "index.html"));
 });
 app.get("/app.js", (req, res) => {
+  setNoStore(res);
   res.sendFile(path.join(publicDir, "app.js"));
 });
 app.get("/styles.css", (req, res) => {
+  setNoStore(res);
   res.sendFile(path.join(publicDir, "styles.css"));
 });
 app.get(/^\/.*\.[^/]+$/, (req, res) => {
   res.status(404).send("Not found");
 });
 app.get("*", (req, res) => {
+  setNoStore(res);
   res.sendFile(path.join(publicDir, "index.html"));
 });
 
@@ -753,6 +757,12 @@ function httpError(status, message) {
 function publicError(error) {
   if (error.status && error.message) return error.message;
   return "Không kết nối được hệ thống dữ liệu.";
+}
+
+function setNoStore(res) {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
 }
 
 async function shutdown() {
