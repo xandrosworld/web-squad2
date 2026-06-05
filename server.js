@@ -21,7 +21,9 @@ const sessionSecret = process.env.SESSION_SECRET || crypto
   .createHash("sha256")
   .update(`${databaseUrl || "local"}:${authPassword || "squad2-session"}`)
   .digest("hex");
-const maxAvatarDataLength = Number(process.env.MAX_AVATAR_DATA_LENGTH || 350000);
+const maxAvatarFileSizeMb = Number(process.env.MAX_AVATAR_FILE_SIZE_MB || 6);
+const maxAvatarDataLength = Number(process.env.MAX_AVATAR_DATA_LENGTH || Math.ceil(maxAvatarFileSizeMb * 1024 * 1024 * 4 / 3) + 512);
+const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "10mb";
 const defaultUsers = [
   { username: "yenuth@bidv.com.vn", email: "yenuth@bidv.com.vn", name: "yenuth", password: "123456" },
   { username: "thanhmt@bidv.com.vn", email: "thanhmt@bidv.com.vn", name: "thanhmt", password: "123456" },
@@ -188,7 +190,7 @@ let schemaPromise;
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
-app.use(express.json({ limit: "5mb" }));
+app.use(express.json({ limit: requestBodyLimit }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "same-origin");
@@ -979,7 +981,7 @@ function normalizeAvatarData(value) {
   const avatarData = String(value || "").trim();
   if (!avatarData) return "";
   if (avatarData.length > maxAvatarDataLength) {
-    throw httpError(400, "Ảnh đại diện quá lớn. Vui lòng chọn ảnh dưới 250KB.");
+    throw httpError(400, `Ảnh đại diện quá lớn. Vui lòng chọn ảnh dưới ${maxAvatarFileSizeMb}MB.`);
   }
   if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(avatarData)) {
     throw httpError(400, "Ảnh đại diện phải là PNG, JPG, WEBP hoặc GIF.");

@@ -3,6 +3,8 @@ const MIGRATION_FLAG_KEY = `${STORAGE_KEY}_remote_migration_checked`;
 const LEGACY_BACKUP_KEY = `${STORAGE_KEY}_legacy_backup`;
 const API_BASE = "/api";
 const SYNC_INTERVAL_MS = 30000;
+const MAX_AVATAR_FILE_SIZE_MB = 6;
+const MAX_AVATAR_FILE_SIZE_BYTES = MAX_AVATAR_FILE_SIZE_MB * 1024 * 1024;
 
 const e = (value) => String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -1429,7 +1431,7 @@ function renderProfileModal() {
                                     <button class="ghost-btn" type="button" data-auth-action="clear-avatar">
                                         <i class="fa-solid fa-eraser"></i><span>Xóa ảnh</span>
                                     </button>
-                                    <small>PNG, JPG, WEBP hoặc GIF. Khuyến nghị dưới 250KB.</small>
+                                    <small>PNG, JPG, WEBP hoặc GIF. Khuyến nghị dưới ${MAX_AVATAR_FILE_SIZE_MB}MB.</small>
                                 </div>
                             </div>
                             <input id="avatarInput" class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
@@ -1784,8 +1786,8 @@ async function handleAvatarInput(event) {
         event.currentTarget.value = "";
         return;
     }
-    if (file.size > 250 * 1024) {
-        showToast("Ảnh đại diện nên dưới 250KB.");
+    if (file.size > MAX_AVATAR_FILE_SIZE_BYTES) {
+        showToast(`Ảnh đại diện nên dưới ${MAX_AVATAR_FILE_SIZE_MB}MB.`);
         event.currentTarget.value = "";
         return;
     }
