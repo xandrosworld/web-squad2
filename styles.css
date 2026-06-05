@@ -2359,10 +2359,14 @@ button {
     }
 
     .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 35;
         height: auto;
         min-height: 56px;
-        align-items: flex-start;
+        align-items: center;
         padding: 10px 12px;
+        gap: 10px;
     }
 
     .brand-divider,
@@ -2376,12 +2380,13 @@ button {
 
     .top-actions {
         gap: 6px;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         justify-content: flex-end;
     }
 
     .user-chip {
-        max-width: 170px;
+        max-width: 156px;
+        height: 38px;
     }
 
     .top-actions .text-btn span,
@@ -2392,11 +2397,22 @@ button {
 
     .workspace {
         overflow: visible;
-        padding: 12px;
+        padding: 12px 12px 96px;
     }
 
     .command-band {
         display: grid;
+        padding: 14px;
+    }
+
+    .command-meta {
+        justify-content: flex-start;
+        gap: 6px;
+    }
+
+    .pill {
+        min-height: 26px;
+        padding: 4px 9px;
     }
 
     .profile-body {
@@ -2414,6 +2430,54 @@ button {
 
     .kpi-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .kpi-card {
+        min-height: 96px;
+        padding: 11px;
+    }
+
+    .kpi-label {
+        font-size: 11px;
+        line-height: 15px;
+    }
+
+    .kpi-icon {
+        width: 28px;
+        height: 28px;
+    }
+
+    .kpi-value {
+        margin-top: 8px;
+        font-size: 24px;
+        line-height: 28px;
+    }
+
+    .kpi-foot {
+        margin-top: 4px;
+        font-size: 10px;
+        line-height: 14px;
+    }
+
+    .tabbar {
+        position: sticky;
+        top: 58px;
+        z-index: 30;
+        margin-top: 12px;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none;
+    }
+
+    .tabbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .tab-btn {
+        min-width: 112px;
+        height: 36px;
+        scroll-snap-align: start;
     }
 
     .dashboard-grid,
@@ -2491,11 +2555,54 @@ button {
     }
 
     .brand-title strong {
-        max-width: 150px;
+        max-width: 132px;
     }
 
     .kpi-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .screen-kicker {
+        font-size: 10px;
+    }
+
+    .screen-title {
+        font-size: 17px;
+        line-height: 24px;
+    }
+
+    .screen-subtitle {
+        font-size: 12px;
+        line-height: 19px;
+    }
+
+    .panel-body {
+        padding: 12px;
+    }
+
+    .floating-hub.chat-open {
+        inset: auto 0 0;
+        display: flex;
+        justify-content: center;
+    }
+
+    .floating-hub.chat-open .group-chat-panel {
+        width: 100%;
+        height: min(76dvh, calc(100dvh - 72px));
+        border-right: 0;
+        border-bottom: 0;
+        border-left: 0;
+        border-radius: 14px 14px 0 0;
+    }
+
+    .floating-hub:not(.chat-open) {
+        right: 16px;
+        bottom: 16px;
+    }
+
+    .chat-fab {
+        width: 56px;
+        height: 56px;
     }
 
     .panel-head {

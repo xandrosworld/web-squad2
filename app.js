@@ -1508,7 +1508,7 @@ function renderFloatingGroupChat() {
     }
 
     return `
-        <div class="floating-hub">
+        <div class="floating-hub chat-open">
             <section class="group-chat-panel" aria-label="Chat nhóm">
                 <div class="group-chat-head">
                     <div>
