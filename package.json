@@ -1,0 +1,24 @@
+{
+  "name": "squad2-uat-command-center",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Squad 2 UAT Command Center with Railway Postgres persistence",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "check": "node --check server.js && node --check app.js",
+    "smoke:ui": "node scripts/smoke-ui.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.60.0"
+  }
+}

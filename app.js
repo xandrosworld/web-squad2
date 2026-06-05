@@ -1,4 +1,8 @@
 const STORAGE_KEY = "squad2_uat_command_center_v1";
+const MIGRATION_FLAG_KEY = `${STORAGE_KEY}_remote_migration_checked`;
+const LEGACY_BACKUP_KEY = `${STORAGE_KEY}_legacy_backup`;
+const API_BASE = "/api";
+const SYNC_INTERVAL_MS = 30000;
 
 const e = (value) => String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -273,33 +277,184 @@ const emptyState = () => ({
     updatedAt: null
 });
 
-let appState = loadState();
+let appState = loadCachedState();
+let authState = {
+    status: "checking",
+    user: null,
+    error: null
+};
 let ui = {
     activeTab: getInitialTab(),
     query: "",
     filters: {},
     columnFilters: {},
     modal: null,
-    toast: null
+    toast: null,
+    saving: false
+};
+let dataStatus = {
+    mode: "loading",
+    message: "Đang kết nối Railway DB",
+    lastSyncAt: null
 };
 
-function loadState() {
+function normalizeState(raw) {
+    const nextState = emptyState();
+    const source = raw && typeof raw === "object" ? raw : {};
+    Object.keys(modules).forEach((id) => {
+        const collection = modules[id].collection;
+        nextState[collection] = Array.isArray(source[collection]) ? source[collection] : [];
+    });
+    nextState.updatedAt = typeof source.updatedAt === "string" ? source.updatedAt : null;
+    return nextState;
+}
+
+function loadCachedState() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return emptyState();
-        const parsed = JSON.parse(raw);
-        return { ...emptyState(), ...parsed };
+        return normalizeState(JSON.parse(raw));
     } catch {
         return emptyState();
     }
 }
 
-function saveState() {
-    appState.updatedAt = new Date().toISOString();
+function cacheState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
 }
 
+function setDataStatus(mode, message) {
+    dataStatus = {
+        mode,
+        message,
+        lastSyncAt: mode === "online" ? new Date().toISOString() : dataStatus.lastSyncAt
+    };
+}
+
+async function hydrateState(showNotice = false) {
+    try {
+        const data = await requestJson("/state");
+        const remoteState = normalizeState(data.state || data);
+        const cachedState = loadCachedState();
+        if (stateRecordCount(remoteState) === 0 && stateRecordCount(cachedState) > 0 && !localStorage.getItem(MIGRATION_FLAG_KEY)) {
+            localStorage.setItem(LEGACY_BACKUP_KEY, JSON.stringify(cachedState));
+            const shouldMigrate = confirm("Phát hiện dữ liệu cũ đang lưu trên trình duyệt. Đưa dữ liệu này lên Railway DB ngay bây giờ?");
+            localStorage.setItem(MIGRATION_FLAG_KEY, shouldMigrate ? "uploaded" : "skipped");
+            if (shouldMigrate) {
+                const result = await replaceRemoteState(cachedState);
+                appState = normalizeState(result.state || cachedState);
+                setDataStatus("online", "Railway Postgres đang hoạt động");
+                cacheState();
+                render();
+                showToast("Đã chuyển dữ liệu local lên Railway DB.");
+                return;
+            }
+        }
+        appState = remoteState;
+        setDataStatus("online", "Railway Postgres đang hoạt động");
+        cacheState();
+        render();
+        if (showNotice) showToast("Đã kết nối Railway DB.");
+    } catch (error) {
+        setDataStatus("offline", error.message || "Không kết nối được Railway DB");
+        render();
+        showToast("Không kết nối được Railway DB. Vui lòng kiểm tra biến DATABASE_URL hoặc deployment.");
+    }
+}
+
+function stateRecordCount(state) {
+    return Object.keys(modules).reduce((total, id) => {
+        const collection = modules[id].collection;
+        return total + (Array.isArray(state?.[collection]) ? state[collection].length : 0);
+    }, 0);
+}
+
+async function requestJson(path, options = {}) {
+    const { skipAuthRedirect, ...fetchOptions } = options;
+    const response = await fetch(`${API_BASE}${path}`, {
+        ...fetchOptions,
+        credentials: "same-origin",
+        headers: {
+            "Content-Type": "application/json",
+            ...(fetchOptions.headers || {})
+        }
+    });
+    const text = await response.text();
+    let data = {};
+    try {
+        data = text ? JSON.parse(text) : {};
+    } catch {
+        data = { error: text || "API không trả về JSON hợp lệ" };
+    }
+    if (!response.ok) {
+        if (response.status === 401 && !skipAuthRedirect && authState.status === "authenticated") {
+            authState = { status: "guest", user: null, error: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." };
+            appState = emptyState();
+            localStorage.removeItem(STORAGE_KEY);
+            render();
+        }
+        throw new Error(data.error || `API lỗi ${response.status}`);
+    }
+    return data;
+}
+
+function ensureDbReady() {
+    if (dataStatus.mode === "online") return true;
+    showToast("Chưa kết nối Railway DB, không thể lưu dữ liệu.");
+    return false;
+}
+
+async function createRemoteRecord(collection, record) {
+    return requestJson(`/records/${encodeURIComponent(collection)}`, {
+        method: "POST",
+        body: JSON.stringify({ record })
+    });
+}
+
+async function updateRemoteRecord(collection, id, record) {
+    return requestJson(`/records/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body: JSON.stringify({ record })
+    });
+}
+
+async function deleteRemoteRecord(collection, id) {
+    return requestJson(`/records/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`, {
+        method: "DELETE"
+    });
+}
+
+async function replaceRemoteState(state) {
+    return requestJson("/state", {
+        method: "PUT",
+        body: JSON.stringify({ state })
+    });
+}
+
+async function clearRemoteState() {
+    return requestJson("/state", {
+        method: "DELETE"
+    });
+}
+
 function render() {
+    if (authState.status === "checking") {
+        document.getElementById("app").innerHTML = `
+            ${renderAuthLoading()}
+            <div class="toast ${ui.toast ? "show" : ""}">${e(ui.toast || "")}</div>
+        `;
+        return;
+    }
+
+    if (authState.status !== "authenticated") {
+        document.getElementById("app").innerHTML = `
+            ${renderLoginPage()}
+            <div class="toast ${ui.toast ? "show" : ""}">${e(ui.toast || "")}</div>
+        `;
+        bindAuthEvents();
+        return;
+    }
+
     const active = document.activeElement;
     const focus = active ? {
         id: active.id,
@@ -338,6 +493,108 @@ function render() {
     }
 }
 
+function renderAuthLoading() {
+    return `
+        <div class="login-page">
+            <div class="login-bg" aria-hidden="true">
+                <div class="login-bg-base"></div>
+                <div class="login-bg-dots"></div>
+                <div class="login-glow login-glow-one"></div>
+                <div class="login-glow login-glow-two"></div>
+            </div>
+            <div class="login-loading">
+                <img src="assets/bidv-logo-animated.svg" alt="BIDV">
+                <strong>Squad 2 UAT Command Center</strong>
+                <span>Đang kiểm tra phiên đăng nhập...</span>
+            </div>
+        </div>
+    `;
+}
+
+function renderLoginPage() {
+    return `
+        <div class="login-page">
+            <div class="login-bg" aria-hidden="true">
+                <div class="login-bg-base"></div>
+                <div class="login-bg-dots"></div>
+                <div class="login-glow login-glow-one"></div>
+                <div class="login-glow login-glow-two"></div>
+            </div>
+
+            <div class="login-wrap">
+                <section class="login-brand" aria-label="Squad 2 UAT">
+                    <div class="login-brand-inner">
+                        <div class="login-brand-logo">
+                            <img src="assets/bidv-logo-animated.svg" alt="BIDV">
+                            <div class="login-logo-text">
+                                <span>Squad 2</span>
+                                <small>UAT Command Center</small>
+                            </div>
+                        </div>
+
+                        <h1>Dashboard vận hành<br>UAT Squad 2</h1>
+                        <p>Theo dõi phạm vi UAT, kế hoạch Sprint, daily progress, chất lượng kiểm thử và readiness trước Pilot/Go-live.</p>
+
+                        <div class="login-stats">
+                            <div><strong>6</strong><span>Phân hệ quản trị</span></div>
+                            <div><strong>24/7</strong><span>Dữ liệu tập trung</span></div>
+                            <div><strong>DB</strong><span>Railway Postgres</span></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="login-form-side">
+                    <div class="login-card">
+                        <div class="login-mobile-logo">
+                            <img src="assets/bidv-logo-animated.svg" alt="BIDV">
+                        </div>
+
+                        <div class="login-card-head">
+                            <h2>Đăng nhập</h2>
+                            <p>Truy cập Squad 2 UAT Dashboard</p>
+                        </div>
+
+                        <form id="loginForm" class="login-form">
+                            <div class="login-field">
+                                <label for="loginIdentifier">Email / Username</label>
+                                <div class="login-input-wrap">
+                                    <i class="fa-regular fa-user"></i>
+                                    <input id="loginIdentifier" name="identifier" type="text" autocomplete="username" placeholder="Nhập email hoặc username" required>
+                                </div>
+                            </div>
+
+                            <div class="login-field">
+                                <label for="loginPassword">Mật khẩu</label>
+                                <div class="login-input-wrap">
+                                    <i class="fa-solid fa-lock"></i>
+                                    <input id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="Nhập mật khẩu" required>
+                                </div>
+                            </div>
+
+                            <button class="login-submit" type="submit">
+                                <span>Đăng nhập</span>
+                            </button>
+
+                            ${authState.error ? `<div class="login-error">${e(authState.error)}</div>` : ""}
+                        </form>
+
+                        <div class="login-divider"><span>Tài khoản hệ thống</span></div>
+                        <div class="login-account-note">
+                            <i class="fa-solid fa-shield-halved"></i>
+                            <span>Tài khoản được cấp bởi quản trị viên. Không còn dùng vai trò demo.</span>
+                        </div>
+
+                        <div class="login-foot">
+                            <span>Chưa có tài khoản?</span>
+                            <strong>Liên hệ quản trị viên Squad 2</strong>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    `;
+}
+
 function renderSidebar() {
     return `
         <aside class="sidebar" aria-label="Điều hướng">
@@ -369,6 +626,13 @@ function renderTopbar() {
                 </div>
             </div>
             <div class="top-actions">
+                <span class="user-chip" title="${e(authState.user?.username || "")}">
+                    <i class="fa-solid fa-user-shield"></i>
+                    <span>${e(authState.user?.name || authState.user?.username || "User")}</span>
+                </span>
+                <button class="text-btn" data-auth-action="logout" title="Đăng xuất">
+                    <i class="fa-solid fa-right-from-bracket"></i><span>Đăng xuất</span>
+                </button>
                 <button class="text-btn" data-action="export-csv" title="Xuất CSV tab hiện tại">
                     <i class="fa-solid fa-file-csv"></i><span>CSV</span>
                 </button>
@@ -378,7 +642,7 @@ function renderTopbar() {
                 <button class="text-btn" data-action="import-json" title="Nhập JSON">
                     <i class="fa-solid fa-upload"></i><span>Nhập</span>
                 </button>
-                <button class="danger-btn" data-action="clear-data" title="Xóa dữ liệu local">
+                <button class="danger-btn" data-action="clear-data" title="Xóa dữ liệu trên Railway DB">
                     <i class="fa-solid fa-trash"></i><span>Xóa</span>
                 </button>
                 ${ui.activeTab !== "dashboard" ? `
@@ -404,6 +668,7 @@ function renderCommandBand() {
                 <p class="screen-subtitle">${e(subtitle)}</p>
             </div>
             <div class="command-meta">
+                ${renderDbStatusPill()}
                 ${renderDataHealthPill(totalRecords)}
                 <span class="pill"><i class="fa-regular fa-clock"></i>${e(formatUpdatedAt())}</span>
             </div>
@@ -711,7 +976,7 @@ function renderModal() {
                                 <div class="rail-card is-new">
                                     <span>Trạng thái</span>
                                     <strong>Bản ghi mới</strong>
-                                    <small>Sẽ lưu vào trình duyệt sau khi xác nhận.</small>
+                                    <small>Sẽ lưu vào Railway DB sau khi xác nhận.</small>
                                 </div>
                             `}
                         </aside>
@@ -775,6 +1040,8 @@ function renderEmpty(icon, title, text, compact = false, mod = null) {
 }
 
 function bindEvents() {
+    bindAuthEvents();
+
     document.querySelectorAll("[data-tab]").forEach((button) => {
         button.addEventListener("click", () => {
             ui.activeTab = button.dataset.tab;
@@ -829,6 +1096,76 @@ function bindEvents() {
     if (importInput) importInput.addEventListener("change", handleImport);
 }
 
+function bindAuthEvents() {
+    const loginForm = document.getElementById("loginForm");
+    if (loginForm) loginForm.addEventListener("submit", handleLogin);
+    document.querySelectorAll("[data-auth-action]").forEach((button) => {
+        button.addEventListener("click", handleAuthAction);
+    });
+}
+
+async function initAuth() {
+    authState = { status: "checking", user: null, error: null };
+    render();
+    try {
+        const data = await requestJson("/auth/me", { skipAuthRedirect: true });
+        authState = { status: "authenticated", user: data.user, error: null };
+        render();
+        await hydrateState(true);
+    } catch {
+        authState = { status: "guest", user: null, error: null };
+        appState = emptyState();
+        render();
+    }
+}
+
+async function handleLogin(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const identifier = form.elements.identifier.value.trim();
+    const password = form.elements.password.value;
+    if (!identifier || !password) {
+        authState = { status: "guest", user: null, error: "Vui lòng nhập tài khoản và mật khẩu." };
+        render();
+        return;
+    }
+
+    authState = { status: "checking", user: null, error: null };
+    render();
+    try {
+        const data = await requestJson("/auth/login", {
+            method: "POST",
+            body: JSON.stringify({ identifier, password }),
+            skipAuthRedirect: true
+        });
+        authState = { status: "authenticated", user: data.user, error: null };
+        render();
+        await hydrateState(true);
+    } catch (error) {
+        authState = { status: "guest", user: null, error: error.message || "Không đăng nhập được." };
+        appState = emptyState();
+        render();
+    }
+}
+
+async function handleAuthAction(event) {
+    const action = event.currentTarget.dataset.authAction;
+    if (action !== "logout") return;
+    try {
+        await requestJson("/auth/logout", { method: "POST", skipAuthRedirect: true });
+    } catch {
+        // Clearing local state is still correct if the server session already expired.
+    }
+    authState = { status: "guest", user: null, error: null };
+    appState = emptyState();
+    localStorage.removeItem(STORAGE_KEY);
+    ui.modal = null;
+    ui.query = "";
+    ui.filters = {};
+    ui.columnFilters = {};
+    render();
+}
+
 function handleAction(event) {
     const action = event.currentTarget.dataset.action;
     const id = event.currentTarget.dataset.id;
@@ -860,8 +1197,9 @@ function closeModal() {
     render();
 }
 
-function handleSubmit(event) {
+async function handleSubmit(event) {
     event.preventDefault();
+    if (!ensureDbReady() || ui.saving) return;
     const mod = modules[ui.modal.tab];
     const form = event.currentTarget;
     const saveMode = event.submitter?.dataset.saveMode || "close";
@@ -883,37 +1221,68 @@ function handleSubmit(event) {
     }
 
     const now = new Date().toISOString();
-    if (ui.modal.id) {
-        appState[mod.collection] = appState[mod.collection].map((row) => {
-            if (row.id !== ui.modal.id) return row;
-            return { ...row, ...payload, updatedAt: now };
-        });
-        showToast("Đã cập nhật bản ghi.");
-    } else {
-        appState[mod.collection].unshift({
-            id: createId(),
-            ...payload,
-            createdAt: now,
-            updatedAt: now
-        });
-        showToast("Đã thêm bản ghi.");
+    ui.saving = true;
+    try {
+        if (ui.modal.id) {
+            const current = appState[mod.collection].find((row) => row.id === ui.modal.id);
+            const record = {
+                ...(current || {}),
+                ...payload,
+                id: ui.modal.id,
+                createdAt: current?.createdAt || now,
+                updatedAt: now
+            };
+            const result = await updateRemoteRecord(mod.collection, ui.modal.id, record);
+            appState[mod.collection] = appState[mod.collection].map((row) => row.id === ui.modal.id ? result.record : row);
+            appState.updatedAt = result.updatedAt || now;
+            showToast("Đã cập nhật bản ghi vào Railway DB.");
+        } else {
+            const record = {
+                id: createId(),
+                ...payload,
+                createdAt: now,
+                updatedAt: now
+            };
+            const result = await createRemoteRecord(mod.collection, record);
+            appState[mod.collection].unshift(result.record);
+            appState.updatedAt = result.updatedAt || now;
+            showToast("Đã thêm bản ghi vào Railway DB.");
+        }
+        setDataStatus("online", "Railway Postgres đang hoạt động");
+        localStorage.setItem(MIGRATION_FLAG_KEY, "active");
+        cacheState();
+        ui.modal = saveMode === "add-more" ? { tab: mod.collection, id: null } : null;
+    } catch (error) {
+        setDataStatus("offline", error.message || "Không lưu được vào Railway DB");
+        showToast(`Không lưu được vào DB: ${error.message}`);
+    } finally {
+        ui.saving = false;
+        render();
     }
-
-    saveState();
-    ui.modal = saveMode === "add-more" ? { tab: mod.collection, id: null } : null;
-    render();
 }
 
-function deleteRow(id) {
+async function deleteRow(id) {
     const mod = modules[ui.activeTab];
-    if (!mod || !id) return;
+    if (!mod || !id || !ensureDbReady() || ui.saving) return;
     const row = appState[mod.collection].find((item) => item.id === id);
     if (!row) return;
     if (!confirm(`Xóa "${recordTitle(row, mod)}"?`)) return;
-    appState[mod.collection] = appState[mod.collection].filter((item) => item.id !== id);
-    saveState();
-    showToast("Đã xóa bản ghi.");
-    render();
+    ui.saving = true;
+    try {
+        const result = await deleteRemoteRecord(mod.collection, id);
+        appState[mod.collection] = appState[mod.collection].filter((item) => item.id !== id);
+        appState.updatedAt = result.updatedAt || new Date().toISOString();
+        setDataStatus("online", "Railway Postgres đang hoạt động");
+        localStorage.setItem(MIGRATION_FLAG_KEY, "active");
+        cacheState();
+        showToast("Đã xóa bản ghi khỏi Railway DB.");
+    } catch (error) {
+        setDataStatus("offline", error.message || "Không xóa được dữ liệu");
+        showToast(`Không xóa được: ${error.message}`);
+    } finally {
+        ui.saving = false;
+        render();
+    }
 }
 
 function resetFilters() {
@@ -955,44 +1324,78 @@ function exportCsv() {
 }
 
 function handleImport(event) {
+    if (!ensureDbReady() || ui.saving) {
+        event.target.value = "";
+        return;
+    }
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
+        let parsed;
         try {
-            const parsed = JSON.parse(reader.result);
+            parsed = JSON.parse(reader.result);
+        } catch {
+            showToast("File JSON không hợp lệ.");
+            event.target.value = "";
+            return;
+        }
+        try {
             const nextState = emptyState();
             Object.keys(modules).forEach((id) => {
                 const collection = modules[id].collection;
                 nextState[collection] = Array.isArray(parsed[collection]) ? parsed[collection] : [];
             });
             nextState.updatedAt = new Date().toISOString();
-            appState = nextState;
-            saveState();
-            showToast("Đã nhập dữ liệu JSON.");
+            if (!confirm("Nhập JSON sẽ thay thế toàn bộ dữ liệu hiện có trên Railway DB. Tiếp tục?")) {
+                event.target.value = "";
+                return;
+            }
+            ui.saving = true;
+            const result = await replaceRemoteState(nextState);
+            appState = normalizeState(result.state || nextState);
+            setDataStatus("online", "Railway Postgres đang hoạt động");
+            localStorage.setItem(MIGRATION_FLAG_KEY, "uploaded");
+            cacheState();
+            showToast("Đã nhập dữ liệu JSON vào Railway DB.");
             render();
-        } catch {
-            showToast("File JSON không hợp lệ.");
+        } catch (error) {
+            setDataStatus("offline", error.message || "Không nhập được dữ liệu");
+            showToast(error.message ? `Không nhập được: ${error.message}` : "File JSON không hợp lệ.");
+        } finally {
+            ui.saving = false;
+            event.target.value = "";
         }
-        event.target.value = "";
     };
     reader.readAsText(file, "utf-8");
 }
 
-function clearData() {
+async function clearData() {
     const hasData = Object.keys(modules).some((id) => appState[modules[id].collection].length);
     if (!hasData) {
         showToast("Hiện chưa có dữ liệu để xóa.");
         return;
     }
-    if (!confirm("Xóa toàn bộ dữ liệu đang lưu trên trình duyệt này?")) return;
-    appState = emptyState();
-    localStorage.removeItem(STORAGE_KEY);
-    ui.query = "";
-    ui.filters = {};
-    ui.columnFilters = {};
-    showToast("Đã xóa dữ liệu local.");
-    render();
+    if (!ensureDbReady() || ui.saving) return;
+    if (!confirm("Xóa toàn bộ dữ liệu đang lưu trên Railway DB?")) return;
+    ui.saving = true;
+    try {
+        const result = await clearRemoteState();
+        appState = normalizeState(result.state || emptyState());
+        setDataStatus("online", "Railway Postgres đang hoạt động");
+        localStorage.setItem(MIGRATION_FLAG_KEY, "cleared");
+        cacheState();
+        ui.query = "";
+        ui.filters = {};
+        ui.columnFilters = {};
+        showToast("Đã xóa dữ liệu trên Railway DB.");
+    } catch (error) {
+        setDataStatus("offline", error.message || "Không xóa được dữ liệu");
+        showToast(`Không xóa được dữ liệu: ${error.message}`);
+    } finally {
+        ui.saving = false;
+        render();
+    }
 }
 
 function getFilteredRows(mod) {
@@ -1150,6 +1553,16 @@ function progressCell(value) {
     `;
 }
 
+function renderDbStatusPill() {
+    if (dataStatus.mode === "online") {
+        return `<span class="pill good" title="${e(dataStatus.message)}"><i class="fa-solid fa-database"></i>DB online</span>`;
+    }
+    if (dataStatus.mode === "loading") {
+        return `<span class="pill warn" title="${e(dataStatus.message)}"><i class="fa-solid fa-rotate fa-spin"></i>Đang nối DB</span>`;
+    }
+    return `<span class="pill bad" title="${e(dataStatus.message)}"><i class="fa-solid fa-triangle-exclamation"></i>DB offline</span>`;
+}
+
 function renderDataHealthPill(totalRecords) {
     if (totalRecords === 0) return `<span class="pill warn"><i class="fa-solid fa-database"></i>0 bản ghi</span>`;
     return `<span class="pill good"><i class="fa-solid fa-database"></i>${e(totalRecords)} bản ghi</span>`;
@@ -1289,7 +1702,7 @@ document.addEventListener("keydown", (event) => {
 
 window.addEventListener("storage", (event) => {
     if (event.key !== STORAGE_KEY) return;
-    appState = loadState();
+    appState = loadCachedState();
     ui.modal = null;
     render();
 });
@@ -1300,4 +1713,13 @@ window.addEventListener("hashchange", () => {
     render();
 });
 
+function refreshFromDbIfIdle() {
+    if (ui.modal || ui.saving || document.hidden) return;
+    hydrateState(false);
+}
+
+window.addEventListener("focus", refreshFromDbIfIdle);
+window.setInterval(refreshFromDbIfIdle, SYNC_INTERVAL_MS);
+
 render();
+initAuth();
