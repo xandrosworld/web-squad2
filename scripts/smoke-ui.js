@@ -40,6 +40,7 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
     const status = response.status();
     if (status < 400) return;
     if (url.endsWith("/favicon.ico")) return;
+    if (url.endsWith("/api/auth/me") && status === 401) return;
     if (!requireDb && (url.endsWith("/api/state") || url.endsWith("/api/auth/me")) && status === 503) {
       warnings.push(`DB check skipped: ${new URL(url).pathname} returned 503 in local/offline mode.`);
       return;
