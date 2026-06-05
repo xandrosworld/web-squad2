@@ -706,103 +706,493 @@ function renderDashboard() {
     const metrics = calculateMetrics();
     const hasAnyData = Object.keys(modules).some((id) => appState[modules[id].collection].length);
     return `
-        <div class="content-grid content-grid-single">
-            <section class="panel">
-                <div class="panel-head">
-                    <div class="panel-title">
-                        <i class="fa-solid fa-chart-pie"></i>
-                        <div>
-                            <h2>Tiến độ UAT toàn Squad</h2>
-                            <span>Tiến độ, chất lượng kiểm thử và readiness tổng hợp</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="panel-body">
-                    ${hasAnyData ? renderMainDashboard(metrics) : renderKickoffPanel()}
-                </div>
-            </section>
+        <div class="dashboard-shell">
+            ${hasAnyData ? renderMainDashboard(metrics) : renderKickoffPanel()}
         </div>
     `;
 }
 
 function renderKickoffPanel() {
     return `
-        <div class="kickoff">
-            <div class="kickoff-hero">
-                <div class="kickoff-icon"><i class="fa-solid fa-rocket"></i></div>
-                <div>
-                    <h3>Workspace UAT đã sẵn sàng</h3>
-                    <p>Khởi tạo dữ liệu UAT theo 6 phân hệ vận hành của Squad 2.</p>
+        <section class="panel dashboard-empty-panel">
+            <div class="kickoff">
+                <div class="kickoff-hero">
+                    <div class="kickoff-icon"><i class="fa-solid fa-gauge-high"></i></div>
+                    <div>
+                        <h3>Chưa có dữ liệu UAT để phân tích</h3>
+                        <p>Dashboard sẽ tự chuyển thành command center khi có dữ liệu phạm vi, sprint plan, daily UAT hoặc readiness.</p>
+                    </div>
+                </div>
+                <div class="kickoff-actions">
+                    <button class="text-btn" data-tab="features"><i class="fa-solid fa-layer-group"></i><span>Nhập danh mục</span></button>
+                    <button class="text-btn" data-tab="plans"><i class="fa-solid fa-calendar-days"></i><span>Lập Sprint Plan</span></button>
+                    <button class="text-btn" data-tab="daily"><i class="fa-solid fa-clipboard-check"></i><span>Cập nhật Daily</span></button>
                 </div>
             </div>
-            <div class="module-launch-grid">
-                ${Object.keys(modules).map((id) => {
-                    const mod = modules[id];
-                    return `
-                        <button class="module-launch-card" data-tab="${id}">
-                            <span><i class="fa-solid ${mod.icon}"></i></span>
-                            <strong>${e(mod.label)}</strong>
-                            <small>${e(mod.description)}</small>
-                        </button>
-                    `;
-                }).join("")}
-            </div>
-        </div>
+        </section>
     `;
 }
 
 function renderMainDashboard(metrics) {
     return `
-        <div class="summary-grid">
-            <div class="mini-stat"><span>Tổng bản ghi nghiệp vụ</span><strong>${e(metrics.totalRecords)}</strong></div>
-            <div class="mini-stat"><span>Bản ghi Daily UAT</span><strong>${e(appState.daily.length)}</strong></div>
-            <div class="mini-stat"><span>Báo cáo tuần</span><strong>${e(appState.weekly.length)}</strong></div>
-            <div class="mini-stat"><span>Readiness Sprint</span><strong>${e(appState.readiness.length)}</strong></div>
+        <div class="dashboard-grid">
+            ${renderModuleProgressPanel()}
+            ${renderReadinessHealthPanel(metrics)}
+            ${renderRiskPanel(metrics)}
         </div>
-        <div style="height:16px"></div>
-        ${renderCoveragePanel(metrics)}
-        <div style="height:16px"></div>
-        ${renderGroupDistribution()}
+        <div class="dashboard-bottom-grid">
+            ${renderTimelinePanel()}
+            ${renderActivityPanel()}
+        </div>
     `;
 }
 
-function renderCoveragePanel(metrics) {
+function renderModuleProgressPanel() {
+    const rows = getGroupOverviewRows();
     return `
-        <div class="chart-stack">
-            ${[
-                ["Tỷ lệ bao phủ", metrics.coverage, "teal"],
-                ["Tỷ lệ thành công", metrics.successRate, "green"],
-                ["Sẵn sàng đào tạo", metrics.trainingReadiness, "yellow"],
-                ["Sẵn sàng Pilot/Go-live", metrics.pilotReadiness, "blue"]
-            ].map(([label, value]) => `
-                <div class="bar-item">
-                    <strong>${e(label)}</strong>
-                    <div class="progress"><span style="width:${clamp(value)}%"></span></div>
-                    <span>${e(clamp(value))}%</span>
+        <section class="panel dashboard-panel dashboard-panel-wide">
+            <div class="panel-head">
+                <div class="panel-title">
+                    <i class="fa-solid fa-chart-simple"></i>
+                    <div>
+                        <h2>Tiến độ theo nhóm chức năng</h2>
+                        <span>Coverage, testcase và trạng thái UAT theo từng nhóm</span>
+                    </div>
                 </div>
-            `).join("")}
-        </div>
+            </div>
+            <div class="panel-body">
+                ${rows.length ? `
+                    <div class="module-progress-list">
+                        ${rows.map((row) => `
+                            <div class="module-progress-row ${e(row.tone)}">
+                                <div class="module-progress-main">
+                                    <div class="module-progress-head">
+                                        <strong>${e(row.group)}</strong>
+                                        ${tag(row.statusLabel, row.tone)}
+                                    </div>
+                                    <div class="module-progress-meta">
+                                        <span>${e(row.featureCount)} chức năng</span>
+                                        <span>${row.totalCases ? `${e(row.executedCases)}/${e(row.totalCases)} testcase` : "Chưa có testcase"}</span>
+                                        <span>Pass ${row.successRate ? `${e(row.successRate)}%` : "-"}</span>
+                                    </div>
+                                    <div class="module-progress-line">
+                                        <div class="progress progress-${e(row.tone)}"><span style="width:${clamp(row.coverage)}%"></span></div>
+                                        <span>${e(clamp(row.coverage))}%</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join("")}
+                    </div>
+                ` : renderEmpty("fa-layer-group", "Chưa có dữ liệu nhóm chức năng", "Nhập danh mục chức năng hoặc weekly report để xem tiến độ theo nhóm.", true)}
+            </div>
+        </section>
     `;
 }
 
-function renderGroupDistribution() {
-    const counts = countBy(appState.features, "group");
-    const entries = Object.entries(counts).filter(([, value]) => value > 0);
-    if (!entries.length) {
-        return renderEmpty("fa-layer-group", "Chưa có phân bổ nhóm", "Nhóm chức năng sẽ xuất hiện sau khi danh mục được nhập.", true);
+function renderReadinessHealthPanel(metrics) {
+    const latestReadiness = getLatest(appState.readiness);
+    const readinessLevel = round(latestReadiness?.readinessLevel || average([
+        metrics.coverage,
+        metrics.successRate,
+        metrics.trainingReadiness,
+        metrics.pilotReadiness
+    ]));
+    const recommendation = getReadinessRecommendation(metrics, latestReadiness, readinessLevel);
+    const healthItems = [
+        { label: "Coverage", value: metrics.coverage },
+        { label: "Success rate", value: metrics.successRate },
+        { label: "Training", value: metrics.trainingReadiness },
+        { label: "Pilot/Go-live", value: metrics.pilotReadiness }
+    ];
+    return `
+        <section class="panel dashboard-panel">
+            <div class="panel-head">
+                <div class="panel-title">
+                    <i class="fa-solid fa-flag-checkered"></i>
+                    <div>
+                        <h2>Readiness health</h2>
+                        <span>${latestReadiness ? `Bản gần nhất: ${e(latestReadiness.sprint || "Readiness")}` : "Chưa có bản readiness"}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="readiness-score ${e(recommendation.tone)}">
+                    <div>
+                        <span>Go-live recommendation</span>
+                        <strong>${e(recommendation.label)}</strong>
+                    </div>
+                    <b>${e(clamp(readinessLevel))}%</b>
+                </div>
+                <div class="health-list">
+                    ${healthItems.map((item) => {
+                        const tone = getProgressTone(item.value);
+                        return `
+                            <div class="health-row">
+                                <span>${e(item.label)}</span>
+                                <div class="progress progress-${e(tone)}"><span style="width:${clamp(item.value)}%"></span></div>
+                                <strong>${e(clamp(item.value))}%</strong>
+                            </div>
+                        `;
+                    }).join("")}
+                </div>
+                <div class="readiness-decision">
+                    <span>Quyết định gần nhất</span>
+                    ${renderDecision(latestReadiness?.decision || "Chưa quyết định")}
+                </div>
+            </div>
+        </section>
+    `;
+}
+
+function renderRiskPanel(metrics) {
+    const risks = getDashboardRisks(metrics);
+    return `
+        <section class="panel dashboard-panel">
+            <div class="panel-head">
+                <div class="panel-title">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <div>
+                        <h2>Cần xử lý</h2>
+                        <span>Top rủi ro ảnh hưởng tới UAT readiness</span>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="risk-list">
+                    ${risks.map((risk) => `
+                        <div class="risk-item ${e(risk.tone)}">
+                            <span><i class="fa-solid ${e(risk.icon)}"></i></span>
+                            <div>
+                                <strong>${e(risk.title)}</strong>
+                                <small>${e(risk.detail)}</small>
+                            </div>
+                        </div>
+                    `).join("")}
+                </div>
+            </div>
+        </section>
+    `;
+}
+
+function renderTimelinePanel() {
+    const milestones = getUpcomingMilestones(7);
+    return `
+        <section class="panel dashboard-panel">
+            <div class="panel-head">
+                <div class="panel-title">
+                    <i class="fa-solid fa-timeline"></i>
+                    <div>
+                        <h2>Timeline T1-T6</h2>
+                        <span>Mốc sprint gần nhất và trạng thái lịch</span>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body">
+                ${milestones.length ? `
+                    <div class="uat-timeline">
+                        ${milestones.map((item) => `
+                            <div class="uat-timeline-item ${e(item.tone)}">
+                                <div class="uat-timeline-marker">${e(item.milestone)}</div>
+                                <div class="uat-timeline-card">
+                                    <strong>${e(item.feature || item.sprint || item.milestone)}</strong>
+                                    <span>${e(item.dateLabel)} · ${e(item.sprint || "Chưa có sprint")} · ${e(item.owner || "Chưa gán owner")}</span>
+                                    <small>${e(item.statusText)}</small>
+                                </div>
+                            </div>
+                        `).join("")}
+                    </div>
+                ` : renderEmpty("fa-calendar-days", "Chưa có timeline Sprint", "Nhập Sprint Plan để dashboard hiển thị các mốc T1-T6 gần nhất.", true)}
+            </div>
+        </section>
+    `;
+}
+
+function renderActivityPanel() {
+    const activities = getRecentActivities(8);
+    return `
+        <section class="panel dashboard-panel">
+            <div class="panel-head">
+                <div class="panel-title">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    <div>
+                        <h2>Hoạt động gần đây</h2>
+                        <span>Bản ghi mới cập nhật trong workspace</span>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body">
+                ${activities.length ? `
+                    <div class="activity-list">
+                        ${activities.map((item) => `
+                            <div class="activity-item">
+                                <span class="activity-icon"><i class="fa-solid ${e(item.icon)}"></i></span>
+                                <div>
+                                    <strong>${e(item.title)}</strong>
+                                    <small>${e(item.moduleLabel)} · ${e(item.owner)} · ${e(item.timeLabel)}</small>
+                                </div>
+                            </div>
+                        `).join("")}
+                    </div>
+                ` : renderEmpty("fa-clock-rotate-left", "Chưa có hoạt động", "Các cập nhật mới nhất sẽ xuất hiện tại đây sau khi có bản ghi.", true)}
+            </div>
+        </section>
+    `;
+}
+
+function getGroupOverviewRows() {
+    const buckets = new Map();
+    const featureGroupByKey = new Map();
+    const ensureBucket = (group) => {
+        const label = String(group || "").trim() || "Chưa phân nhóm";
+        if (!buckets.has(label)) {
+            buckets.set(label, {
+                group: label,
+                featureCount: 0,
+                completedFeatures: 0,
+                blockedFeatures: 0,
+                weeklyCount: 0,
+                dailyCount: 0,
+                matrixAssignments: 0,
+                totalCases: 0,
+                executedCases: 0,
+                dailyTotal: 0,
+                dailyDone: 0,
+                coverageRates: [],
+                successRates: [],
+                criticalBugs: 0,
+                highBugs: 0,
+                reopenedBugs: 0,
+                blockers: 0,
+                riskyReports: 0
+            });
+        }
+        return buckets.get(label);
+    };
+
+    appState.features.forEach((row) => {
+        const bucket = ensureBucket(row.group);
+        bucket.featureCount += 1;
+        if (row.status === "Hoàn thành") bucket.completedFeatures += 1;
+        if (row.status === "Chờ fix" || row.status === "Tạm hoãn") bucket.blockedFeatures += 1;
+        [row.name, row.code].forEach((value) => {
+            const key = normalizeLookupKey(value);
+            if (key) featureGroupByKey.set(key, bucket.group);
+        });
+    });
+
+    appState.weekly.forEach((row) => {
+        const bucket = ensureBucket(row.group);
+        bucket.weeklyCount += 1;
+        bucket.totalCases += Number(row.totalCases || 0);
+        bucket.executedCases += Number(row.executedCases || 0);
+        bucket.coverageRates.push(resolveRate(row.coverageRate, row.executedCases, row.totalCases));
+        bucket.successRates.push(row.successRate);
+        bucket.criticalBugs += Number(row.criticalBugs || 0);
+        bucket.reopenedBugs += Number(row.reopenedBugs || 0);
+        if (row.assessment === "Rủi ro" || row.assessment === "Blocker") bucket.riskyReports += 1;
+    });
+
+    appState.daily.forEach((row) => {
+        const group = featureGroupByKey.get(normalizeLookupKey(row.feature)) || "Chưa phân nhóm";
+        const bucket = ensureBucket(group);
+        bucket.dailyCount += 1;
+        bucket.dailyTotal += Number(row.totalCases || 0);
+        bucket.dailyDone += Number(row.executedCases || 0);
+        bucket.criticalBugs += Number(row.criticalBugs || 0);
+        bucket.highBugs += Number(row.highBugs || 0);
+        if (isFilled(row.blocker)) bucket.blockers += 1;
+    });
+
+    appState.matrix.forEach((row) => {
+        const bucket = ensureBucket(row.group);
+        bucket.matrixAssignments += ["t1", "t2", "t3", "t4", "t5", "t6"].filter((key) => isFilled(row[key])).length;
+    });
+
+    const rows = [...buckets.values()].map((bucket) => {
+        const totalCases = bucket.totalCases || bucket.dailyTotal;
+        const executedCases = bucket.executedCases || bucket.dailyDone;
+        const caseCoverage = totalCases ? percent(executedCases, totalCases) : 0;
+        const explicitCoverage = round(average(bucket.coverageRates));
+        const featureCoverage = bucket.featureCount ? percent(bucket.completedFeatures, bucket.featureCount) : 0;
+        const coverage = caseCoverage || explicitCoverage || featureCoverage;
+        const successRate = round(average(bucket.successRates));
+        const issueCount = bucket.criticalBugs + bucket.highBugs + bucket.reopenedBugs + bucket.blockers + bucket.riskyReports + bucket.blockedFeatures;
+        let tone = getProgressTone(coverage);
+        let statusLabel = "Đang chạy";
+
+        if (bucket.criticalBugs > 0) {
+            tone = "red";
+            statusLabel = `${bucket.criticalBugs} Sev 1`;
+        } else if (issueCount > 0) {
+            tone = "yellow";
+            statusLabel = "Cần xử lý";
+        } else if (!totalCases && !bucket.weeklyCount && !bucket.dailyCount) {
+            tone = "gray";
+            statusLabel = "Thiếu dữ liệu";
+        } else if (coverage >= 90 && (!successRate || successRate >= 90)) {
+            tone = "green";
+            statusLabel = "Ổn định";
+        } else if (coverage < 70) {
+            tone = "yellow";
+            statusLabel = "Thiếu coverage";
+        } else if (successRate && successRate < 85) {
+            tone = "yellow";
+            statusLabel = "Pass thấp";
+        }
+
+        return {
+            group: bucket.group,
+            featureCount: bucket.featureCount,
+            totalCases,
+            executedCases,
+            coverage,
+            successRate,
+            statusLabel,
+            tone
+        };
+    });
+
+    const severity = { red: 0, yellow: 1, gray: 2, blue: 3, green: 4 };
+    return rows
+        .sort((a, b) => (severity[a.tone] ?? 9) - (severity[b.tone] ?? 9)
+            || b.featureCount - a.featureCount
+            || a.group.localeCompare(b.group, "vi"))
+        .slice(0, 8);
+}
+
+function getReadinessRecommendation(metrics, latestReadiness, readinessLevel) {
+    const decision = latestReadiness?.decision || "";
+    if (!latestReadiness) {
+        return { tone: "yellow", label: "Cần đánh giá" };
     }
-    const max = Math.max(...entries.map(([, value]) => value));
-    return `
-        <div class="chart-stack">
-            ${entries.map(([label, value]) => `
-                <div class="bar-item">
-                    <strong>${e(label || "Chưa phân nhóm")}</strong>
-                    <div class="progress"><span style="width:${Math.round((value / max) * 100)}%"></span></div>
-                    <span>${e(value)}</span>
-                </div>
-            `).join("")}
-        </div>
-    `;
+    if (decision === "Chưa sẵn sàng" || metrics.criticalBugs > 0 || readinessLevel < 70 || (metrics.pilotReadiness > 0 && metrics.pilotReadiness < 70)) {
+        return { tone: "red", label: "Chưa sẵn sàng" };
+    }
+    if (decision === "Sẵn sàng" && metrics.criticalBugs === 0 && readinessLevel >= 85 && metrics.pilotReadiness >= 85) {
+        return { tone: "green", label: "Sẵn sàng" };
+    }
+    if (decision === "Có điều kiện" || readinessLevel < 85 || metrics.coverage < 80 || metrics.successRate < 85 || metrics.trainingReadiness < 80 || metrics.pilotReadiness < 80) {
+        return { tone: "yellow", label: "Cần theo dõi" };
+    }
+    return { tone: "green", label: "On track" };
+}
+
+function getDashboardRisks(metrics) {
+    const risks = [];
+    const addRisk = (tone, icon, title, detail) => risks.push({ tone, icon, title, detail });
+    const waitingFeatures = appState.features.filter((row) => row.status === "Chờ fix" || row.status === "Tạm hoãn");
+    const blockerRows = appState.daily.filter((row) => isFilled(row.blocker));
+    const riskyWeekly = appState.weekly.filter((row) => row.assessment === "Rủi ro" || row.assessment === "Blocker");
+    const highIssues = sum(appState.daily, "highBugs") + sum(appState.weekly, "reopenedBugs");
+    const hasCoverageEvidence = sum(appState.daily, "totalCases") > 0
+        || appState.weekly.some((row) => isFilled(row.coverageRate) || Number(row.totalCases || 0) > 0)
+        || appState.readiness.some((row) => isFilled(row.coverageRate));
+    const hasSuccessEvidence = appState.weekly.some((row) => isFilled(row.successRate))
+        || appState.readiness.some((row) => isFilled(row.successRate));
+    const latestReadiness = getLatest(appState.readiness);
+
+    if (metrics.criticalBugs > 0) {
+        addRisk("red", "fa-fire", `${metrics.criticalBugs} lỗi Sev 1 còn tồn`, "Ưu tiên owner và retest trước khi chốt readiness.");
+    }
+    if (waitingFeatures.length) {
+        addRisk("yellow", "fa-screwdriver-wrench", `${waitingFeatures.length} chức năng chờ xử lý`, "Có trạng thái Chờ fix hoặc Tạm hoãn trong danh mục.");
+    }
+    if (riskyWeekly.length) {
+        addRisk("red", "fa-chart-line", `${riskyWeekly.length} báo cáo tuần có rủi ro`, "Weekly assessment đang ở mức Rủi ro hoặc Blocker.");
+    }
+    if (blockerRows.length) {
+        addRisk("yellow", "fa-ban", `${blockerRows.length} vướng mắc Daily UAT`, "Daily log còn ghi nhận blocker cần làm rõ.");
+    }
+    if (highIssues > 0) {
+        addRisk("yellow", "fa-bug", `${highIssues} lỗi high/reopen`, "Theo dõi lỗi mức cao và lỗi mở lại để tránh trễ retest.");
+    }
+    if (hasCoverageEvidence && metrics.coverage < 80) {
+        addRisk(metrics.coverage < 60 ? "red" : "yellow", "fa-chart-pie", `Coverage mới đạt ${metrics.coverage}%`, "Cần bổ sung testcase hoặc cập nhật kết quả chạy.");
+    }
+    if (hasSuccessEvidence && metrics.successRate < 85) {
+        addRisk("yellow", "fa-circle-half-stroke", `Success rate ${metrics.successRate}%`, "Tỷ lệ pass chưa đủ chắc để khuyến nghị go-live.");
+    }
+    if (latestReadiness?.decision === "Chưa sẵn sàng" || latestReadiness?.decision === "Có điều kiện") {
+        addRisk(latestReadiness.decision === "Chưa sẵn sàng" ? "red" : "yellow", "fa-flag", latestReadiness.decision, latestReadiness.note || "Cập nhật điều kiện readiness trước mốc Pilot/Go-live.");
+    }
+    if (latestReadiness && metrics.pilotReadiness > 0 && metrics.pilotReadiness < 80) {
+        addRisk("yellow", "fa-rocket", `Pilot readiness ${metrics.pilotReadiness}%`, "Chưa đạt ngưỡng khuyến nghị 80% cho Pilot/Go-live.");
+    }
+
+    if (!risks.length) {
+        addRisk("green", "fa-circle-check", "Không có rủi ro đỏ", "Tiếp tục cập nhật Daily, Weekly và Readiness để giữ dashboard phản ánh đúng thực tế.");
+    }
+    return risks.slice(0, 5);
+}
+
+function getUpcomingMilestones(limit = 7) {
+    const today = getTodayDateOnly();
+    const milestoneKeys = ["t1", "t2", "t3", "t4", "t5", "t6"];
+    const items = [];
+
+    appState.plans.forEach((row) => {
+        milestoneKeys.forEach((key) => {
+            const date = parseDateOnly(row[key]);
+            if (!date) return;
+            items.push({
+                milestone: key.toUpperCase(),
+                value: row[key],
+                date,
+                timestamp: date.getTime(),
+                feature: row.feature,
+                sprint: row.sprint,
+                owner: row.owner
+            });
+        });
+    });
+
+    const future = items.filter((item) => item.date >= today).sort((a, b) => a.timestamp - b.timestamp);
+    const past = items.filter((item) => item.date < today).sort((a, b) => b.timestamp - a.timestamp);
+    const selected = [...future.slice(0, limit)];
+    if (selected.length < limit) selected.push(...past.slice(0, limit - selected.length));
+
+    return selected.map((item) => {
+        const diff = daysBetween(today, item.date);
+        let tone = "green";
+        let statusText = `Còn ${diff} ngày`;
+        if (diff < 0) {
+            tone = "gray";
+            statusText = `Đã qua ${Math.abs(diff)} ngày`;
+        } else if (diff === 0) {
+            tone = "yellow";
+            statusText = "Đến hạn hôm nay";
+        } else if (diff <= 7) {
+            tone = "blue";
+        }
+        return {
+            ...item,
+            tone,
+            statusText,
+            dateLabel: formatPlainDate(item.value)
+        };
+    });
+}
+
+function getRecentActivities(limit = 8) {
+    const items = [];
+    Object.keys(modules).forEach((id) => {
+        const mod = modules[id];
+        appState[mod.collection].forEach((row) => {
+            const stamp = row.updatedAt || row.createdAt || appState.updatedAt;
+            const time = new Date(stamp || 0).getTime();
+            items.push({
+                title: recordTitle(row, mod),
+                moduleLabel: mod.shortLabel,
+                icon: mod.icon,
+                owner: recordOwnerLabel(row),
+                time,
+                timeLabel: stamp ? formatShortDateTime(stamp) : "Chưa có thời gian"
+            });
+        });
+    });
+    return items
+        .sort((a, b) => b.time - a.time)
+        .slice(0, limit);
 }
 
 function renderModule(mod) {
@@ -1732,6 +2122,48 @@ function calculateMetrics() {
         trainingReadiness: round(latestReadiness?.trainingReadiness || 0),
         pilotReadiness: round(latestReadiness?.pilotReadiness || 0)
     };
+}
+
+function normalizeLookupKey(value) {
+    return String(value || "").trim().toLocaleLowerCase("vi");
+}
+
+function isFilled(value) {
+    return value !== "" && value != null && String(value).trim() !== "";
+}
+
+function getProgressTone(value) {
+    const safeValue = clamp(value);
+    if (!safeValue) return "gray";
+    if (safeValue >= 90) return "green";
+    if (safeValue >= 75) return "blue";
+    if (safeValue >= 55) return "yellow";
+    return "red";
+}
+
+function parseDateOnly(value) {
+    if (!value) return null;
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setHours(0, 0, 0, 0);
+    return date;
+}
+
+function getTodayDateOnly() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+}
+
+function daysBetween(fromDate, toDate) {
+    const msPerDay = 24 * 60 * 60 * 1000;
+    return Math.round((toDate.getTime() - fromDate.getTime()) / msPerDay);
+}
+
+function formatPlainDate(value) {
+    const date = parseDateOnly(value);
+    if (!date) return String(value || "-");
+    return new Intl.DateTimeFormat("vi-VN").format(date);
 }
 
 function renderCell(row, col) {
