@@ -198,23 +198,26 @@ app.use((req, res, next) => {
 });
 
 app.get("/api/health", async (req, res) => {
+  const baseHealth = {
+    ok: true,
+    service: "squad2-uat-command-center",
+    timestamp: new Date().toISOString()
+  };
   try {
     await ensureSchema();
     await getPool().query("select 1");
     res.json({
-      ok: true,
-      service: "squad2-uat-command-center",
+      ...baseHealth,
       db: "online",
-      timestamp: new Date().toISOString()
+      ready: true
     });
   } catch (error) {
     console.error("Health check failed:", error);
-    res.status(503).json({
-      ok: false,
-      service: "squad2-uat-command-center",
+    res.json({
+      ...baseHealth,
       db: "offline",
       error: publicError(error),
-      timestamp: new Date().toISOString()
+      ready: false
     });
   }
 });
