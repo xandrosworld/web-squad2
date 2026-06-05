@@ -530,7 +530,7 @@ app.use((error, req, res, next) => {
 });
 
 const server = app.listen(port, "0.0.0.0", () => {
-  console.log(`Squad2 UAT Workbook listening on port ${port}`);
+  console.log(`Squad2 UAT Dashboard listening on port ${port}`);
   if (!databaseUrl) {
     console.warn("DATABASE_URL is not configured. API writes will fail until it is set.");
   }
@@ -634,7 +634,7 @@ function ensureSchema() {
 
 function buildExcelWorkbook(state) {
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = "Squad 2 UAT Workbook";
+  workbook.creator = "Squad 2 UAT Dashboard";
   workbook.created = new Date();
   workbook.modified = new Date();
 

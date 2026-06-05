@@ -41,14 +41,14 @@ const assessmentOptions = ["Tốt", "Cần theo dõi", "Rủi ro", "Blocker"];
 
 const modules = {
     features: {
-        label: "01_DanhMuc_UAT",
-        shortLabel: "01 Danh mục",
+        label: "Danh mục UAT",
+        shortLabel: "Danh mục",
         icon: "fa-layer-group",
         collection: "features",
-        description: "Sheet 01 quản lý mã chức năng, sprint, nhóm nghiệp vụ, chủ quản, tester và trạng thái UAT.",
+        description: "Quản lý mã chức năng, sprint, nhóm nghiệp vụ, chủ quản, tester và trạng thái UAT.",
         emptyIcon: "fa-list-check",
         emptyTitle: "Chưa có danh mục UAT",
-        emptyText: "Sheet 01 sẽ hiển thị tại đây sau khi có bản ghi.",
+        emptyText: "Danh mục sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "code", label: "Mã chức năng", type: "text", required: true },
             { key: "sprint", label: "Sprint", type: "text" },
@@ -80,14 +80,14 @@ const modules = {
         ]
     },
     plans: {
-        label: "02_PhanCong_Sprint",
-        shortLabel: "02 Phân công",
+        label: "Phân công Sprint",
+        shortLabel: "Phân công",
         icon: "fa-calendar-days",
         collection: "plans",
-        description: "Sheet 02 phân công chức năng theo sprint, chủ quản và các mốc T1-T6.",
+        description: "Phân công chức năng theo sprint, chủ quản và các mốc T1-T6.",
         emptyIcon: "fa-calendar-plus",
         emptyTitle: "Chưa có phân công Sprint",
-        emptyText: "Sheet 02 sẽ hiển thị tại đây sau khi có bản ghi.",
+        emptyText: "Kế hoạch phân công sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "sprint", label: "Sprint", type: "text", required: true },
             { key: "feature", label: "Chức năng", type: "text", required: true, full: true },
@@ -117,14 +117,14 @@ const modules = {
         ]
     },
     matrix: {
-        label: "03_MaTran_NangLuc",
-        shortLabel: "03 Ma trận",
+        label: "Ma trận năng lực",
+        shortLabel: "Ma trận",
         icon: "fa-table-cells-large",
         collection: "matrix",
-        description: "Sheet 03 theo dõi ma trận nhóm chức năng theo các mốc T1-T6.",
+        description: "Theo dõi ma trận nhóm chức năng theo các mốc T1-T6.",
         emptyIcon: "fa-grip",
         emptyTitle: "Chưa có ma trận năng lực",
-        emptyText: "Sheet 03 sẽ hiển thị tại đây sau khi có bản ghi.",
+        emptyText: "Ma trận sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "group", label: "Nhóm chức năng", type: "select", options: functionGroups, required: true },
             { key: "t1", label: "T1", type: "text" },
@@ -148,14 +148,14 @@ const modules = {
         ]
     },
     daily: {
-        label: "04_DieuHanh_HangNgay",
-        shortLabel: "04 Daily",
+        label: "Điều hành hằng ngày",
+        shortLabel: "Daily",
         icon: "fa-clipboard-check",
         collection: "daily",
-        description: "Sheet 04 điều hành hằng ngày: testcase, tiến độ, lỗi nghiêm trọng, lỗi mức cao và vướng mắc.",
+        description: "Theo dõi testcase, tiến độ, lỗi nghiêm trọng, lỗi mức cao và vướng mắc hằng ngày.",
         emptyIcon: "fa-clipboard-list",
         emptyTitle: "Chưa có dữ liệu điều hành hằng ngày",
-        emptyText: "Sheet 04 sẽ hiển thị tại đây sau khi có bản ghi.",
+        emptyText: "Dữ liệu điều hành sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "date", label: "Ngày", type: "date", required: true },
             { key: "feature", label: "Chức năng", type: "text", required: true, full: true },
@@ -185,14 +185,14 @@ const modules = {
         ]
     },
     weekly: {
-        label: "05_ChatLuong_Tuan",
-        shortLabel: "05 Tuần",
+        label: "Chất lượng tuần",
+        shortLabel: "Chất lượng",
         icon: "fa-chart-line",
         collection: "weekly",
-        description: "Sheet 05 tổng hợp chất lượng kiểm thử theo tuần và nhóm chức năng.",
+        description: "Tổng hợp chất lượng kiểm thử theo tuần và nhóm chức năng.",
         emptyIcon: "fa-chart-column",
         emptyTitle: "Chưa có dữ liệu chất lượng tuần",
-        emptyText: "Sheet 05 sẽ hiển thị tại đây sau khi có bản ghi.",
+        emptyText: "Dữ liệu chất lượng tuần sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "week", label: "Tuần", type: "text", required: true },
             { key: "group", label: "Nhóm chức năng", type: "select", options: functionGroups, required: true },
@@ -222,14 +222,14 @@ const modules = {
         ]
     },
     readiness: {
-        label: "06_KetThuc_Sprint",
-        shortLabel: "06 Kết thúc",
+        label: "Kết thúc Sprint",
+        shortLabel: "Kết thúc",
         icon: "fa-flag-checkered",
         collection: "readiness",
-        description: "Sheet 06 chốt sprint theo tỷ lệ bao phủ, tỷ lệ thành công, lỗi tồn đọng, mức độ sẵn sàng và quyết định.",
+        description: "Chốt sprint theo tỷ lệ bao phủ, tỷ lệ thành công, lỗi tồn đọng, mức độ sẵn sàng và quyết định.",
         emptyIcon: "fa-flag",
         emptyTitle: "Chưa có dữ liệu kết thúc Sprint",
-        emptyText: "Sheet 06 sẽ hiển thị tại đây sau khi có bản ghi.",
+        emptyText: "Dữ liệu kết thúc Sprint sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "sprint", label: "Sprint", type: "text", required: true },
             { key: "coverageRate", label: "Tỷ lệ bao phủ", type: "percent" },
@@ -254,13 +254,13 @@ const modules = {
 };
 
 const tabs = [
-    { id: "features", label: "01 Danh mục", icon: modules.features.icon },
-    { id: "plans", label: "02 Phân công", icon: modules.plans.icon },
-    { id: "matrix", label: "03 Ma trận", icon: modules.matrix.icon },
-    { id: "daily", label: "04 Daily", icon: modules.daily.icon },
-    { id: "weekly", label: "05 Tuần", icon: modules.weekly.icon },
-    { id: "readiness", label: "06 Kết thúc", icon: modules.readiness.icon },
-    { id: "dashboard", label: "07 Dashboard", icon: "fa-gauge-high" }
+    { id: "dashboard", label: "Dashboard", icon: "fa-gauge-high" },
+    { id: "features", label: "Danh mục", icon: modules.features.icon },
+    { id: "plans", label: "Phân công", icon: modules.plans.icon },
+    { id: "matrix", label: "Ma trận", icon: modules.matrix.icon },
+    { id: "daily", label: "Daily", icon: modules.daily.icon },
+    { id: "weekly", label: "Chất lượng", icon: modules.weekly.icon },
+    { id: "readiness", label: "Kết thúc", icon: modules.readiness.icon }
 ];
 
 function getInitialTab() {
@@ -519,7 +519,7 @@ function renderAuthLoading() {
             </div>
             <div class="login-loading">
                 <img src="assets/bidv-logo-animated.svg" alt="BIDV">
-                <strong>Squad 2 UAT Workbook</strong>
+                <strong>Squad 2 UAT Dashboard</strong>
                 <span>Đang kiểm tra phiên đăng nhập...</span>
             </div>
         </div>
@@ -543,15 +543,15 @@ function renderLoginPage() {
                             <img src="assets/bidv-logo-animated.svg" alt="BIDV">
                             <div class="login-logo-text">
                                 <span>Squad 2</span>
-                                <small>UAT Workbook</small>
+                                <small>UAT Dashboard</small>
                             </div>
                         </div>
 
                         <h1>Bảng điều hành<br>UAT Squad 2</h1>
-                        <p>Web hóa 7 sheet UAT: danh mục, phân công sprint, ma trận năng lực, điều hành hằng ngày, chất lượng tuần, kết thúc sprint và dashboard.</p>
+                        <p>Theo dõi danh mục UAT, phân công Sprint, tiến độ kiểm thử, chất lượng tuần và readiness trước Pilot/Go-live.</p>
 
                         <div class="login-stats">
-                            <div><strong>7</strong><span>Sheet UAT</span></div>
+                            <div><strong>6</strong><span>Phân hệ UAT</span></div>
                             <div><strong>24/7</strong><span>Dữ liệu tập trung</span></div>
                             <div><strong>DB</strong><span>Railway Postgres</span></div>
                         </div>
@@ -566,7 +566,7 @@ function renderLoginPage() {
 
                         <div class="login-card-head">
                             <h2>Đăng nhập</h2>
-                            <p>Truy cập Squad 2 UAT Workbook</p>
+                            <p>Truy cập Dashboard UAT Squad 2</p>
                         </div>
 
                         <form id="loginForm" class="login-form">
@@ -632,8 +632,8 @@ function renderTopbar() {
                 <img class="brand-logo" src="assets/logo-bidv.jpg" alt="BIDV">
                 <div class="brand-divider"></div>
                 <div class="brand-title">
-                    <strong>Squad 2 UAT Workbook</strong>
-                    <span>Web hóa 7 sheet UAT</span>
+                    <strong>Squad 2 UAT Dashboard</strong>
+                    <span>Không gian điều hành UAT tập trung</span>
                 </div>
             </div>
             <div class="top-actions">
@@ -644,8 +644,8 @@ function renderTopbar() {
                 <button class="text-btn" data-auth-action="logout" title="Đăng xuất">
                     <i class="fa-solid fa-right-from-bracket"></i><span>Đăng xuất</span>
                 </button>
-                <button class="text-btn" data-action="export-excel" title="Xuất Excel đủ 7 sheet UAT">
-                    <i class="fa-solid fa-file-excel"></i><span>Xuất Excel</span>
+                <button class="text-btn" data-action="export-excel" title="Xuất báo cáo dữ liệu UAT">
+                    <i class="fa-solid fa-file-export"></i><span>Xuất báo cáo</span>
                 </button>
                 ${authState.user?.role === "admin" ? `
                     <button class="text-btn" data-action="import-json" title="Nhập JSON">
@@ -659,13 +659,13 @@ function renderTopbar() {
 
 function renderCommandBand() {
     const activeModule = modules[ui.activeTab];
-    const title = activeModule ? activeModule.label : "07_Dashboard";
-    const subtitle = activeModule ? activeModule.description : "BẢNG ĐIỀU HÀNH TỔNG HỢP SQUAD 2: tiến độ UAT, bao phủ kiểm thử, tỷ lệ thành công, lỗi tồn đọng và readiness.";
+    const title = activeModule ? activeModule.label : "Dashboard tổng hợp";
+    const subtitle = activeModule ? activeModule.description : "Theo dõi tiến độ UAT, bao phủ kiểm thử, tỷ lệ thành công, lỗi tồn đọng và readiness.";
     const totalRecords = Object.keys(modules).reduce((sum, id) => sum + appState[modules[id].collection].length, 0);
     return `
         <div class="command-band">
             <div>
-                <div class="screen-kicker">BIDV · Squad 2 · UAT Workbook</div>
+                <div class="screen-kicker">BIDV · Squad 2 · UAT</div>
                 <h1 class="screen-title">${e(title)}</h1>
                 <p class="screen-subtitle">${e(subtitle)}</p>
             </div>
@@ -681,12 +681,12 @@ function renderCommandBand() {
 function renderKpis() {
     const metrics = calculateMetrics();
     const cards = [
-        { label: "Tiến độ UAT toàn Squad", value: `${metrics.squadProgress}%`, foot: "Theo trạng thái Sheet 01", icon: "fa-chart-simple" },
-        { label: "Tỷ lệ bao phủ kiểm thử", value: `${metrics.coverage}%`, foot: "Theo testcase Sheet 04-06", icon: "fa-layer-group" },
-        { label: "Tỷ lệ thành công", value: `${metrics.successRate}%`, foot: "Theo Sheet 05-06", icon: "fa-circle-check" },
-        { label: "Lỗi nghiêm trọng tồn đọng", value: metrics.criticalBugs, foot: "Theo Sheet 04-06", icon: "fa-triangle-exclamation" },
-        { label: "Mức độ sẵn sàng đào tạo", value: `${metrics.trainingReadiness}%`, foot: "Theo Sheet 06", icon: "fa-graduation-cap" },
-        { label: "Mức độ sẵn sàng Pilot/Go-live", value: `${metrics.pilotReadiness}%`, foot: "Theo Sheet 06", icon: "fa-rocket" }
+        { label: "Tiến độ UAT toàn Squad", value: `${metrics.squadProgress}%`, foot: "Theo trạng thái danh mục", icon: "fa-chart-simple" },
+        { label: "Tỷ lệ bao phủ kiểm thử", value: `${metrics.coverage}%`, foot: "Theo testcase đã thực hiện", icon: "fa-layer-group" },
+        { label: "Tỷ lệ thành công", value: `${metrics.successRate}%`, foot: "Theo chất lượng tuần", icon: "fa-circle-check" },
+        { label: "Lỗi nghiêm trọng tồn đọng", value: metrics.criticalBugs, foot: "Theo daily và kết thúc Sprint", icon: "fa-triangle-exclamation" },
+        { label: "Mức độ sẵn sàng đào tạo", value: `${metrics.trainingReadiness}%`, foot: "Theo đánh giá readiness", icon: "fa-graduation-cap" },
+        { label: "Mức độ sẵn sàng Pilot/Go-live", value: `${metrics.pilotReadiness}%`, foot: "Theo đánh giá readiness", icon: "fa-rocket" }
     ];
     return `
         <div class="kpi-grid">
@@ -736,13 +736,13 @@ function renderKickoffPanel() {
                     <div class="kickoff-icon"><i class="fa-solid fa-gauge-high"></i></div>
                     <div>
                         <h3>Chưa có dữ liệu UAT để phân tích</h3>
-                        <p>Sheet 07 sẽ tự tổng hợp khi có dữ liệu từ 01_DanhMuc_UAT đến 06_KetThuc_Sprint.</p>
+                        <p>Dashboard sẽ tự tổng hợp khi có dữ liệu từ các phân hệ UAT.</p>
                     </div>
                 </div>
                 <div class="kickoff-actions">
-                    <button class="text-btn" data-tab="features"><i class="fa-solid fa-layer-group"></i><span>Nhập Sheet 01</span></button>
-                    <button class="text-btn" data-tab="plans"><i class="fa-solid fa-calendar-days"></i><span>Nhập Sheet 02</span></button>
-                    <button class="text-btn" data-tab="daily"><i class="fa-solid fa-clipboard-check"></i><span>Nhập Sheet 04</span></button>
+                    <button class="text-btn" data-tab="features"><i class="fa-solid fa-layer-group"></i><span>Nhập danh mục</span></button>
+                    <button class="text-btn" data-tab="plans"><i class="fa-solid fa-calendar-days"></i><span>Lập phân công</span></button>
+                    <button class="text-btn" data-tab="daily"><i class="fa-solid fa-clipboard-check"></i><span>Cập nhật daily</span></button>
                 </div>
             </div>
         </section>
@@ -772,7 +772,7 @@ function renderModuleProgressPanel() {
                     <i class="fa-solid fa-chart-simple"></i>
                     <div>
                         <h2>Tiến độ theo nhóm chức năng</h2>
-                        <span>Tổng hợp từ Sheet 01, 03, 04 và 05</span>
+                        <span>Tổng hợp từ danh mục, ma trận, daily và chất lượng tuần</span>
                     </div>
                 </div>
             </div>
@@ -799,7 +799,7 @@ function renderModuleProgressPanel() {
                             </div>
                         `).join("")}
                     </div>
-                ` : renderEmpty("fa-layer-group", "Chưa có dữ liệu nhóm chức năng", "Nhập Sheet 01 hoặc Sheet 05 để xem tiến độ theo nhóm.", true)}
+                ` : renderEmpty("fa-layer-group", "Chưa có dữ liệu nhóm chức năng", "Nhập danh mục hoặc chất lượng tuần để xem tiến độ theo nhóm.", true)}
             </div>
         </section>
     `;
@@ -827,7 +827,7 @@ function renderReadinessHealthPanel(metrics) {
                     <i class="fa-solid fa-flag-checkered"></i>
                     <div>
                         <h2>Kết thúc Sprint</h2>
-                        <span>${latestReadiness ? `Bản gần nhất: ${e(latestReadiness.sprint || "Sheet 06")}` : "Chưa có Sheet 06"}</span>
+                        <span>${latestReadiness ? `Bản gần nhất: ${e(latestReadiness.sprint || "Kết thúc Sprint")}` : "Chưa có đánh giá"}</span>
                     </div>
                 </div>
             </div>
@@ -869,7 +869,7 @@ function renderRiskPanel(metrics) {
                     <i class="fa-solid fa-triangle-exclamation"></i>
                     <div>
                         <h2>Cần xử lý</h2>
-                        <span>Rủi ro ảnh hưởng tới Sheet 07 Dashboard</span>
+                        <span>Rủi ro ảnh hưởng tới readiness và Pilot/Go-live</span>
                     </div>
                 </div>
             </div>
@@ -899,7 +899,7 @@ function renderTimelinePanel() {
                     <i class="fa-solid fa-timeline"></i>
                     <div>
                         <h2>Timeline T1-T6</h2>
-                        <span>Mốc gần nhất từ Sheet 02 Phân công Sprint</span>
+                        <span>Mốc gần nhất từ phân công Sprint</span>
                     </div>
                 </div>
             </div>
@@ -917,7 +917,7 @@ function renderTimelinePanel() {
                             </div>
                         `).join("")}
                     </div>
-                ` : renderEmpty("fa-calendar-days", "Chưa có timeline Sprint", "Nhập Sheet 02 để dashboard hiển thị các mốc T1-T6 gần nhất.", true)}
+                ` : renderEmpty("fa-calendar-days", "Chưa có timeline Sprint", "Nhập phân công Sprint để dashboard hiển thị các mốc T1-T6 gần nhất.", true)}
             </div>
         </section>
     `;
@@ -932,7 +932,7 @@ function renderActivityPanel() {
                     <i class="fa-solid fa-clock-rotate-left"></i>
                     <div>
                         <h2>Cập nhật gần đây</h2>
-                        <span>Bản ghi mới cập nhật trong 6 sheet nhập liệu</span>
+                        <span>Bản ghi mới cập nhật trong các phân hệ UAT</span>
                     </div>
                 </div>
             </div>
@@ -1114,10 +1114,10 @@ function getDashboardRisks(metrics) {
         addRisk("yellow", "fa-screwdriver-wrench", `${waitingFeatures.length} chức năng chờ xử lý`, "Có trạng thái Chờ fix hoặc Tạm hoãn trong danh mục.");
     }
     if (riskyWeekly.length) {
-        addRisk("red", "fa-chart-line", `${riskyWeekly.length} báo cáo tuần có rủi ro`, "Sheet 05 đang có đánh giá Rủi ro hoặc Blocker.");
+        addRisk("red", "fa-chart-line", `${riskyWeekly.length} báo cáo tuần có rủi ro`, "Chất lượng tuần đang có đánh giá Rủi ro hoặc Blocker.");
     }
     if (blockerRows.length) {
-        addRisk("yellow", "fa-ban", `${blockerRows.length} vướng mắc hằng ngày`, "Sheet 04 còn ghi nhận blocker cần làm rõ.");
+        addRisk("yellow", "fa-ban", `${blockerRows.length} vướng mắc hằng ngày`, "Daily còn ghi nhận blocker cần làm rõ.");
     }
     if (highIssues > 0) {
         addRisk("yellow", "fa-bug", `${highIssues} lỗi high/reopen`, "Theo dõi lỗi mức cao và lỗi mở lại để tránh trễ retest.");
@@ -1129,14 +1129,14 @@ function getDashboardRisks(metrics) {
         addRisk("yellow", "fa-circle-half-stroke", `Success rate ${metrics.successRate}%`, "Tỷ lệ pass chưa đủ chắc để khuyến nghị go-live.");
     }
     if (latestReadiness?.decision === "Chưa sẵn sàng" || latestReadiness?.decision === "Có điều kiện") {
-        addRisk(latestReadiness.decision === "Chưa sẵn sàng" ? "red" : "yellow", "fa-flag", latestReadiness.decision, latestReadiness.note || "Cập nhật điều kiện Sheet 06 trước mốc Pilot/Go-live.");
+        addRisk(latestReadiness.decision === "Chưa sẵn sàng" ? "red" : "yellow", "fa-flag", latestReadiness.decision, latestReadiness.note || "Cập nhật điều kiện kết thúc Sprint trước mốc Pilot/Go-live.");
     }
     if (latestReadiness && metrics.pilotReadiness > 0 && metrics.pilotReadiness < 80) {
         addRisk("yellow", "fa-rocket", `Pilot/Go-live ${metrics.pilotReadiness}%`, "Chưa đạt ngưỡng khuyến nghị 80%.");
     }
 
     if (!risks.length) {
-        addRisk("green", "fa-circle-check", "Không có rủi ro đỏ", "Tiếp tục cập nhật Sheet 04, 05 và 06 để dashboard phản ánh đúng thực tế.");
+        addRisk("green", "fa-circle-check", "Không có rủi ro đỏ", "Tiếp tục cập nhật daily, chất lượng tuần và kết thúc Sprint để dashboard phản ánh đúng thực tế.");
     }
     return risks.slice(0, 5);
 }
@@ -2196,13 +2196,13 @@ function resetFilters() {
 async function exportExcel() {
     if (ui.saving) return;
     ui.saving = true;
-    showToast("Đang tạo file Excel từ Railway DB...");
+        showToast("Đang tạo báo cáo từ Railway DB...");
     try {
         const response = await fetch(`${API_BASE}/export/excel`, {
             credentials: "same-origin"
         });
         if (!response.ok) {
-            let message = `Không xuất được Excel (${response.status}).`;
+            let message = `Không xuất được báo cáo (${response.status}).`;
             try {
                 const data = await response.json();
                 message = data.error || message;
@@ -2214,9 +2214,9 @@ async function exportExcel() {
         const disposition = response.headers.get("Content-Disposition") || "";
         const filename = disposition.match(/filename="([^"]+)"/i)?.[1] || `squad2-uat-${todayStamp()}.xlsx`;
         downloadBlob(await response.blob(), filename);
-        showToast("Đã xuất file Excel đủ 7 sheet UAT.");
+        showToast("Đã xuất báo cáo dữ liệu UAT.");
     } catch (error) {
-        showToast(error.message || "Không xuất được file Excel.");
+        showToast(error.message || "Không xuất được báo cáo.");
     } finally {
         ui.saving = false;
     }
