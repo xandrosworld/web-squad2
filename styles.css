@@ -1039,6 +1039,101 @@ button {
     box-shadow: 0 0 0 3px rgba(0, 107, 104, 0.11);
 }
 
+.combo-field {
+    position: relative;
+}
+
+.combo-control {
+    position: relative;
+}
+
+.combo-input {
+    padding-right: 40px;
+}
+
+.combo-toggle {
+    position: absolute;
+    right: 5px;
+    top: 5px;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #475569;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+}
+
+.combo-toggle:hover {
+    background: var(--bidv-teal-soft);
+    color: var(--bidv-teal);
+}
+
+.combo-field.open .combo-toggle i {
+    transform: rotate(180deg);
+}
+
+.combo-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 70;
+    display: none;
+    max-height: 236px;
+    overflow: auto;
+    padding: 6px;
+    border: 1px solid #dbe4ee;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+}
+
+.combo-field.open .combo-menu {
+    display: grid;
+    gap: 3px;
+}
+
+.combo-option {
+    width: 100%;
+    min-height: 32px;
+    border: 0;
+    border-radius: 6px;
+    padding: 7px 9px;
+    background: transparent;
+    color: #1f2937;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 17px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.combo-option:hover,
+.combo-option:focus {
+    background: var(--bidv-teal-soft);
+    color: var(--bidv-teal);
+    outline: none;
+}
+
+.combo-option.hidden {
+    display: none;
+}
+
+.combo-empty {
+    display: none;
+    padding: 9px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 17px;
+}
+
+.combo-menu.is-empty .combo-empty {
+    display: block;
+}
+
 .table-wrap {
     width: 100%;
     overflow: auto;
@@ -1116,8 +1211,107 @@ button {
     overflow-wrap: break-word;
 }
 
+.data-table.is-compact th {
+    height: 36px;
+    padding: 0 8px;
+    font-size: 10.5px;
+}
+
+.data-table.is-compact .filter-row th {
+    height: 38px;
+    padding: 5px 6px 7px;
+}
+
+.data-table.is-compact .column-filter {
+    height: 26px;
+    padding: 0 7px;
+    font-size: 10.5px;
+}
+
+.data-table.is-compact td {
+    min-height: 40px;
+    padding: 7px 8px;
+    font-size: 11.5px;
+    line-height: 16px;
+}
+
+.data-table.is-compact .tag {
+    min-height: 22px;
+    padding: 2px 7px;
+    font-size: 10.5px;
+    line-height: 15px;
+}
+
+.data-table.has-sticky-columns .sticky-col {
+    position: sticky;
+    z-index: 1;
+    background: #ffffff;
+}
+
+.data-table.has-sticky-columns thead tr:first-child th {
+    z-index: 4;
+}
+
+.data-table.has-sticky-columns thead tr:first-child th.sticky-col {
+    z-index: 7;
+    background: #f8fafc;
+}
+
+.data-table.has-sticky-columns .filter-row th.sticky-col {
+    z-index: 6;
+    background: #ffffff;
+}
+
+.data-table.has-sticky-columns td.sticky-col {
+    z-index: 2;
+}
+
+.data-table.has-sticky-columns .sticky-boundary {
+    box-shadow: 10px 0 14px -14px rgba(15, 23, 42, 0.55);
+}
+
+.data-table .section-row td {
+    min-height: 26px;
+    padding: 4px 8px;
+    background: #12bdb8;
+    color: #ffffff;
+    border-bottom: 1px solid #0ea5a0;
+    font-size: 12px;
+    line-height: 16px;
+    vertical-align: middle;
+}
+
+.data-table .section-row td.sticky-col {
+    background: #12bdb8;
+    z-index: 3;
+}
+
+.data-table .section-row strong {
+    display: block;
+    color: #ffffff;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.data-table.is-compact .section-row td {
+    min-height: 24px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+}
+
 .data-table tbody tr:hover td {
     background: #fbfdff;
+}
+
+.data-table.has-sticky-columns tbody tr:hover td.sticky-col {
+    background: #fbfdff;
+}
+
+.data-table tbody tr.section-row:hover td,
+.data-table.has-sticky-columns tbody tr.section-row:hover td.sticky-col {
+    background: #12bdb8;
 }
 
 .data-table tbody tr:last-child td {
@@ -1177,6 +1371,11 @@ button {
 .tag.blue {
     background: #eff6ff;
     color: var(--info);
+}
+
+.tag.purple {
+    background: #f5f3ff;
+    color: #6d28d9;
 }
 
 .tag.green {

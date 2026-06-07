@@ -27,6 +27,30 @@ const functionGroups = [
 ];
 
 const statusOptions = [
+    "Done RSD",
+    "Done DEV",
+    "Done SIT",
+    "Done UAT"
+];
+const ownerOptions = [
+    "NV1 - Bùi Thị Mai Phương",
+    "NV2 - Nguyễn Châu Giang",
+    "NV3 - Phạm Anh Tuấn",
+    "ALL",
+    "BA"
+];
+const defaultFeatureSections = [
+    "Luồng quy trình",
+    "Tính năng nâng cao",
+    "Màn hình Thẩm định tín dụng",
+    "Màn hình Phê duyệt tín dụng",
+    "Màn hình Thư ký hội đồng",
+    "Logic khi NSD xử lý CAS",
+    "Tích hợp",
+    "Quản trị hệ thống",
+    "Luồng nhận, giải chấp, rút bớt, thay thế tài sản bảo đảm"
+];
+const legacyStatusOptions = [
     "Chưa bắt đầu",
     "Đang kiểm thử",
     "Chờ fix",
@@ -45,38 +69,47 @@ const modules = {
         shortLabel: "Danh mục",
         icon: "fa-layer-group",
         collection: "features",
-        description: "Quản lý mã chức năng, sprint, nhóm nghiệp vụ, chủ quản, tester và trạng thái UAT.",
+        stickyColumns: 7,
+        compactTable: true,
+        sectionKey: "sectionTitle",
+        sectionColumnKey: "name",
+        description: "Quản lý danh mục chức năng theo Story, Jira, Sprint, nghiệp vụ và trạng thái UAT.",
         emptyIcon: "fa-list-check",
         emptyTitle: "Chưa có danh mục UAT",
         emptyText: "Danh mục sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
+            { key: "sectionTitle", label: "Nhóm tiêu đề", type: "combo", options: getFeatureSectionOptions, full: true },
+            { key: "stt", label: "STT", type: "number" },
             { key: "code", label: "Mã chức năng", type: "text", required: true },
-            { key: "sprint", label: "Sprint", type: "text" },
+            { key: "storyCode", label: "Mã Story", type: "text" },
+            { key: "jiraCode", label: "Mã Jira", type: "text" },
+            { key: "jiraName", label: "Tên Jira", type: "text", full: true },
             { key: "name", label: "Tên chức năng", type: "text", required: true, full: true },
-            { key: "group", label: "Nhóm chức năng", type: "select", options: functionGroups },
-            { key: "owner", label: "Chủ quản NV", type: "text" },
-            { key: "handoffDate", label: "Ngày bàn giao UAT", type: "date" },
-            { key: "priority", label: "Mức độ ưu tiên", type: "select", options: priorityOptions },
+            { key: "sprint", label: "Sprint", type: "text" },
             { key: "status", label: "Trạng thái", type: "select", options: statusOptions },
-            { key: "testerMain", label: "Tester chính", type: "text" },
-            { key: "testerSupport", label: "Tester hỗ trợ", type: "text" }
+            { key: "owner", label: "Nghiệp vụ", type: "select", options: ownerOptions },
+            { key: "uatStatus", label: "Trạng thái UAT", type: "text" },
+            { key: "uatHandoff", label: "Bàn giao UAT", type: "date" },
+            { key: "uatDone", label: "Hoàn thành UAT", type: "date" }
         ],
         filters: [
             { key: "sprint", label: "Sprint" },
-            { key: "group", label: "Nhóm" },
+            { key: "owner", label: "Nghiệp vụ" },
             { key: "status", label: "Trạng thái" }
         ],
         columns: [
-            { key: "code", label: "Mã chức năng", width: "130px", render: (row) => tag(row.code, "teal") },
-            { key: "sprint", label: "Sprint", width: "110px" },
-            { key: "name", label: "Tên chức năng", width: "240px", render: (row) => strongText(row.name) },
-            { key: "group", label: "Nhóm chức năng", width: "170px" },
-            { key: "owner", label: "Chủ quản", width: "140px" },
-            { key: "handoffDate", label: "Bàn giao", width: "120px", render: (row) => formatDate(row.handoffDate) },
-            { key: "priority", label: "Ưu tiên", width: "110px", render: (row) => renderPriority(row.priority) },
-            { key: "status", label: "Trạng thái", width: "140px", render: (row) => renderStatus(row.status) },
-            { key: "testerMain", label: "Tester chính", width: "130px" },
-            { key: "testerSupport", label: "Tester hỗ trợ", width: "140px" }
+            { key: "stt", label: "STT", width: "48px" },
+            { key: "code", label: "Mã chức năng", width: "104px", render: (row) => tag(row.code, "teal") },
+            { key: "storyCode", label: "Mã Story", width: "84px", render: (row) => tag(row.storyCode, "gray") },
+            { key: "jiraCode", label: "Mã Jira", width: "132px" },
+            { key: "jiraName", label: "Tên Jira", width: "220px" },
+            { key: "name", label: "Tên chức năng", width: "250px", render: (row) => strongText(row.name) },
+            { key: "sprint", label: "Sprint", width: "88px" },
+            { key: "status", label: "Trạng thái", width: "112px", render: (row) => renderStatus(row.status) },
+            { key: "owner", label: "Nghiệp vụ", width: "188px" },
+            { key: "uatStatus", label: "Trạng thái UAT", width: "124px", render: (row) => renderStatus(row.uatStatus) },
+            { key: "uatHandoff", label: "Bàn giao UAT", width: "118px", render: (row) => formatDate(row.uatHandoff || row.handoffDate) },
+            { key: "uatDone", label: "Hoàn thành UAT", width: "126px", render: (row) => formatDate(row.uatDone) }
         ]
     },
     plans: {
@@ -492,7 +525,7 @@ function render() {
         ${renderProfileModal()}
         ${renderFloatingGroupChat()}
         <div class="toast ${ui.toast ? "show" : ""}">${e(ui.toast || "")}</div>
-        <input id="importDataInput" class="hidden-input" type="file" accept="application/json,.json">
+        <input id="importDataInput" class="hidden-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json,.json">
     `;
 
     bindEvents();
@@ -648,7 +681,7 @@ function renderTopbar() {
                     <i class="fa-solid fa-file-export"></i><span>Xuất báo cáo</span>
                 </button>
                 ${authState.user?.role === "admin" ? `
-                    <button class="text-btn" data-action="import-json" title="Nhập JSON">
+                    <button class="text-btn" data-action="import-data" title="Nhập Excel danh mục UAT">
                         <i class="fa-solid fa-upload"></i><span>Nhập</span>
                     </button>
                 ` : ""}
@@ -1259,27 +1292,51 @@ function renderToolbar(mod, visibleCount, totalCount) {
 
 function renderTable(mod, rows) {
     const colgroup = mod.columns.map((col) => `<col style="width:${e(col.width || "140px")}">`).join("") + `<col style="width:104px">`;
+    const minWidth = tableMinWidth(mod);
+    const columnMeta = tableColumnMeta(mod);
+    const tableClass = ["data-table", mod.compactTable ? "is-compact" : "", mod.stickyColumns ? "has-sticky-columns" : ""]
+        .filter(Boolean)
+        .join(" ");
     return `
         <div class="table-wrap">
-            <table class="data-table">
+            <table class="${e(tableClass)}" style="min-width:${e(minWidth)}">
                 <colgroup>${colgroup}</colgroup>
                 <thead>
                     <tr>
-                        ${mod.columns.map((col) => `<th><span class="th-label">${e(col.label)}</span></th>`).join("")}
+                        ${mod.columns.map((col, index) => `<th${tableCellAttrs(columnMeta[index])}><span class="th-label">${e(col.label)}</span></th>`).join("")}
                         <th class="col-actions">Thao tác</th>
                     </tr>
                     <tr class="filter-row">
-                        ${mod.columns.map((col) => `<th>${renderColumnFilter(mod, col)}</th>`).join("")}
+                        ${mod.columns.map((col, index) => `<th${tableCellAttrs(columnMeta[index])}>${renderColumnFilter(mod, col)}</th>`).join("")}
                         <th class="col-actions"></th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${rows.length ? rows.map((row) => {
+                    ${rows.length ? renderTableRows(mod, rows, columnMeta) : `
+                        <tr>
+                            <td colspan="${mod.columns.length + 1}">
+                                ${renderEmpty(mod.emptyIcon, mod.emptyTitle, mod.emptyText, true, mod)}
+                            </td>
+                        </tr>
+                    `}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function renderTableRows(mod, rows, columnMeta) {
+    let currentSection = null;
+    return rows.map((row) => {
+        const section = mod.sectionKey ? String(row[mod.sectionKey] || "").trim() : "";
+        const sectionMarkup = section && section !== currentSection ? renderSectionRow(mod, section, columnMeta) : "";
+        if (section) currentSection = section;
                         const canEdit = canModifyRecord(row);
                         const owner = recordOwnerLabel(row);
-                        return `
+        return `
+            ${sectionMarkup}
                             <tr>
-                                ${mod.columns.map((col) => `<td>${renderCell(row, col)}</td>`).join("")}
+                                ${mod.columns.map((col, index) => `<td${tableCellAttrs(columnMeta[index])}>${renderCell(row, col)}</td>`).join("")}
                                 <td>
                                     <div class="row-actions">
                                         ${canEdit ? `
@@ -1298,17 +1355,53 @@ function renderTable(mod, rows) {
                                 </td>
                             </tr>
                         `;
-                    }).join("") : `
-                        <tr>
-                            <td colspan="${mod.columns.length + 1}">
-                                ${renderEmpty(mod.emptyIcon, mod.emptyTitle, mod.emptyText, true, mod)}
-                            </td>
-                        </tr>
-                    `}
-                </tbody>
-            </table>
-        </div>
+    }).join("");
+}
+
+function renderSectionRow(mod, section, columnMeta) {
+    const sectionColumnIndex = Math.max(0, mod.columns.findIndex((col) => col.key === mod.sectionColumnKey));
+    return `
+        <tr class="section-row">
+            ${mod.columns.map((col, index) => `
+                <td${tableCellAttrs(columnMeta[index])}>
+                    ${index === sectionColumnIndex ? `<strong>${e(section)}</strong>` : ""}
+                </td>
+            `).join("")}
+            <td></td>
+        </tr>
     `;
+}
+
+function tableColumnMeta(mod) {
+    const stickyCount = Number(mod.stickyColumns || 0);
+    let left = 0;
+    return mod.columns.map((col, index) => {
+        const width = parseColumnWidth(col.width);
+        const sticky = index < stickyCount;
+        const meta = {
+            className: sticky ? `sticky-col${index === stickyCount - 1 ? " sticky-boundary" : ""}` : "",
+            style: sticky ? `left:${left}px` : ""
+        };
+        if (sticky) left += width;
+        return meta;
+    });
+}
+
+function tableCellAttrs(meta) {
+    if (!meta?.className && !meta?.style) return "";
+    return `${meta.className ? ` class="${e(meta.className)}"` : ""}${meta.style ? ` style="${e(meta.style)}"` : ""}`;
+}
+
+function tableMinWidth(mod) {
+    const columnWidth = mod.columns.reduce((total, col) => {
+        return total + parseColumnWidth(col.width);
+    }, 104);
+    return `${Math.max(columnWidth, 980)}px`;
+}
+
+function parseColumnWidth(width) {
+    const value = Number.parseInt(String(width || ""), 10);
+    return Number.isFinite(value) ? value : 140;
 }
 
 function renderColumnFilter(mod, col) {
@@ -1619,13 +1712,32 @@ function renderField(field, row) {
     const wrapper = `field ${field.full ? "full" : ""}`;
     let control = "";
     if (field.type === "select") {
+        const options = getFieldOptions(field);
         control = `
             <select class="field-select" name="${e(field.key)}" ${required}>
                 <option value=""></option>
-                ${(field.options || []).map((option) => `
+                ${options.map((option) => `
                     <option value="${e(option)}" ${option === value ? "selected" : ""}>${e(option)}</option>
                 `).join("")}
             </select>
+        `;
+    } else if (field.type === "combo") {
+        const options = getFieldOptions(field);
+        control = `
+            <div class="combo-field" data-combo-field>
+                <div class="combo-control">
+                    <input class="field-input combo-input" name="${e(field.key)}" type="text" value="${e(value)}" autocomplete="off" spellcheck="false" data-combo-input ${required}>
+                    <button class="combo-toggle" type="button" data-combo-toggle title="Mở danh sách ${label}" aria-label="Mở danh sách ${label}">
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                </div>
+                <div class="combo-menu" data-combo-menu>
+                    ${options.map((option) => `
+                        <button class="combo-option" type="button" data-combo-option="${e(option)}">${e(option)}</button>
+                    `).join("")}
+                    <div class="combo-empty" data-combo-empty>Không có gợi ý. Gõ tên mới rồi lưu để tạo nhóm.</div>
+                </div>
+            </div>
         `;
     } else if (field.type === "textarea") {
         control = `<textarea class="field-textarea" name="${e(field.key)}" ${required}>${e(value)}</textarea>`;
@@ -1723,18 +1835,84 @@ function bindEvents() {
         input.addEventListener(input.tagName === "SELECT" ? "change" : "input", updateColumnFilter);
     });
 
+    bindComboFields();
+
     const form = document.getElementById("recordForm");
     if (form) form.addEventListener("submit", handleSubmit);
 
     const modal = document.getElementById("recordModal");
     if (modal) {
         modal.addEventListener("click", (event) => {
+            if (event.target.closest("[data-combo-field]")) return;
+            closeComboFields();
             if (event.target === modal) closeModal();
         });
     }
 
     const importInput = document.getElementById("importDataInput");
     if (importInput) importInput.addEventListener("change", handleImport);
+}
+
+function bindComboFields() {
+    document.querySelectorAll("[data-combo-field]").forEach((combo) => {
+        const input = combo.querySelector("[data-combo-input]");
+        const toggle = combo.querySelector("[data-combo-toggle]");
+        const options = [...combo.querySelectorAll("[data-combo-option]")];
+
+        const openCombo = () => {
+            closeComboFields(combo);
+            combo.classList.add("open");
+            filterComboOptions(combo);
+        };
+
+        toggle?.addEventListener("click", () => {
+            if (combo.classList.contains("open")) {
+                combo.classList.remove("open");
+            } else {
+                input?.focus();
+                openCombo();
+            }
+        });
+
+        input?.addEventListener("focus", openCombo);
+        input?.addEventListener("input", () => {
+            combo.classList.add("open");
+            filterComboOptions(combo);
+        });
+        input?.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") {
+                combo.classList.remove("open");
+                input.blur();
+            }
+        });
+
+        options.forEach((option) => {
+            option.addEventListener("click", () => {
+                input.value = option.dataset.comboOption || option.textContent.trim();
+                combo.classList.remove("open");
+                input.focus();
+            });
+        });
+    });
+}
+
+function filterComboOptions(combo) {
+    const input = combo.querySelector("[data-combo-input]");
+    const menu = combo.querySelector("[data-combo-menu]");
+    const query = normalizeLookupKey(input?.value || "");
+    let visible = 0;
+    combo.querySelectorAll("[data-combo-option]").forEach((option) => {
+        const match = !query || normalizeLookupKey(option.dataset.comboOption || option.textContent).includes(query);
+        option.classList.toggle("hidden", !match);
+        if (match) visible += 1;
+    });
+    menu?.classList.toggle("is-empty", visible === 0);
+}
+
+function closeComboFields(except = null) {
+    document.querySelectorAll("[data-combo-field].open").forEach((combo) => {
+        if (combo !== except) combo.classList.remove("open");
+    });
 }
 
 function bindAuthEvents() {
@@ -2054,7 +2232,7 @@ function handleAction(event) {
     if (action === "close-modal") return closeModal();
     if (action === "reset-filters") return resetFilters();
     if (action === "export-excel") return exportExcel();
-    if (action === "import-json") {
+    if (action === "import-data") {
         if (authState.user?.role !== "admin") return showToast("Chỉ admin được nhập dữ liệu.");
         return document.getElementById("importDataInput")?.click();
     }
@@ -2098,6 +2276,9 @@ async function handleSubmit(event) {
             value = Number(value);
         }
         payload[field.key] = value;
+    }
+    if (mod.collection === "features") {
+        payload.owner = normalizeOwnerOption(payload.owner);
     }
 
     const validationErrors = validateRecord(mod, payload);
@@ -2224,7 +2405,7 @@ async function exportExcel() {
 
 function handleImport(event) {
     if (authState.user?.role !== "admin") {
-        showToast("Chỉ admin được nhập và thay thế toàn bộ dữ liệu.");
+        showToast("Chỉ admin được nhập dữ liệu.");
         event.target.value = "";
         return;
     }
@@ -2234,6 +2415,21 @@ function handleImport(event) {
     }
     const file = event.target.files?.[0];
     if (!file) return;
+    const fileName = String(file.name || "").toLowerCase();
+    const fileType = String(file.type || "").toLowerCase();
+    if (fileName.endsWith(".xlsx") || fileType.includes("spreadsheetml")) {
+        importExcelFile(file, event.target);
+        return;
+    }
+    if (fileName.endsWith(".json") || fileType.includes("json")) {
+        importJsonFile(file, event.target);
+        return;
+    }
+    showToast("Chỉ hỗ trợ file .xlsx hoặc .json.");
+    event.target.value = "";
+}
+
+function importJsonFile(file, input) {
     const reader = new FileReader();
     reader.onload = async () => {
         let parsed;
@@ -2241,7 +2437,7 @@ function handleImport(event) {
             parsed = JSON.parse(reader.result);
         } catch {
             showToast("File JSON không hợp lệ.");
-            event.target.value = "";
+            input.value = "";
             return;
         }
         try {
@@ -2252,7 +2448,7 @@ function handleImport(event) {
             });
             nextState.updatedAt = new Date().toISOString();
             if (!confirm("Nhập JSON sẽ thay thế toàn bộ dữ liệu hiện có trên Railway DB. Tiếp tục?")) {
-                event.target.value = "";
+                input.value = "";
                 return;
             }
             ui.saving = true;
@@ -2268,10 +2464,49 @@ function handleImport(event) {
             showToast(error.message ? `Không nhập được: ${error.message}` : "File JSON không hợp lệ.");
         } finally {
             ui.saving = false;
-            event.target.value = "";
+            input.value = "";
         }
     };
     reader.readAsText(file, "utf-8");
+}
+
+async function importExcelFile(file, input) {
+    if (!confirm("Nhập Excel sẽ thay thế riêng danh mục UAT hiện tại trên Railway DB. Tiếp tục?")) {
+        input.value = "";
+        return;
+    }
+    ui.saving = true;
+    showToast("Đang nhập Excel danh mục UAT...");
+    try {
+        const response = await fetch(`${API_BASE}/import/excel`, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            },
+            body: file
+        });
+        const text = await response.text();
+        let data = {};
+        try {
+            data = text ? JSON.parse(text) : {};
+        } catch {
+            data = { error: text || "API không trả về JSON hợp lệ" };
+        }
+        if (!response.ok) throw new Error(data.error || `API lỗi ${response.status}`);
+        appState = normalizeState(data.state || appState);
+        setDataStatus("online", "Railway Postgres đang hoạt động");
+        localStorage.setItem(MIGRATION_FLAG_KEY, "uploaded");
+        cacheState();
+        showToast(`Đã nhập ${data.imported || 0} bản ghi danh mục UAT từ Excel.`);
+    } catch (error) {
+        setDataStatus("offline", error.message || "Không nhập được Excel");
+        showToast(error.message ? `Không nhập được Excel: ${error.message}` : "File Excel không hợp lệ.");
+    } finally {
+        ui.saving = false;
+        input.value = "";
+        render();
+    }
 }
 
 function getFilteredRows(mod) {
@@ -2312,10 +2547,29 @@ function getFieldForColumn(mod, col) {
 }
 
 function getColumnFilterOptions(mod, col, field) {
-    if (field?.type === "select" && field.options?.length) return field.options;
+    const fieldOptions = getFieldOptions(field);
+    if (field?.type === "select" && fieldOptions.length) return fieldOptions;
     const values = uniqueValues(appState[mod.collection], col.key);
     if (values.length > 0 && values.length <= 8) return values;
     return [];
+}
+
+function getFieldOptions(field) {
+    if (!field) return [];
+    if (typeof field.options === "function") return field.options();
+    return Array.isArray(field.options) ? field.options : [];
+}
+
+function getFeatureSectionOptions() {
+    return uniqueTextValues([
+        ...defaultFeatureSections,
+        ...appState.features.map((row) => row.sectionTitle)
+    ]);
+}
+
+function uniqueTextValues(values) {
+    return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, "vi"));
 }
 
 function getColumnRawValue(row, col) {
@@ -2325,6 +2579,9 @@ function getColumnRawValue(row, col) {
 
 function validateRecord(mod, payload) {
     const errors = [];
+    if (mod.collection === "features" && payload.owner && !ownerOptions.includes(payload.owner)) {
+        errors.push("Nghiệp vụ phải chọn trong danh sách hợp lệ.");
+    }
     const percentFields = mod.fields.filter((field) => field.type === "percent");
     percentFields.forEach((field) => {
         const value = payload[field.key];
@@ -2338,9 +2595,17 @@ function validateRecord(mod, payload) {
     return errors;
 }
 
+function normalizeOwnerOption(value) {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    if (text.toLocaleLowerCase("vi") === "all") return "ALL";
+    if (text.toLocaleLowerCase("vi") === "ba") return "BA";
+    return text;
+}
+
 function calculateMetrics() {
     const features = appState.features.length;
-    const completedFeatures = appState.features.filter((row) => row.status === "Hoàn thành").length;
+    const completedFeatures = appState.features.filter((row) => isCompletedFeatureStatus(row.status)).length;
     const statusDrivenProgress = features ? percent(completedFeatures, features) : 0;
     const dailyTotal = sum(appState.daily, "totalCases");
     const dailyDone = sum(appState.daily, "executedCases");
@@ -2365,6 +2630,10 @@ function calculateMetrics() {
         trainingReadiness: round(latestReadiness?.trainingReadiness || readinessFallback || 0),
         pilotReadiness: round(latestReadiness?.pilotReadiness || readinessFallback || 0)
     };
+}
+
+function isCompletedFeatureStatus(status) {
+    return status === "Done UAT" || status === "Hoàn thành";
 }
 
 function normalizeLookupKey(value) {
@@ -2436,11 +2705,12 @@ function renderPriority(value) {
 }
 
 function renderStatus(value) {
-    const tone = value === "Hoàn thành" ? "green"
-        : value === "Chờ fix" || value === "Tạm hoãn" ? "red"
-            : value === "Retest" ? "yellow"
-                : value === "Đang kiểm thử" ? "blue"
-                    : "gray";
+    const tone = value === "Done UAT" || value === "Hoàn thành" ? "green"
+        : value === "Done SIT" || value === "Retest" ? "purple"
+            : value === "Done DEV" || value === "Đang kiểm thử" ? "blue"
+                : value === "Done RSD" ? "yellow"
+                    : value === "Chờ fix" || value === "Tạm hoãn" ? "red"
+                        : "gray";
     return tag(value, tone);
 }
 

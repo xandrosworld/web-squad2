@@ -44,6 +44,15 @@ const functionGroups = [
   "Văn bản tín dụng",
   "Ký số"
 ];
+const featureStatusOptions = ["Done RSD", "Done DEV", "Done SIT", "Done UAT"];
+const legacyFeatureStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Chờ fix", "Retest", "Hoàn thành", "Tạm hoãn"];
+const ownerOptions = [
+  "NV1 - Bùi Thị Mai Phương",
+  "NV2 - Nguyễn Châu Giang",
+  "NV3 - Phạm Anh Tuấn",
+  "ALL",
+  "BA"
+];
 const collectionRules = {
   features: {
     required: ["code", "name"],
@@ -52,7 +61,8 @@ const collectionRules = {
     enums: {
       group: functionGroups,
       priority: ["Critical", "Cao", "Trung bình", "Thấp"],
-      status: ["Chưa bắt đầu", "Đang kiểm thử", "Chờ fix", "Retest", "Hoàn thành", "Tạm hoãn"]
+      status: [...featureStatusOptions, ...legacyFeatureStatusOptions],
+      owner: ownerOptions
     }
   },
   plans: {
@@ -95,17 +105,22 @@ const excelSheets = [
   {
     collection: "features",
     name: "01_DanhMuc_UAT",
+    freezeColumns: 7,
+    sectionKey: "sectionTitle",
+    sectionColumnKey: "name",
     columns: [
+      ["stt", "STT", 8, "number"],
       ["code", "Mã chức năng", 18],
-      ["sprint", "Sprint", 14],
+      ["storyCode", "Mã Story", 18],
+      ["jiraCode", "Mã Jira", 20],
+      ["jiraName", "Tên Jira", 34],
       ["name", "Tên chức năng", 34],
-      ["group", "Nhóm chức năng", 24],
-      ["owner", "Chủ quản NV", 20],
-      ["handoffDate", "Ngày bàn giao UAT", 18, "date"],
-      ["priority", "Mức độ ưu tiên", 18],
-      ["status", "Trạng thái", 18],
-      ["testerMain", "Tester chính", 20],
-      ["testerSupport", "Tester hỗ trợ", 20]
+      ["sprint", "Sprint", 14],
+      ["status", "Trạng thái", 16],
+      ["owner", "Nghiệp vụ", 28],
+      ["uatStatus", "Trạng thái UAT", 18],
+      ["uatHandoff", "Bàn giao UAT", 18, "date"],
+      ["uatDone", "Hoàn thành UAT", 18, "date"]
     ]
   },
   {
@@ -354,6 +369,43 @@ app.get("/api/export/excel", asyncHandler(async (req, res) => {
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.setHeader("Cache-Control", "no-store");
   res.send(Buffer.from(buffer));
+}));
+
+app.post("/api/import/excel", requireAdmin, express.raw({
+  type: [
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/octet-stream"
+  ],
+  limit: requestBodyLimit
+}), asyncHandler(async (req, res) => {
+  await ensureSchema();
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+    throw httpError(400, "File Excel không hợp lệ.");
+  }
+
+  const records = await parseFeatureImportWorkbook(req.body);
+  if (!records.length) {
+    throw httpError(400, "Không tìm thấy dòng danh mục UAT hợp lệ trong file Excel.");
+  }
+  records.forEach((record) => validateRecordForCollection("features", record));
+
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    await client.query("delete from uat_records where collection = $1", ["features"]);
+    for (const record of records) {
+      await createRecord(client, "features", record, req.user);
+    }
+    await touchMeta(client);
+    const state = await readState(client, req.user);
+    await client.query("commit");
+    res.json({ state, imported: records.length });
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 }));
 
 app.get("/api/chat/group", asyncHandler(async (req, res) => {
@@ -632,6 +684,190 @@ function ensureSchema() {
   return schemaPromise;
 }
 
+async function parseFeatureImportWorkbook(buffer) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const worksheet = findFeatureImportWorksheet(workbook);
+  const header = worksheet ? findFeatureImportHeader(worksheet) : null;
+  if (!worksheet || !header) {
+    throw httpError(400, "Không tìm thấy header danh mục UAT trong file Excel.");
+  }
+
+  const records = [];
+  let currentSection = "";
+  for (let rowNumber = header.rowNumber + 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber);
+    const values = readFeatureImportRow(row, header.map);
+    if (isFeatureImportHeaderLike(values)) continue;
+    if (isFeatureSectionRow(values)) {
+      currentSection = normalizeImportedText(values.name);
+      continue;
+    }
+    if (isBlank(values.code)) continue;
+
+    const record = {
+      id: crypto.randomUUID(),
+      stt: normalizeImportedNumber(values.stt) || records.length + 1,
+      code: normalizeImportedText(values.code),
+      storyCode: normalizeImportedText(values.storyCode),
+      jiraCode: normalizeImportedText(values.jiraCode),
+      jiraName: normalizeImportedText(values.jiraName),
+      name: normalizeImportedText(values.name || values.jiraName),
+      sprint: normalizeImportedText(values.sprint),
+      status: normalizeImportedFeatureStatus(values.status),
+      owner: normalizeImportedOwner(values.owner),
+      uatStatus: normalizeImportedText(values.uatStatus),
+      uatHandoff: normalizeImportedDate(values.uatHandoff),
+      uatDone: normalizeImportedDate(values.uatDone),
+      sectionTitle: currentSection
+    };
+    records.push(record);
+  }
+  return records;
+}
+
+function findFeatureImportWorksheet(workbook) {
+  const named = workbook.getWorksheet("01_DanhMuc_UAT");
+  if (named && findFeatureImportHeader(named)) return named;
+  return workbook.worksheets.find((worksheet) => findFeatureImportHeader(worksheet)) || null;
+}
+
+function findFeatureImportHeader(worksheet) {
+  const maxRows = Math.min(worksheet.rowCount, 80);
+  for (let rowNumber = 1; rowNumber <= maxRows; rowNumber += 1) {
+    const map = buildFeatureImportHeaderMap(worksheet.getRow(rowNumber));
+    if (map.code && map.name && (map.storyCode || map.jiraCode || map.sprint || map.status)) {
+      return { rowNumber, map };
+    }
+  }
+  return null;
+}
+
+const featureImportHeaderAliases = {
+  stt: ["stt", "so thu tu"],
+  code: ["ma chuc nang"],
+  storyCode: ["ma story"],
+  jiraCode: ["ma jira"],
+  jiraName: ["ten jira"],
+  name: ["ten chuc nang"],
+  sprint: ["sprint"],
+  status: ["trang thai"],
+  owner: ["nghiep vu", "chu quan", "chu quan nv"],
+  uatStatus: ["trang thai uat"],
+  uatHandoff: ["ban giao uat", "ngay ban giao uat"],
+  uatDone: ["hoan thanh uat"]
+};
+
+function buildFeatureImportHeaderMap(row) {
+  const map = {};
+  for (let column = 1; column <= row.cellCount; column += 1) {
+    const label = normalizeImportHeader(row.getCell(column).value);
+    if (!label) continue;
+    for (const [key, aliases] of Object.entries(featureImportHeaderAliases)) {
+      if (!map[key] && aliases.includes(label)) {
+        map[key] = column;
+      }
+    }
+  }
+  return map;
+}
+
+function readFeatureImportRow(row, map) {
+  const values = {};
+  for (const key of Object.keys(featureImportHeaderAliases)) {
+    values[key] = map[key] ? unwrapExcelCellValue(row.getCell(map[key]).value) : "";
+  }
+  return values;
+}
+
+function isFeatureImportHeaderLike(values) {
+  return normalizeImportHeader(values.code) === "ma chuc nang"
+    || normalizeImportHeader(values.name) === "ten chuc nang";
+}
+
+function isFeatureSectionRow(values) {
+  return isBlank(values.code)
+    && isBlank(values.storyCode)
+    && isBlank(values.jiraCode)
+    && !isBlank(values.name);
+}
+
+function normalizeImportHeader(value) {
+  return normalizeImportedText(unwrapExcelCellValue(value))
+    .toLocaleLowerCase("vi")
+    .replace(/[đĐ]/g, "d")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function unwrapExcelCellValue(value) {
+  if (value == null) return "";
+  if (value instanceof Date) return value;
+  if (typeof value !== "object") return value;
+  if (Object.prototype.hasOwnProperty.call(value, "result")) return unwrapExcelCellValue(value.result);
+  if (typeof value.text === "string") return value.text;
+  if (Array.isArray(value.richText)) return value.richText.map((part) => part.text || "").join("");
+  return "";
+}
+
+function normalizeImportedText(value) {
+  if (value == null) return "";
+  if (value instanceof Date) return formatDateForInput(value);
+  return String(value).replace(/\s+/g, " ").trim();
+}
+
+function normalizeImportedNumber(value) {
+  if (isBlank(value)) return "";
+  const number = Number(String(value).replace(",", "."));
+  return Number.isFinite(number) ? number : normalizeImportedText(value);
+}
+
+function normalizeImportedFeatureStatus(value) {
+  const text = normalizeImportedText(value);
+  if (!text) return "";
+  const normalized = normalizeImportHeader(text);
+  const match = [...featureStatusOptions, ...legacyFeatureStatusOptions]
+    .find((option) => normalizeImportHeader(option) === normalized);
+  return match || text;
+}
+
+function normalizeImportedOwner(value) {
+  const text = normalizeImportedText(value);
+  if (!text) return "";
+  if (text.toLocaleLowerCase("vi") === "all") return "ALL";
+  if (text.toLocaleLowerCase("vi") === "ba") return "BA";
+  return text;
+}
+
+function normalizeImportedDate(value) {
+  if (isBlank(value)) return "";
+  if (value instanceof Date) return formatDateForInput(value);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const excelEpoch = Date.UTC(1899, 11, 30);
+    return formatDateForInput(new Date(excelEpoch + value * 24 * 60 * 60 * 1000));
+  }
+  const text = normalizeImportedText(value);
+  if (!text) return "";
+  const slashDate = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+  if (slashDate) {
+    const day = Number(slashDate[1]);
+    const month = Number(slashDate[2]);
+    const year = Number(slashDate[3].length === 2 ? `20${slashDate[3]}` : slashDate[3]);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    if (!Number.isNaN(parsed.getTime())) return formatDateForInput(parsed);
+  }
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? text : formatDateForInput(parsed);
+}
+
+function formatDateForInput(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
 function buildExcelWorkbook(state) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Squad 2 UAT Dashboard";
@@ -640,7 +876,7 @@ function buildExcelWorkbook(state) {
 
   for (const sheetConfig of excelSheets) {
     const worksheet = workbook.addWorksheet(sheetConfig.name, {
-      views: [{ state: "frozen", ySplit: 1 }]
+      views: [{ state: "frozen", ySplit: 1, xSplit: sheetConfig.freezeColumns || 0 }]
     });
     worksheet.columns = sheetConfig.columns.map(([key, header, width]) => ({ key, header, width }));
     worksheet.autoFilter = {
@@ -657,7 +893,13 @@ function buildExcelWorkbook(state) {
       };
     });
 
+    let currentSection = "";
     for (const record of state[sheetConfig.collection] || []) {
+      const section = sheetConfig.sectionKey ? String(record[sheetConfig.sectionKey] || "").trim() : "";
+      if (section && section !== currentSection) {
+        addExcelSectionRow(worksheet, sheetConfig, section);
+        currentSection = section;
+      }
       const rowData = {};
       for (const [key, , , type] of sheetConfig.columns) {
         rowData[key] = excelCellValue(excelRecordValue(record, key), type);
@@ -681,6 +923,24 @@ function buildExcelWorkbook(state) {
   }
   addDashboardWorksheet(workbook, state);
   return workbook;
+}
+
+function addExcelSectionRow(worksheet, sheetConfig, section) {
+  const rowData = {};
+  const sectionKey = sheetConfig.sectionColumnKey || sheetConfig.columns[0][0];
+  for (const [key] of sheetConfig.columns) {
+    rowData[key] = key === sectionKey ? section : "";
+  }
+  const row = worksheet.addRow(rowData);
+  row.height = 20;
+  row.eachCell({ includeEmpty: true }, (cell) => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF12BDB8" } };
+    cell.alignment = { vertical: "middle", wrapText: false };
+    cell.border = {
+      bottom: { style: "thin", color: { argb: "FF0EA5A0" } }
+    };
+  });
 }
 
 function addDashboardWorksheet(workbook, state) {
@@ -733,6 +993,7 @@ function addDashboardWorksheet(workbook, state) {
 
 function excelRecordValue(record, key) {
   if (key === "progress") return percent(record.executedCases, record.totalCases);
+  if (key === "uatHandoff") return record.uatHandoff || record.handoffDate;
   return record[key];
 }
 
@@ -754,7 +1015,7 @@ function calculateWorkbookMetrics(state) {
   const daily = Array.isArray(state.daily) ? state.daily : [];
   const weekly = Array.isArray(state.weekly) ? state.weekly : [];
   const readiness = Array.isArray(state.readiness) ? state.readiness : [];
-  const completedFeatures = features.filter((row) => row.status === "Hoàn thành").length;
+  const completedFeatures = features.filter((row) => isCompletedFeatureStatus(row.status)).length;
   const statusDrivenProgress = features.length ? percent(completedFeatures, features.length) : 0;
   const dailyTotal = sumBy(daily, "totalCases");
   const dailyDone = sumBy(daily, "executedCases");
@@ -778,6 +1039,10 @@ function calculateWorkbookMetrics(state) {
     trainingReadiness: round(latestReadiness?.trainingReadiness || readinessFallback || 0),
     pilotReadiness: round(latestReadiness?.pilotReadiness || readinessFallback || 0)
   };
+}
+
+function isCompletedFeatureStatus(status) {
+  return status === "Done UAT" || status === "Hoàn thành";
 }
 
 function sumBy(rows, key) {
