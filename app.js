@@ -79,7 +79,7 @@ const modules = {
         emptyText: "Danh mục sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "sectionTitle", label: "Nhóm tiêu đề", type: "combo", options: getFeatureSectionOptions, full: true },
-            { key: "stt", label: "STT", type: "number" },
+            { key: "stt", label: "STT", type: "number", defaultValue: getNextFeatureStt },
             { key: "code", label: "Mã chức năng", type: "text", required: true },
             { key: "storyCode", label: "Mã Story", type: "text" },
             { key: "jiraCode", label: "Mã Jira", type: "text" },
@@ -1706,7 +1706,7 @@ function roleLabel(role) {
 }
 
 function renderField(field, row) {
-    const value = row?.[field.key] ?? "";
+    const value = row ? row[field.key] ?? "" : getDefaultFieldValue(field);
     const required = field.required ? "required" : "";
     const label = e(field.label);
     const wrapper = `field ${field.full ? "full" : ""}`;
@@ -2558,6 +2558,20 @@ function getFieldOptions(field) {
     if (!field) return [];
     if (typeof field.options === "function") return field.options();
     return Array.isArray(field.options) ? field.options : [];
+}
+
+function getDefaultFieldValue(field) {
+    if (!field) return "";
+    if (typeof field.defaultValue === "function") return field.defaultValue();
+    return field.defaultValue ?? "";
+}
+
+function getNextFeatureStt() {
+    const maxStt = appState.features.reduce((max, row) => {
+        const stt = Number(row?.stt);
+        return Number.isFinite(stt) ? Math.max(max, Math.trunc(stt)) : max;
+    }, 0);
+    return maxStt + 1;
 }
 
 function getFeatureSectionOptions() {

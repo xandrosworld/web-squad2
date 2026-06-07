@@ -1287,12 +1287,34 @@ button {
 }
 
 .data-table .section-row strong {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: #ffffff;
     font-weight: 800;
+    text-align: center;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    animation: section-title-pulse 2.8s ease-in-out infinite;
+}
+
+@keyframes section-title-pulse {
+    0%,
+    100% {
+        opacity: 0.92;
+        text-shadow: 0 0 0 rgba(255, 255, 255, 0);
+    }
+    50% {
+        opacity: 1;
+        text-shadow: 0 0 9px rgba(255, 255, 255, 0.7);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .data-table .section-row strong {
+        animation: none;
+    }
 }
 
 .data-table.is-compact .section-row td {

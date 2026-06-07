@@ -483,11 +483,12 @@ app.put("/api/state", requireAdmin, asyncHandler(async (req, res) => {
 app.post("/api/records/:collection", asyncHandler(async (req, res) => {
   const collection = requireCollection(req.params.collection);
   const record = normalizeRecord(req.body.record || req.body);
-  validateRecordForCollection(collection, record);
   await ensureSchema();
   const client = await getPool().connect();
   try {
     await client.query("begin");
+    await applyRecordDefaults(client, collection, record);
+    validateRecordForCollection(collection, record);
     const saved = await createRecord(client, collection, record, req.user);
     const updatedAt = await touchMeta(client);
     await client.query("commit");
@@ -1233,6 +1234,22 @@ function normalizeRecord(input, forcedId) {
     createdAt: isValidDateString(recordData.createdAt) ? recordData.createdAt : now,
     updatedAt: isValidDateString(recordData.updatedAt) ? recordData.updatedAt : now
   };
+}
+
+async function applyRecordDefaults(client, collection, record) {
+  if (collection === "features" && isBlank(record.stt)) {
+    record.stt = await getNextFeatureStt(client);
+  }
+}
+
+async function getNextFeatureStt(client) {
+  const result = await client.query(`
+    select coalesce(max((data->>'stt')::integer), 0) as max_stt
+    from uat_records
+    where collection = $1
+      and (data->>'stt') ~ '^[0-9]+$'
+  `, ["features"]);
+  return Number(result.rows[0]?.max_stt || 0) + 1;
 }
 
 function requireCollection(collection) {
