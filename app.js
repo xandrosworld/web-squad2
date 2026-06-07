@@ -1329,7 +1329,7 @@ function renderTableRows(mod, rows, columnMeta) {
     let currentSection = null;
     return rows.map((row) => {
         const section = mod.sectionKey ? String(row[mod.sectionKey] || "").trim() : "";
-        const sectionMarkup = section && section !== currentSection ? renderSectionRow(mod, section, columnMeta) : "";
+        const sectionMarkup = section && section !== currentSection ? renderSectionRow(mod, section) : "";
         if (section) currentSection = section;
                         const canEdit = canModifyRecord(row);
                         const owner = recordOwnerLabel(row);
@@ -1358,16 +1358,12 @@ function renderTableRows(mod, rows, columnMeta) {
     }).join("");
 }
 
-function renderSectionRow(mod, section, columnMeta) {
-    const sectionColumnIndex = Math.max(0, mod.columns.findIndex((col) => col.key === mod.sectionColumnKey));
+function renderSectionRow(mod, section) {
     return `
         <tr class="section-row">
-            ${mod.columns.map((col, index) => `
-                <td${tableCellAttrs(columnMeta[index])}>
-                    ${index === sectionColumnIndex ? `<strong>${e(section)}</strong>` : ""}
-                </td>
-            `).join("")}
-            <td></td>
+            <td class="section-title-cell" colspan="${e(mod.columns.length + 1)}">
+                <strong>${e(section)}</strong>
+            </td>
         </tr>
     `;
 }
