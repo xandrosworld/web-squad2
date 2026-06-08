@@ -1601,6 +1601,95 @@ button {
     min-height: 220px;
 }
 
+.excel-dashboard-panel {
+    overflow: hidden;
+}
+
+.excel-dashboard-title {
+    background: #006b5f;
+    color: #ffffff;
+    padding: 14px 18px;
+}
+
+.excel-dashboard-title h2 {
+    font-size: 18px;
+    line-height: 24px;
+    font-weight: 900;
+    letter-spacing: 0;
+}
+
+.excel-dashboard-body {
+    padding: 18px;
+    background: #ffffff;
+}
+
+.excel-summary-grid {
+    max-width: 520px;
+    margin-bottom: 24px;
+}
+
+.excel-section-title {
+    width: fit-content;
+    min-width: 260px;
+    margin: 18px 0 0;
+    padding: 5px 8px;
+    background: #00746a;
+    color: #ffffff;
+    font-size: 15px;
+    font-weight: 900;
+}
+
+.excel-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    margin-bottom: 18px;
+}
+
+.excel-sheet-table {
+    border-collapse: collapse;
+    width: max-content;
+    min-width: min(100%, 780px);
+    color: #111827;
+    font-size: 14px;
+}
+
+.excel-sheet-table th,
+.excel-sheet-table td {
+    border: 1px solid #d6dbe2;
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.excel-sheet-table thead th {
+    background: #1f4e78;
+    color: #ffffff;
+    font-weight: 900;
+}
+
+.excel-summary-table {
+    min-width: 420px;
+}
+
+.excel-summary-table th {
+    width: 260px;
+    background: #d9e1f2;
+    color: #111827;
+    font-weight: 900;
+}
+
+.excel-summary-table td {
+    min-width: 120px;
+    background: #d9eaf7;
+    text-align: right;
+}
+
+.excel-empty-cell {
+    color: #6b7280;
+    text-align: center !important;
+}
+
 .module-progress-list,
 .risk-list,
 .activity-list,

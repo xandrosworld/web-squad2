@@ -116,23 +116,26 @@ const modules = {
             { key: "code", label: "Mã chức năng", width: "104px", render: (row) => tag(row.code, "teal") },
             { key: "storyCode", label: "Mã Story", width: "84px", render: (row) => tag(row.storyCode, "gray") },
             { key: "jiraCode", label: "Mã Jira", width: "132px" },
-            { key: "group", label: "Nhóm", width: "190px" },
-            { key: "jiraName", label: "Tên Jira", width: "220px" },
+            { key: "group", label: "Nhóm chức năng", width: "220px" },
             { key: "name", label: "Tên chức năng", width: "250px", render: (row) => strongText(row.name) },
-            { key: "sprintBA", label: "BA", width: "78px" },
-            { key: "sprintDev", label: "DEV", width: "78px" },
-            { key: "sprintQC", label: "QC", width: "78px" },
-            { key: "businessSprint", label: "NV", width: "78px" },
+            { key: "jiraName", label: "Tên Jira", width: "220px" },
+            { key: "jiraLink", label: "Link Jira", width: "160px" },
+            { key: "rsdLink", label: "Link RSD", width: "160px" },
+            { key: "sprintBA", label: "Sprint BA", width: "108px" },
+            { key: "sprintDev", label: "Sprint DEV", width: "108px" },
+            { key: "sprintQC", label: "Sprint QC", width: "108px" },
+            { key: "businessSprint", label: "Sprint Nghiệp vụ", width: "150px" },
             { key: "status", label: "Trạng thái", width: "112px", render: (row) => renderStatus(row.status) },
-            { key: "owner", label: "Nghiệp vụ", width: "188px" },
-            { key: "uatHandoff", label: "Bàn giao UAT", width: "118px", render: (row) => formatDate(row.uatHandoff || row.handoffDate) },
-            { key: "uatStart", label: "Bắt đầu", width: "110px", render: (row) => formatDate(row.uatStart) },
-            { key: "uatEnd", label: "Kết thúc", width: "110px", render: (row) => formatDate(row.uatEnd) },
-            { key: "uatDone", label: "Hoàn thành UAT", width: "126px", render: (row) => formatDate(row.uatDone) },
-            { key: "handoffStatus", label: "Bàn giao", width: "134px", render: (row) => renderStatus(row.handoffStatus) },
-            { key: "completionRate", label: "% TC", width: "116px", render: (row) => progressCell(row.completionRate) },
-            { key: "openBugs", label: "Lỗi mở", width: "90px", render: (row) => bugTag(row.openBugs) },
-            { key: "uatWarning", label: "Cảnh báo", width: "150px", render: (row) => renderStatus(row.uatWarning) }
+            { key: "owner", label: "Đầu mối nghiệp vụ", width: "188px" },
+            { key: "uatHandoff", label: "Ngày bàn giao UAT", width: "160px", render: (row) => formatDate(row.uatHandoff || row.handoffDate) },
+            { key: "uatStart", label: "Ngày bắt đầu UAT", width: "160px", render: (row) => formatDate(row.uatStart) },
+            { key: "uatEnd", label: "Ngày kết thúc UAT", width: "160px", render: (row) => formatDate(row.uatEnd) },
+            { key: "uatDone", label: "Ngày hoàn thành UAT", width: "176px", render: (row) => formatDate(row.uatDone) },
+            { key: "uatSigned", label: "Ngày ký UAT", width: "140px", render: (row) => formatDate(row.uatSigned) },
+            { key: "handoffStatus", label: "Tình trạng bàn giao", width: "170px", render: (row) => renderStatus(row.handoffStatus) },
+            { key: "completionRate", label: "% Hoàn thành TC", width: "150px", render: (row) => progressCell(row.completionRate) },
+            { key: "openBugs", label: "Số lỗi mở", width: "110px", render: (row) => bugTag(row.openBugs) },
+            { key: "uatWarning", label: "Cảnh báo UAT", width: "150px", render: (row) => renderStatus(row.uatWarning) }
         ]
     },
     personnel: {
@@ -161,13 +164,14 @@ const modules = {
             { key: "unit", label: "Đơn vị" }
         ],
         columns: [
-            { key: "staffCode", label: "Mã NS", width: "92px", render: (row) => tag(row.staffCode, "teal") },
+            { key: "staffCode", label: "Mã nhân sự", width: "112px", render: (row) => tag(row.staffCode, "teal") },
             { key: "name", label: "Họ tên", width: "180px", render: (row) => strongText(row.name, row.email) },
             { key: "role", label: "Vai trò", width: "190px" },
             { key: "scope", label: "Phạm vi chính", width: "280px" },
             { key: "status", label: "Trạng thái", width: "140px", render: (row) => renderStatus(row.status) },
             { key: "birthYear", label: "Năm sinh", width: "96px" },
             { key: "phone", label: "SĐT", width: "130px" },
+            { key: "email", label: "Email", width: "220px" },
             { key: "unit", label: "Đơn vị", width: "150px" }
         ]
     },
@@ -192,9 +196,9 @@ const modules = {
         ],
         columns: [
             { key: "sprint", label: "Sprint", width: "120px", render: (row) => tag(row.sprint, "teal") },
-            { key: "handoffDate", label: "Bàn giao", width: "130px", render: (row) => formatDate(row.handoffDate) },
-            { key: "startDate", label: "Bắt đầu", width: "130px", render: (row) => formatDate(row.startDate) },
-            { key: "endDate", label: "Kết thúc", width: "130px", render: (row) => formatDate(row.endDate) },
+            { key: "handoffDate", label: "Ngày bàn giao UAT", width: "180px", render: (row) => formatDate(row.handoffDate) },
+            { key: "startDate", label: "Ngày bắt đầu UAT", width: "180px", render: (row) => formatDate(row.startDate) },
+            { key: "endDate", label: "Ngày kết thúc UAT", width: "180px", render: (row) => formatDate(row.endDate) },
             { key: "note", label: "Ghi chú", width: "260px" }
         ]
     },
@@ -227,13 +231,15 @@ const modules = {
         columns: [
             { key: "jiraCode", label: "Mã Jira", width: "140px" },
             { key: "code", label: "Mã CN", width: "92px", render: (row) => tag(row.code, "teal") },
-            { key: "storyCode", label: "Story", width: "80px", render: (row) => tag(row.storyCode, "gray") },
+            { key: "storyCode", label: "Mã Story", width: "100px", render: (row) => tag(row.storyCode, "gray") },
             { key: "name", label: "Tên chức năng", width: "280px", render: (row) => strongText(row.name, row.note) },
             { key: "sprint", label: "Sprint", width: "96px" },
-            { key: "uatHandoff", label: "Bàn giao US", width: "130px", render: (row) => formatDate(row.uatHandoff) },
-            { key: "uatStart", label: "Bắt đầu", width: "120px", render: (row) => formatDate(row.uatStart) },
-            { key: "uatEnd", label: "Kết thúc", width: "120px", render: (row) => formatDate(row.uatEnd) },
-            { key: "handoffStatus", label: "Trạng thái", width: "150px", render: (row) => renderStatus(row.handoffStatus) }
+            { key: "defaultHandoffDate", label: "Ngày mặc định theo Sprint", width: "220px", render: (row) => formatDate(row.defaultHandoffDate) },
+            { key: "uatHandoff", label: "Ngày bàn giao UAT theo US", width: "230px", render: (row) => formatDate(row.uatHandoff) },
+            { key: "uatStart", label: "Ngày bắt đầu UAT theo US", width: "230px", render: (row) => formatDate(row.uatStart) },
+            { key: "uatEnd", label: "Ngày kết thúc UAT theo US", width: "230px", render: (row) => formatDate(row.uatEnd) },
+            { key: "handoffStatus", label: "Trạng thái bàn giao", width: "180px", render: (row) => renderStatus(row.handoffStatus) },
+            { key: "note", label: "Ghi chú", width: "180px" }
         ]
     },
     plans: {
@@ -272,22 +278,25 @@ const modules = {
         ],
         columns: [
             { key: "sprint", label: "Sprint", width: "110px", render: (row) => tag(row.sprint, "teal") },
-            { key: "uatHandoff", label: "Bàn giao", width: "118px", render: (row) => formatDate(row.uatHandoff) },
+            { key: "uatHandoff", label: "Ngày bàn giao UAT", width: "160px", render: (row) => formatDate(row.uatHandoff) },
+            { key: "code", label: "Mã chức năng", width: "120px", render: (row) => tag(row.code, "teal") },
             { key: "jiraCode", label: "Mã Jira", width: "132px" },
-            { key: "group", label: "Nhóm", width: "190px" },
-            { key: "feature", label: "Chức năng", width: "250px", render: (row) => strongText(row.feature, row.note) },
-            { key: "owner", label: "Đầu mối", width: "180px" },
+            { key: "group", label: "Nhóm chức năng", width: "220px" },
+            { key: "feature", label: "Tên chức năng", width: "250px", render: (row) => strongText(row.feature, row.note) },
+            { key: "featureSprint", label: "Sprint", width: "100px" },
+            { key: "owner", label: "Đầu mối nghiệp vụ", width: "188px" },
             { key: "t1", label: "T1", width: "56px", render: (row) => checkTag(row.t1) },
             { key: "t2", label: "T2", width: "56px", render: (row) => checkTag(row.t2) },
             { key: "t3", label: "T3", width: "56px", render: (row) => checkTag(row.t3) },
             { key: "t4", label: "T4", width: "56px", render: (row) => checkTag(row.t4) },
             { key: "t5", label: "T5", width: "56px", render: (row) => checkTag(row.t5) },
             { key: "t6", label: "T6", width: "56px", render: (row) => checkTag(row.t6) },
-            { key: "totalCases", label: "Tổng TC", width: "96px", render: (row) => numberText(row.totalCases) },
-            { key: "executedCases", label: "Đã chạy", width: "96px", render: (row) => numberText(row.executedCases) },
-            { key: "progress", label: "% HT", width: "120px", render: (row) => progressCell(resolveRate(row.progress, row.executedCases, row.totalCases)) },
-            { key: "uatStatus", label: "UAT", width: "122px", render: (row) => renderStatus(row.uatStatus) },
-            { key: "rotationWarning", label: "Luân chuyển", width: "140px", render: (row) => renderStatus(row.rotationWarning) }
+            { key: "totalCases", label: "Tổng Testcase", width: "130px", render: (row) => numberText(row.totalCases) },
+            { key: "executedCases", label: "Đã thực hiện", width: "120px", render: (row) => numberText(row.executedCases) },
+            { key: "progress", label: "% hoàn thành", width: "140px", render: (row) => progressCell(resolveRate(row.progress, row.executedCases, row.totalCases)) },
+            { key: "uatStatus", label: "Trạng thái UAT", width: "150px", render: (row) => renderStatus(row.uatStatus) },
+            { key: "rotationWarning", label: "Cảnh báo luân chuyển", width: "180px", render: (row) => renderStatus(row.rotationWarning) },
+            { key: "note", label: "Ghi chú", width: "180px" }
         ]
     },
     matrix: {
@@ -300,25 +309,31 @@ const modules = {
         emptyTitle: "Chưa có ma trận năng lực",
         emptyText: "Ma trận sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
-            { key: "group", label: "Nhóm chức năng", type: "select", options: functionGroups, required: true },
-            { key: "t1", label: "T1", type: "text" },
-            { key: "t2", label: "T2", type: "text" },
-            { key: "t3", label: "T3", type: "text" },
-            { key: "t4", label: "T4", type: "text" },
-            { key: "t5", label: "T5", type: "text" },
-            { key: "t6", label: "T6", type: "text" }
+            { key: "group", label: "Nhóm chức năng", type: "text", required: true, full: true },
+            { key: "t1", label: "T1", type: "number" },
+            { key: "t2", label: "T2", type: "number" },
+            { key: "t3", label: "T3", type: "number" },
+            { key: "t4", label: "T4", type: "number" },
+            { key: "t5", label: "T5", type: "number" },
+            { key: "t6", label: "T6", type: "number" },
+            { key: "totalParticipation", label: "Tổng lượt tham gia", type: "number" },
+            { key: "target", label: "Mục tiêu", type: "number" },
+            { key: "warning", label: "Cảnh báo", type: "text" }
         ],
         filters: [
             { key: "group", label: "Nhóm" }
         ],
         columns: [
-            { key: "group", label: "Nhóm chức năng", width: "190px", render: (row) => tag(row.group, "teal") },
-            { key: "t1", label: "T1", width: "120px" },
-            { key: "t2", label: "T2", width: "120px" },
-            { key: "t3", label: "T3", width: "120px" },
-            { key: "t4", label: "T4", width: "120px" },
-            { key: "t5", label: "T5", width: "120px" },
-            { key: "t6", label: "T6", width: "120px" }
+            { key: "group", label: "Nhóm chức năng", width: "300px", render: (row) => tag(row.group, "teal") },
+            { key: "t1", label: "T1", width: "80px", render: (row) => numberText(row.t1) },
+            { key: "t2", label: "T2", width: "80px", render: (row) => numberText(row.t2) },
+            { key: "t3", label: "T3", width: "80px", render: (row) => numberText(row.t3) },
+            { key: "t4", label: "T4", width: "80px", render: (row) => numberText(row.t4) },
+            { key: "t5", label: "T5", width: "80px", render: (row) => numberText(row.t5) },
+            { key: "t6", label: "T6", width: "80px", render: (row) => numberText(row.t6) },
+            { key: "totalParticipation", label: "Tổng lượt tham gia", width: "180px", render: (row) => numberText(row.totalParticipation) },
+            { key: "target", label: "Mục tiêu", width: "100px", render: (row) => numberText(row.target) },
+            { key: "warning", label: "Cảnh báo", width: "180px", render: (row) => renderStatus(row.warning) }
         ]
     },
     daily: {
@@ -331,31 +346,42 @@ const modules = {
         emptyTitle: "Chưa có dữ liệu điều hành hằng ngày",
         emptyText: "Dữ liệu điều hành sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
-            { key: "date", label: "Ngày", type: "date", required: true },
-            { key: "feature", label: "Chức năng", type: "text", required: true, full: true },
-            { key: "owner", label: "Chủ quản", type: "text" },
+            { key: "date", label: "Ngày", type: "date" },
+            { key: "sprint", label: "Sprint", type: "text" },
+            { key: "code", label: "Mã chức năng", type: "text" },
+            { key: "jiraCode", label: "Mã Jira", type: "text" },
+            { key: "feature", label: "Tên chức năng", type: "text", full: true },
             { key: "tester", label: "Tester", type: "text" },
-            { key: "totalCases", label: "Tổng testcase", type: "number" },
-            { key: "executedCases", label: "Đã thực hiện", type: "number" },
-            { key: "criticalBugs", label: "Lỗi nghiêm trọng", type: "number" },
-            { key: "highBugs", label: "Lỗi mức cao", type: "number" },
-            { key: "blocker", label: "Vướng mắc", type: "textarea", full: true }
+            { key: "totalCases", label: "Tổng TC", type: "number" },
+            { key: "executedCases", label: "TC đã chạy", type: "number" },
+            { key: "passedCases", label: "TC đạt", type: "number" },
+            { key: "failedCases", label: "TC lỗi", type: "number" },
+            { key: "bugStatus", label: "Trạng thái lỗi", type: "text" },
+            { key: "maxBugSeverity", label: "Mức độ lỗi cao nhất", type: "text" },
+            { key: "blocker", label: "Vướng mắc/Blocker", type: "textarea", full: true },
+            { key: "handler", label: "Người xử lý", type: "text" },
+            { key: "dueDate", label: "Thời hạn xử lý", type: "date" }
         ],
         filters: [
-            { key: "owner", label: "Chủ quản" },
+            { key: "sprint", label: "Sprint" },
             { key: "tester", label: "Tester" }
         ],
         columns: [
             { key: "date", label: "Ngày", width: "118px", render: (row) => formatDate(row.date) },
-            { key: "feature", label: "Chức năng", width: "230px", render: (row) => strongText(row.feature) },
-            { key: "owner", label: "Chủ quản", width: "130px" },
+            { key: "sprint", label: "Sprint", width: "100px" },
+            { key: "code", label: "Mã chức năng", width: "120px", render: (row) => tag(row.code, "teal") },
+            { key: "jiraCode", label: "Mã Jira", width: "140px" },
+            { key: "feature", label: "Tên chức năng", width: "260px", render: (row) => strongText(row.feature) },
             { key: "tester", label: "Tester", width: "120px" },
-            { key: "totalCases", label: "Tổng testcase", width: "130px", render: (row) => numberText(row.totalCases) },
-            { key: "executedCases", label: "Đã thực hiện", width: "120px", render: (row) => numberText(row.executedCases) },
-            { key: "progress", label: "% hoàn thành", width: "150px", render: (row) => progressCell(percent(row.executedCases, row.totalCases)) },
-            { key: "criticalBugs", label: "Lỗi nghiêm trọng", width: "140px", render: (row) => bugTag(row.criticalBugs) },
-            { key: "highBugs", label: "Lỗi mức cao", width: "120px", render: (row) => bugTag(row.highBugs, "yellow") },
-            { key: "blocker", label: "Vướng mắc", width: "220px" }
+            { key: "totalCases", label: "Tổng TC", width: "100px", render: (row) => numberText(row.totalCases) },
+            { key: "executedCases", label: "TC đã chạy", width: "110px", render: (row) => numberText(row.executedCases) },
+            { key: "passedCases", label: "TC đạt", width: "90px", render: (row) => numberText(row.passedCases) },
+            { key: "failedCases", label: "TC lỗi", width: "90px", render: (row) => numberText(row.failedCases) },
+            { key: "bugStatus", label: "Trạng thái lỗi", width: "150px", render: (row) => renderStatus(row.bugStatus) },
+            { key: "maxBugSeverity", label: "Mức độ lỗi cao nhất", width: "180px", render: (row) => renderStatus(row.maxBugSeverity) },
+            { key: "blocker", label: "Vướng mắc/Blocker", width: "240px" },
+            { key: "handler", label: "Người xử lý", width: "150px" },
+            { key: "dueDate", label: "Thời hạn xử lý", width: "150px", render: (row) => formatDate(row.dueDate) }
         ]
     },
     weekly: {
@@ -369,14 +395,18 @@ const modules = {
         emptyText: "Dữ liệu chất lượng tuần sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "week", label: "Tuần", type: "text", required: true },
-            { key: "group", label: "Nhóm chức năng", type: "select", options: functionGroups, required: true },
-            { key: "totalCases", label: "Tổng testcase", type: "number" },
-            { key: "executedCases", label: "Đã thực hiện", type: "number" },
+            { key: "sprint", label: "Sprint", type: "text" },
+            { key: "group", label: "Nhóm chức năng", type: "text" },
+            { key: "totalStories", label: "Tổng Story", type: "number" },
+            { key: "totalCases", label: "Tổng Testcase", type: "number" },
+            { key: "executedCases", label: "TC đã chạy", type: "number" },
             { key: "coverageRate", label: "Tỷ lệ bao phủ", type: "percent" },
+            { key: "passedCases", label: "TC đạt", type: "number" },
             { key: "successRate", label: "Tỷ lệ thành công", type: "percent" },
-            { key: "criticalBugs", label: "Lỗi nghiêm trọng", type: "number" },
-            { key: "reopenedBugs", label: "Lỗi mở lại", type: "number" },
-            { key: "assessment", label: "Đánh giá", type: "select", options: assessmentOptions }
+            { key: "criticalBugs", label: "Lỗi nghiêm trọng mở", type: "number" },
+            { key: "highBugs", label: "Lỗi mức cao mở", type: "number" },
+            { key: "gateResult", label: "Kết quả Gate", type: "text" },
+            { key: "note", label: "Ghi chú", type: "textarea", full: true }
         ],
         filters: [
             { key: "week", label: "Tuần" },
@@ -385,14 +415,18 @@ const modules = {
         ],
         columns: [
             { key: "week", label: "Tuần", width: "110px", render: (row) => tag(row.week, "teal") },
-            { key: "group", label: "Nhóm chức năng", width: "190px" },
-            { key: "totalCases", label: "Tổng testcase", width: "130px", render: (row) => numberText(row.totalCases) },
-            { key: "executedCases", label: "Đã thực hiện", width: "120px", render: (row) => numberText(row.executedCases) },
+            { key: "sprint", label: "Sprint", width: "100px" },
+            { key: "group", label: "Nhóm chức năng", width: "220px" },
+            { key: "totalStories", label: "Tổng Story", width: "110px", render: (row) => numberText(row.totalStories) },
+            { key: "totalCases", label: "Tổng Testcase", width: "130px", render: (row) => numberText(row.totalCases) },
+            { key: "executedCases", label: "TC đã chạy", width: "120px", render: (row) => numberText(row.executedCases) },
             { key: "coverageRate", label: "Tỷ lệ bao phủ", width: "150px", render: (row) => progressCell(resolveRate(row.coverageRate, row.executedCases, row.totalCases)) },
+            { key: "passedCases", label: "TC đạt", width: "90px", render: (row) => numberText(row.passedCases) },
             { key: "successRate", label: "Tỷ lệ thành công", width: "160px", render: (row) => progressCell(row.successRate) },
-            { key: "criticalBugs", label: "Lỗi nghiêm trọng", width: "140px", render: (row) => bugTag(row.criticalBugs) },
-            { key: "reopenedBugs", label: "Lỗi mở lại", width: "110px", render: (row) => bugTag(row.reopenedBugs, "blue") },
-            { key: "assessment", label: "Đánh giá", width: "128px", render: (row) => renderAssessment(row.assessment) }
+            { key: "criticalBugs", label: "Lỗi nghiêm trọng mở", width: "170px", render: (row) => bugTag(row.criticalBugs) },
+            { key: "highBugs", label: "Lỗi mức cao mở", width: "150px", render: (row) => bugTag(row.highBugs, "yellow") },
+            { key: "gateResult", label: "Kết quả Gate", width: "150px", render: (row) => renderStatus(row.gateResult || row.assessment) },
+            { key: "note", label: "Ghi chú", width: "180px" }
         ]
     },
     readiness: {
@@ -425,17 +459,18 @@ const modules = {
         ],
         columns: [
             { key: "sprint", label: "Sprint", width: "110px", render: (row) => tag(row.sprint, "teal") },
-            { key: "handoffDate", label: "Bàn giao", width: "120px", render: (row) => formatDate(row.handoffDate) },
-            { key: "totalStories", label: "Story", width: "86px", render: (row) => numberText(row.totalStories) },
-            { key: "totalCases", label: "Tổng TC", width: "96px", render: (row) => numberText(row.totalCases) },
-            { key: "executedCases", label: "TC chạy", width: "96px", render: (row) => numberText(row.executedCases) },
+            { key: "handoffDate", label: "Ngày bàn giao UAT", width: "160px", render: (row) => formatDate(row.handoffDate) },
+            { key: "totalStories", label: "Tổng Story", width: "110px", render: (row) => numberText(row.totalStories) },
+            { key: "totalCases", label: "Tổng Testcase", width: "130px", render: (row) => numberText(row.totalCases) },
+            { key: "executedCases", label: "TC đã chạy", width: "120px", render: (row) => numberText(row.executedCases) },
             { key: "coverageRate", label: "Tỷ lệ bao phủ", width: "150px", render: (row) => progressCell(row.coverageRate) },
             { key: "passedCases", label: "TC đạt", width: "86px", render: (row) => numberText(row.passedCases) },
             { key: "successRate", label: "Tỷ lệ thành công", width: "160px", render: (row) => progressCell(row.successRate) },
-            { key: "openCriticalBugs", label: "Lỗi nghiêm trọng", width: "150px", render: (row) => bugTag(row.openCriticalBugs) },
-            { key: "openHighBugs", label: "Lỗi cao", width: "100px", render: (row) => bugTag(row.openHighBugs, "yellow") },
-            { key: "readinessLevel", label: "Sẵn sàng", width: "120px", render: (row) => renderStatus(row.readinessLevel) },
-            { key: "decision", label: "Quyết định", width: "140px", render: (row) => renderDecision(row.decision) }
+            { key: "openCriticalBugs", label: "Lỗi nghiêm trọng mở", width: "170px", render: (row) => bugTag(row.openCriticalBugs) },
+            { key: "openHighBugs", label: "Lỗi cao mở", width: "120px", render: (row) => bugTag(row.openHighBugs, "yellow") },
+            { key: "readinessLevel", label: "Mức độ sẵn sàng", width: "160px", render: (row) => renderStatus(row.readinessLevel) },
+            { key: "decision", label: "Quyết định", width: "160px", render: (row) => renderDecision(row.decision) },
+            { key: "note", label: "Ghi chú", width: "180px" }
         ]
     },
     guide: {
@@ -443,6 +478,8 @@ const modules = {
         shortLabel: "Hướng dẫn",
         icon: "fa-book-open",
         collection: "guide",
+        sectionKey: "category",
+        sectionColumnKey: "topic",
         description: "Các hướng dẫn sử dụng, quy ước priority/status và ghi chú vận hành từ workbook.",
         emptyIcon: "fa-book",
         emptyTitle: "Chưa có hướng dẫn",
@@ -457,10 +494,9 @@ const modules = {
             { key: "category", label: "Nhóm" }
         ],
         columns: [
-            { key: "category", label: "Nhóm", width: "150px", render: (row) => tag(row.category, "teal") },
-            { key: "index", label: "STT", width: "64px" },
+            { key: "index", label: "STT", width: "80px" },
             { key: "topic", label: "Nội dung", width: "260px", render: (row) => strongText(row.topic) },
-            { key: "content", label: "Cách sử dụng / Ý nghĩa", width: "640px" }
+            { key: "content", label: "Cách sử dụng", width: "760px" }
         ]
     }
 };
@@ -899,6 +935,7 @@ function renderCommandBand() {
 }
 
 function renderKpis() {
+    if (ui.activeTab === "dashboard") return "";
     const metrics = calculateMetrics();
     const cards = [
         { label: "Tiến độ UAT toàn Squad", value: `${metrics.squadProgress}%`, foot: "Theo trạng thái danh mục", icon: "fa-chart-simple" },
@@ -939,13 +976,181 @@ function renderTabs() {
 }
 
 function renderDashboard() {
-    const metrics = calculateMetrics();
     const hasAnyData = Object.keys(modules).some((id) => appState[modules[id].collection].length);
     return `
         <div class="dashboard-shell">
-            ${hasAnyData ? renderMainDashboard(metrics) : renderKickoffPanel()}
+            ${hasAnyData ? renderExcelDashboard() : renderKickoffPanel()}
         </div>
     `;
+}
+
+function renderExcelDashboard() {
+    const summaryRows = getDashboardSummaryRows();
+    const ownerRows = getDashboardOwnerRows();
+    const sprintRows = getDashboardSprintRows();
+    return `
+        <section class="panel excel-dashboard-panel">
+            <div class="excel-dashboard-title">
+                <h2>BẢNG ĐIỀU HÀNH UAT SQUAD 2 - AGILE TESTER POOL</h2>
+            </div>
+            <div class="excel-dashboard-body">
+                <div class="excel-summary-grid">
+                    <table class="excel-sheet-table excel-summary-table">
+                        <tbody>
+                            ${summaryRows.map((row) => `
+                                <tr>
+                                    <th>${e(row.label)}</th>
+                                    <td>${row.html || e(row.value)}</td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="excel-section-title">Tổng hợp theo Chủ quản UAT</div>
+                <div class="excel-table-scroll">
+                    <table class="excel-sheet-table">
+                        <thead>
+                            <tr>
+                                <th>Chủ quản UAT</th>
+                                <th>Số Story</th>
+                                <th>Tổng TC</th>
+                                <th>TC đã chạy</th>
+                                <th>Tỷ lệ bao phủ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${ownerRows.length ? ownerRows.map((row) => `
+                                <tr>
+                                    <td>${e(row.owner)}</td>
+                                    <td>${e(row.storyCount)}</td>
+                                    <td>${e(row.totalCases)}</td>
+                                    <td>${e(row.executedCases)}</td>
+                                    <td>${e(row.coverageRate)}%</td>
+                                </tr>
+                            `).join("") : renderExcelEmptyRow(5)}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="excel-section-title">Tổng hợp theo Sprint</div>
+                <div class="excel-table-scroll">
+                    <table class="excel-sheet-table">
+                        <thead>
+                            <tr>
+                                <th>Sprint</th>
+                                <th>Số Story</th>
+                                <th>Tổng TC</th>
+                                <th>TC đã chạy</th>
+                                <th>Tỷ lệ bao phủ</th>
+                                <th>Quyết định</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${sprintRows.length ? sprintRows.map((row) => `
+                                <tr>
+                                    <td>${e(row.sprint)}</td>
+                                    <td>${e(row.storyCount)}</td>
+                                    <td>${e(row.totalCases)}</td>
+                                    <td>${e(row.executedCases)}</td>
+                                    <td>${e(row.coverageRate)}%</td>
+                                    <td>${renderDecision(row.decision)}</td>
+                                </tr>
+                            `).join("") : renderExcelEmptyRow(6)}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    `;
+}
+
+function getDashboardSummaryRows() {
+    const totalStories = appState.features.length;
+    const scheduledStories = appState.features.filter((row) => isFilled(row.uatHandoff || row.handoffDate)).length;
+    const totalCases = sum(appState.plans, "totalCases");
+    const executedCases = sum(appState.plans, "executedCases");
+    const coverageRate = percent(executedCases, totalCases);
+    const criticalBugs = sum(appState.daily, "criticalBugs") || sum(appState.readiness, "openCriticalBugs");
+    const highBugs = sum(appState.daily, "highBugs") || sum(appState.readiness, "openHighBugs");
+    const trainingReadiness = calculateTrainingReadiness();
+    return [
+        { label: "Tổng Story", value: totalStories },
+        { label: "Story đã có lịch UAT", value: scheduledStories },
+        { label: "Tổng Testcase", value: totalCases },
+        { label: "TC đã thực hiện", value: executedCases },
+        { label: "Tỷ lệ bao phủ", value: `${coverageRate}%` },
+        { label: "Lỗi nghiêm trọng mở", value: criticalBugs },
+        { label: "Lỗi mức cao mở", value: highBugs },
+        { label: "Mức độ sẵn sàng đào tạo", value: `${trainingReadiness}%` }
+    ];
+}
+
+function getDashboardOwnerRows() {
+    const buckets = new Map();
+    appState.plans.forEach((row) => {
+        const owner = String(row.owner || "Chưa gán").trim();
+        if (!buckets.has(owner)) buckets.set(owner, { owner, storyCount: 0, totalCases: 0, executedCases: 0 });
+        const bucket = buckets.get(owner);
+        bucket.storyCount += 1;
+        bucket.totalCases += Number(row.totalCases || 0);
+        bucket.executedCases += Number(row.executedCases || 0);
+    });
+    if (!buckets.size) {
+        appState.features.forEach((row) => {
+            const owner = String(row.owner || "Chưa gán").trim();
+            if (!buckets.has(owner)) buckets.set(owner, { owner, storyCount: 0, totalCases: 0, executedCases: 0 });
+            buckets.get(owner).storyCount += 1;
+        });
+    }
+    return [...buckets.values()]
+        .map((row) => ({ ...row, coverageRate: percent(row.executedCases, row.totalCases) }))
+        .sort((a, b) => b.storyCount - a.storyCount || a.owner.localeCompare(b.owner, "vi"));
+}
+
+function getDashboardSprintRows() {
+    const buckets = new Map();
+    const ensure = (sprint) => {
+        const key = String(sprint || "Chưa gán Sprint").trim();
+        if (!buckets.has(key)) {
+            buckets.set(key, { sprint: key, storyCount: 0, totalCases: 0, executedCases: 0, decision: "" });
+        }
+        return buckets.get(key);
+    };
+    appState.plans.forEach((row) => {
+        const bucket = ensure(row.sprint || row.featureSprint);
+        bucket.storyCount += 1;
+        bucket.totalCases += Number(row.totalCases || 0);
+        bucket.executedCases += Number(row.executedCases || 0);
+    });
+    appState.readiness.forEach((row) => {
+        const bucket = ensure(row.sprint);
+        bucket.storyCount = Number(row.totalStories || bucket.storyCount);
+        bucket.totalCases = Number(row.totalCases || bucket.totalCases);
+        bucket.executedCases = Number(row.executedCases || bucket.executedCases);
+        bucket.decision = row.decision || bucket.decision;
+    });
+    return [...buckets.values()]
+        .map((row) => ({
+            ...row,
+            coverageRate: percent(row.executedCases, row.totalCases),
+            decision: row.decision || "Chưa quyết định"
+        }))
+        .sort((a, b) => a.sprint.localeCompare(b.sprint, "vi", { numeric: true }));
+}
+
+function calculateTrainingReadiness() {
+    if (!appState.matrix.length) return 0;
+    const rates = appState.matrix.map((row) => {
+        const total = Number(row.totalParticipation || 0);
+        const target = Number(row.target || 0);
+        return target ? Math.min(100, (total / target) * 100) : 0;
+    }).filter((value) => Number.isFinite(value) && value > 0);
+    return round(average(rates));
+}
+
+function renderExcelEmptyRow(colspan) {
+    return `<tr><td colspan="${e(colspan)}" class="excel-empty-cell">Chưa có dữ liệu</td></tr>`;
 }
 
 function renderKickoffPanel() {
