@@ -39,17 +39,6 @@ const ownerOptions = [
     "ALL",
     "BA"
 ];
-const defaultFeatureSections = [
-    "Luồng quy trình",
-    "Tính năng nâng cao",
-    "Màn hình Thẩm định tín dụng",
-    "Màn hình Phê duyệt tín dụng",
-    "Màn hình Thư ký hội đồng",
-    "Logic khi NSD xử lý CAS",
-    "Tích hợp",
-    "Quản trị hệ thống",
-    "Luồng nhận, giải chấp, rút bớt, thay thế tài sản bảo đảm"
-];
 const legacyStatusOptions = [
     "Chưa bắt đầu",
     "Đang kiểm thử",
@@ -69,16 +58,13 @@ const modules = {
         shortLabel: "Danh mục",
         icon: "fa-layer-group",
         collection: "features",
-        stickyColumns: 7,
+        stickyColumns: 4,
         compactTable: true,
-        sectionKey: "sectionTitle",
-        sectionColumnKey: "name",
         description: "Quản lý danh mục chức năng theo Story, Jira, Sprint, nghiệp vụ và trạng thái UAT.",
         emptyIcon: "fa-list-check",
         emptyTitle: "Chưa có danh mục UAT",
         emptyText: "Danh mục sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
-            { key: "sectionTitle", label: "Nhóm tiêu đề", type: "combo", options: getFeatureSectionOptions, full: true },
             { key: "stt", label: "STT", type: "number", defaultValue: getNextFeatureStt },
             { key: "code", label: "Mã chức năng", type: "text", required: true },
             { key: "storyCode", label: "Mã Story", type: "text" },
@@ -112,9 +98,9 @@ const modules = {
             { key: "status", label: "Trạng thái" }
         ],
         columns: [
-            { key: "stt", label: "STT", width: "48px" },
+            { key: "stt", label: "STT", width: "56px" },
             { key: "code", label: "Mã chức năng", width: "104px", render: (row) => tag(row.code, "teal") },
-            { key: "storyCode", label: "Mã Story", width: "84px", render: (row) => tag(row.storyCode, "gray") },
+            { key: "storyCode", label: "Mã Story", width: "100px", render: (row) => tag(row.storyCode, "gray") },
             { key: "jiraCode", label: "Mã Jira", width: "132px" },
             { key: "group", label: "Nhóm chức năng", width: "220px" },
             { key: "name", label: "Tên chức năng", width: "250px", render: (row) => strongText(row.name) },
@@ -1694,7 +1680,7 @@ function renderModule(mod) {
                         <i class="fa-solid ${mod.icon}"></i>
                         <div>
                             <h2>${e(mod.label)}</h2>
-                            <span>${e(total)} bản ghi · ${e(rows.length)} đang hiển thị</span>
+                            <span>${e(total)} bản ghi · ${e(mod.columns.length)} cột · ${e(rows.length)} đang hiển thị</span>
                         </div>
                     </div>
                     <div class="panel-actions">
@@ -3199,13 +3185,6 @@ function getNextFeatureStt() {
         return Number.isFinite(stt) ? Math.max(max, Math.trunc(stt)) : max;
     }, 0);
     return maxStt + 1;
-}
-
-function getFeatureSectionOptions() {
-    return uniqueTextValues([
-        ...defaultFeatureSections,
-        ...appState.features.map((row) => row.sectionTitle)
-    ]);
 }
 
 function uniqueTextValues(values) {

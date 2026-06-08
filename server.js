@@ -8,6 +8,7 @@ const ExcelJS = require("exceljs");
 const { Pool } = require("pg");
 
 const app = express();
+let server = null;
 const port = Number(process.env.PORT || 3000);
 const publicDir = __dirname;
 const databaseUrl = process.env.DATABASE_URL;
@@ -130,22 +131,32 @@ const excelSheets = [
   {
     collection: "features",
     name: "01_DanhMuc_UAT",
-    freezeColumns: 7,
-    sectionKey: "sectionTitle",
-    sectionColumnKey: "name",
+    freezeColumns: 4,
     columns: [
       ["stt", "STT", 8, "number"],
       ["code", "Mã chức năng", 18],
       ["storyCode", "Mã Story", 18],
       ["jiraCode", "Mã Jira", 20],
-      ["jiraName", "Tên Jira", 34],
+      ["group", "Nhóm chức năng", 28],
       ["name", "Tên chức năng", 34],
-      ["sprint", "Sprint", 14],
+      ["jiraName", "Tên Jira", 34],
+      ["jiraLink", "Link Jira", 22],
+      ["rsdLink", "Link RSD", 22],
+      ["sprintBA", "Sprint BA", 14],
+      ["sprintDev", "Sprint DEV", 14],
+      ["sprintQC", "Sprint QC", 14],
+      ["businessSprint", "Sprint Nghiệp vụ", 18],
       ["status", "Trạng thái", 16],
-      ["owner", "Nghiệp vụ", 28],
-      ["uatStatus", "Trạng thái UAT", 18],
-      ["uatHandoff", "Bàn giao UAT", 18, "date"],
-      ["uatDone", "Hoàn thành UAT", 18, "date"]
+      ["owner", "Đầu mối nghiệp vụ", 28],
+      ["uatHandoff", "Ngày bàn giao UAT", 18, "date"],
+      ["uatStart", "Ngày bắt đầu UAT", 18, "date"],
+      ["uatEnd", "Ngày kết thúc UAT", 18, "date"],
+      ["uatDone", "Ngày hoàn thành UAT", 20, "date"],
+      ["uatSigned", "Ngày ký UAT", 16, "date"],
+      ["handoffStatus", "Tình trạng bàn giao", 22],
+      ["completionRate", "% Hoàn thành TC", 18, "number"],
+      ["openBugs", "Số lỗi mở", 14, "number"],
+      ["uatWarning", "Cảnh báo UAT", 22]
     ]
   },
   {
@@ -612,18 +623,27 @@ app.use((error, req, res, next) => {
   });
 });
 
-const server = app.listen(port, "0.0.0.0", () => {
-  console.log(`Squad2 UAT Dashboard listening on port ${port}`);
-  if (!databaseUrl) {
-    console.warn("DATABASE_URL is not configured. API writes will fail until it is set.");
-  }
-  if (authMisconfigured) {
-    console.warn("APP_USER and APP_PASSWORD must be configured together to enable basic auth.");
-  }
-});
+if (require.main === module) {
+  server = app.listen(port, "0.0.0.0", () => {
+    console.log(`Squad2 UAT Dashboard listening on port ${port}`);
+    if (!databaseUrl) {
+      console.warn("DATABASE_URL is not configured. API writes will fail until it is set.");
+    }
+    if (authMisconfigured) {
+      console.warn("APP_USER and APP_PASSWORD must be configured together to enable basic auth.");
+    }
+  });
 
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+}
+
+module.exports = {
+  app,
+  parseWorkbookImportState,
+  buildExcelWorkbook,
+  excelSheets
+};
 
 function getPool() {
   if (!databaseUrl) {
@@ -725,32 +745,42 @@ async function parseFeatureImportWorkbook(buffer) {
   }
 
   const records = [];
-  let currentSection = "";
   for (let rowNumber = header.rowNumber + 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
     const row = worksheet.getRow(rowNumber);
     const values = readFeatureImportRow(row, header.map);
     if (isFeatureImportHeaderLike(values)) continue;
-    if (isFeatureSectionRow(values)) {
-      currentSection = normalizeImportedText(values.name);
-      continue;
-    }
-    if (isBlank(values.code)) continue;
+    const code = normalizeImportedText(values.code);
+    const jiraCode = normalizeImportedText(values.jiraCode);
+    const name = normalizeImportedText(values.name || values.jiraName);
+    if (!code && !jiraCode && !name) continue;
 
     const record = {
-      id: crypto.randomUUID(),
-      stt: normalizeImportedNumber(values.stt) || records.length + 1,
-      code: normalizeImportedText(values.code),
+      id: importId("features", jiraCode || code || name),
+      stt: toImportNumber(values.stt) || records.length + 1,
+      code,
       storyCode: normalizeImportedText(values.storyCode),
-      jiraCode: normalizeImportedText(values.jiraCode),
+      jiraCode,
+      group: normalizeImportedText(values.group),
+      name,
       jiraName: normalizeImportedText(values.jiraName),
-      name: normalizeImportedText(values.name || values.jiraName),
-      sprint: normalizeImportedText(values.sprint),
+      jiraLink: normalizeImportedText(values.jiraLink),
+      rsdLink: normalizeImportedText(values.rsdLink),
+      sprintBA: normalizeImportedText(values.sprintBA),
+      sprintDev: normalizeImportedText(values.sprintDev),
+      sprintQC: normalizeImportedText(values.sprintQC),
+      businessSprint: normalizeImportedText(values.businessSprint),
+      sprint: normalizeImportedText(values.businessSprint) || normalizeImportedText(values.sprintQC) || normalizeImportedText(values.sprint),
       status: normalizeImportedFeatureStatus(values.status),
       owner: normalizeImportedOwner(values.owner),
-      uatStatus: normalizeImportedText(values.uatStatus),
       uatHandoff: normalizeImportedDate(values.uatHandoff),
+      uatStart: normalizeImportedDate(values.uatStart),
+      uatEnd: normalizeImportedDate(values.uatEnd),
       uatDone: normalizeImportedDate(values.uatDone),
-      sectionTitle: currentSection
+      uatSigned: normalizeImportedDate(values.uatSigned),
+      handoffStatus: normalizeImportedText(values.handoffStatus),
+      completionRate: toImportPercent(values.completionRate),
+      openBugs: toImportNumber(values.openBugs),
+      uatWarning: normalizeImportedText(values.uatWarning)
     };
     records.push(record);
   }
@@ -758,6 +788,8 @@ async function parseFeatureImportWorkbook(buffer) {
 }
 
 function findFeatureImportWorksheet(workbook) {
+  const dm = workbook.getWorksheet("DM_ChucNang");
+  if (dm && findFeatureImportHeader(dm)) return dm;
   const named = workbook.getWorksheet("01_DanhMuc_UAT");
   if (named && findFeatureImportHeader(named)) return named;
   return workbook.worksheets.find((worksheet) => findFeatureImportHeader(worksheet)) || null;
@@ -779,14 +811,28 @@ const featureImportHeaderAliases = {
   code: ["ma chuc nang"],
   storyCode: ["ma story"],
   jiraCode: ["ma jira"],
-  jiraName: ["ten jira"],
+  group: ["nhom chuc nang"],
   name: ["ten chuc nang"],
+  jiraName: ["ten jira"],
+  jiraLink: ["link jira"],
+  rsdLink: ["link rsd"],
+  sprintBA: ["sprint ba"],
+  sprintDev: ["sprint dev"],
+  sprintQC: ["sprint qc"],
+  businessSprint: ["sprint nghiep vu"],
   sprint: ["sprint"],
   status: ["trang thai"],
-  owner: ["nghiep vu", "chu quan", "chu quan nv"],
+  owner: ["dau moi nghiep vu", "nghiep vu", "chu quan", "chu quan nv"],
   uatStatus: ["trang thai uat"],
   uatHandoff: ["ban giao uat", "ngay ban giao uat"],
-  uatDone: ["hoan thanh uat"]
+  uatStart: ["ngay bat dau uat", "bat dau uat"],
+  uatEnd: ["ngay ket thuc uat", "ket thuc uat"],
+  uatDone: ["hoan thanh uat", "ngay hoan thanh uat"],
+  uatSigned: ["ngay ky uat"],
+  handoffStatus: ["tinh trang ban giao", "trang thai ban giao"],
+  completionRate: ["hoan thanh tc", "phan tram hoan thanh tc"],
+  openBugs: ["so loi mo"],
+  uatWarning: ["canh bao uat"]
 };
 
 function buildFeatureImportHeaderMap(row) {
@@ -814,13 +860,6 @@ function readFeatureImportRow(row, map) {
 function isFeatureImportHeaderLike(values) {
   return normalizeImportHeader(values.code) === "ma chuc nang"
     || normalizeImportHeader(values.name) === "ten chuc nang";
-}
-
-function isFeatureSectionRow(values) {
-  return isBlank(values.code)
-    && isBlank(values.storyCode)
-    && isBlank(values.jiraCode)
-    && !isBlank(values.name);
 }
 
 function normalizeImportHeader(value) {
@@ -954,8 +993,7 @@ function parseDmChucNangSheet(worksheet) {
       handoffStatus: cellTextAt(row, 21),
       completionRate: toImportPercent(cellValueAt(row, 22)),
       openBugs: toImportNumber(cellValueAt(row, 23)),
-      uatWarning: cellTextAt(row, 24),
-      sectionTitle: group
+      uatWarning: cellTextAt(row, 24)
     });
   }
   return records;

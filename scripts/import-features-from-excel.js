@@ -31,14 +31,28 @@ const headerAliases = {
   code: ["ma chuc nang"],
   storyCode: ["ma story"],
   jiraCode: ["ma jira"],
-  jiraName: ["ten jira"],
+  group: ["nhom chuc nang"],
   name: ["ten chuc nang"],
+  jiraName: ["ten jira"],
+  jiraLink: ["link jira"],
+  rsdLink: ["link rsd"],
+  sprintBA: ["sprint ba"],
+  sprintDev: ["sprint dev"],
+  sprintQC: ["sprint qc"],
+  businessSprint: ["sprint nghiep vu"],
   sprint: ["sprint"],
   status: ["trang thai"],
-  owner: ["nghiep vu", "chu quan", "chu quan nv"],
+  owner: ["dau moi nghiep vu", "nghiep vu", "chu quan", "chu quan nv"],
   uatStatus: ["trang thai uat"],
   uatHandoff: ["ban giao uat", "ngay ban giao uat"],
-  uatDone: ["hoan thanh uat"]
+  uatStart: ["ngay bat dau uat", "bat dau uat"],
+  uatEnd: ["ngay ket thuc uat", "ket thuc uat"],
+  uatDone: ["hoan thanh uat", "ngay hoan thanh uat"],
+  uatSigned: ["ngay ky uat"],
+  handoffStatus: ["tinh trang ban giao", "trang thai ban giao"],
+  completionRate: ["hoan thanh tc", "phan tram hoan thanh tc"],
+  openBugs: ["so loi mo"],
+  uatWarning: ["canh bao uat"]
 };
 
 main().catch((error) => {
@@ -99,7 +113,7 @@ async function main() {
       backupPath,
       firstCode: records[0].code,
       lastCode: records[records.length - 1].code,
-      sections: summary.sections,
+      groups: summary.groups,
       statuses: summary.statuses,
       owners: summary.owners
     }, null, 2));
@@ -121,36 +135,48 @@ async function parseWorkbook(workbookPath) {
   if (!header) throw new Error("Could not find the feature catalog header row.");
 
   const records = [];
-  let currentSection = "";
   for (let rowNumber = header.rowNumber + 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
     const values = readRow(worksheet.getRow(rowNumber), header.map);
     if (isHeaderLike(values)) continue;
-    if (isSectionRow(values)) {
-      currentSection = cleanText(values.name);
-      continue;
-    }
-    if (isBlank(values.code)) continue;
+    const code = cleanText(values.code);
+    const jiraCode = cleanText(values.jiraCode);
+    const name = cleanText(values.name || values.jiraName);
+    if (!code && !jiraCode && !name) continue;
     records.push({
-      id: crypto.randomUUID(),
+      id: importId("features", jiraCode || code || name),
       stt: toNumber(values.stt) || records.length + 1,
-      code: cleanText(values.code),
+      code,
       storyCode: cleanText(values.storyCode),
-      jiraCode: cleanText(values.jiraCode),
+      jiraCode,
+      group: cleanText(values.group),
       jiraName: cleanText(values.jiraName),
-      name: cleanText(values.name || values.jiraName),
-      sprint: cleanText(values.sprint),
+      name,
+      jiraLink: cleanText(values.jiraLink),
+      rsdLink: cleanText(values.rsdLink),
+      sprintBA: cleanText(values.sprintBA),
+      sprintDev: cleanText(values.sprintDev),
+      sprintQC: cleanText(values.sprintQC),
+      businessSprint: cleanText(values.businessSprint),
+      sprint: cleanText(values.businessSprint) || cleanText(values.sprintQC) || cleanText(values.sprint),
       status: normalizeStatus(values.status),
       owner: normalizeOwner(values.owner),
-      uatStatus: cleanText(values.uatStatus),
       uatHandoff: toDateInput(values.uatHandoff),
+      uatStart: toDateInput(values.uatStart),
+      uatEnd: toDateInput(values.uatEnd),
       uatDone: toDateInput(values.uatDone),
-      sectionTitle: currentSection
+      uatSigned: toDateInput(values.uatSigned),
+      handoffStatus: cleanText(values.handoffStatus),
+      completionRate: toPercent(values.completionRate),
+      openBugs: toNumber(values.openBugs),
+      uatWarning: cleanText(values.uatWarning)
     });
   }
   return records;
 }
 
 function findWorksheet(workbook) {
+  const dm = workbook.getWorksheet("DM_ChucNang");
+  if (dm && findHeader(dm)) return dm;
   const named = workbook.getWorksheet("01_DanhMuc_UAT");
   if (named && findHeader(named)) return named;
   return workbook.worksheets.find((sheet) => findHeader(sheet)) || null;
@@ -190,13 +216,6 @@ function isHeaderLike(values) {
     || normalizeHeader(values.name) === "ten chuc nang";
 }
 
-function isSectionRow(values) {
-  return isBlank(values.code)
-    && isBlank(values.storyCode)
-    && isBlank(values.jiraCode)
-    && !isBlank(values.name);
-}
-
 function normalizeHeader(value) {
   return cleanText(unwrapCell(value))
     .toLocaleLowerCase("vi")
@@ -228,6 +247,19 @@ function toNumber(value) {
   if (isBlank(value)) return "";
   const number = Number(String(value).replace(",", "."));
   return Number.isFinite(number) ? number : "";
+}
+
+function toPercent(value) {
+  const number = toNumber(value);
+  if (number === "") return "";
+  return number > 0 && number <= 1 ? Math.round(number * 100) : Math.round(number);
+}
+
+function importId(collection, ...parts) {
+  return crypto
+    .createHash("sha1")
+    .update([collection, ...parts].map((part) => String(part || "")).join("|"))
+    .digest("hex");
 }
 
 function normalizeStatus(value) {
@@ -312,7 +344,7 @@ function writeBackup(rows) {
 
 function summarize(records) {
   return {
-    sections: countBy(records, "sectionTitle"),
+    groups: countBy(records, "group"),
     statuses: countBy(records, "status"),
     owners: countBy(records, "owner")
   };
