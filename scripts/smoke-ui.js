@@ -134,8 +134,16 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
 
   for (const tab of moduleTabs) {
     await page.locator(`.tabbar button[data-tab="${tab}"]`).click();
-    await page.waitForSelector(".content-grid-single .panel", { timeout: 5000 });
     assertReadableText(await page.locator("#app").innerText(), tab);
+    if (tab === "guide") {
+      await page.waitForSelector(".guide-page", { timeout: 5000 });
+      if (await page.locator(".guide-section").count() < 1) {
+        throw new Error("Guide tab did not render guide sections.");
+      }
+      continue;
+    }
+
+    await page.waitForSelector(".content-grid-single .panel", { timeout: 5000 });
 
     const rowsOrEmpty = await page.locator(".data-table tbody tr, .empty-state").count();
     if (rowsOrEmpty < 1) {

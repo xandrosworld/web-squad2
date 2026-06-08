@@ -963,79 +963,142 @@ function renderExcelDashboard() {
     const summaryRows = getDashboardSummaryRows();
     const ownerRows = getDashboardOwnerRows();
     const sprintRows = getDashboardSprintRows();
+    const totalStories = summaryRows.find((row) => row.key === "totalStories")?.value || 0;
+    const coverage = summaryRows.find((row) => row.key === "coverageRate")?.numericValue || 0;
+    const trainingReadiness = summaryRows.find((row) => row.key === "trainingReadiness")?.numericValue || 0;
     return `
-        <section class="panel excel-dashboard-panel">
-            <div class="excel-dashboard-title">
-                <h2>BẢNG ĐIỀU HÀNH UAT SQUAD 2 - AGILE TESTER POOL</h2>
-            </div>
-            <div class="excel-dashboard-body">
-                <div class="excel-summary-grid">
-                    <table class="excel-sheet-table excel-summary-table">
-                        <tbody>
-                            ${summaryRows.map((row) => `
-                                <tr>
-                                    <th>${e(row.label)}</th>
-                                    <td>${row.html || e(row.value)}</td>
-                                </tr>
-                            `).join("")}
-                        </tbody>
-                    </table>
+        <section class="uat-dashboard">
+            <div class="uat-dashboard-hero">
+                <div>
+                    <span>Dashboard_UAT</span>
+                    <h2>Bảng điều hành UAT Squad 2</h2>
+                    <p>Agile Tester Pool · Tổng hợp từ danh mục, lịch bàn giao, phân công, daily, chất lượng tuần và tổng kết sprint.</p>
                 </div>
-
-                <div class="excel-section-title">Tổng hợp theo Chủ quản UAT</div>
-                <div class="excel-table-scroll">
-                    <table class="excel-sheet-table">
-                        <thead>
-                            <tr>
-                                <th>Chủ quản UAT</th>
-                                <th>Số Story</th>
-                                <th>Tổng TC</th>
-                                <th>TC đã chạy</th>
-                                <th>Tỷ lệ bao phủ</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${ownerRows.length ? ownerRows.map((row) => `
-                                <tr>
-                                    <td>${e(row.owner)}</td>
-                                    <td>${e(row.storyCount)}</td>
-                                    <td>${e(row.totalCases)}</td>
-                                    <td>${e(row.executedCases)}</td>
-                                    <td>${e(row.coverageRate)}%</td>
-                                </tr>
-                            `).join("") : renderExcelEmptyRow(5)}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="excel-section-title">Tổng hợp theo Sprint</div>
-                <div class="excel-table-scroll">
-                    <table class="excel-sheet-table">
-                        <thead>
-                            <tr>
-                                <th>Sprint</th>
-                                <th>Số Story</th>
-                                <th>Tổng TC</th>
-                                <th>TC đã chạy</th>
-                                <th>Tỷ lệ bao phủ</th>
-                                <th>Quyết định</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${sprintRows.length ? sprintRows.map((row) => `
-                                <tr>
-                                    <td>${e(row.sprint)}</td>
-                                    <td>${e(row.storyCount)}</td>
-                                    <td>${e(row.totalCases)}</td>
-                                    <td>${e(row.executedCases)}</td>
-                                    <td>${e(row.coverageRate)}%</td>
-                                    <td>${renderDecision(row.decision)}</td>
-                                </tr>
-                            `).join("") : renderExcelEmptyRow(6)}
-                        </tbody>
-                    </table>
+                <div class="uat-hero-score">
+                    <small>Tỷ lệ bao phủ</small>
+                    <strong>${e(coverage)}%</strong>
+                    <div class="progress progress-${e(getProgressTone(coverage))}"><span style="width:${clamp(coverage)}%"></span></div>
                 </div>
             </div>
+
+            <div class="uat-metric-grid">
+                ${summaryRows.map((row) => `
+                    <article class="uat-metric-card ${e(row.tone || "neutral")}">
+                        <span>${e(row.label)}</span>
+                        <strong>${e(row.value)}</strong>
+                    </article>
+                `).join("")}
+            </div>
+
+            <div class="uat-dashboard-grid">
+                <section class="panel uat-dashboard-panel">
+                    <div class="panel-head">
+                        <div class="panel-title">
+                            <i class="fa-solid fa-users-gear"></i>
+                            <div>
+                                <h2>Tổng hợp theo Chủ quản UAT</h2>
+                                <span>${e(ownerRows.length)} chủ quản · ${e(totalStories)} story</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        ${ownerRows.length ? `
+                            <div class="uat-owner-list">
+                                ${ownerRows.map((row) => `
+                                    <article class="uat-owner-card">
+                                        <div class="uat-owner-main">
+                                            <strong>${e(row.owner)}</strong>
+                                            <span>${e(row.storyCount)} story · ${e(row.totalCases)} TC</span>
+                                        </div>
+                                        <div class="uat-owner-progress">
+                                            <div class="progress progress-${e(getProgressTone(row.coverageRate))}">
+                                                <span style="width:${clamp(row.coverageRate)}%"></span>
+                                            </div>
+                                            <b>${e(row.coverageRate)}%</b>
+                                        </div>
+                                        <small>${e(row.executedCases)} TC đã chạy</small>
+                                    </article>
+                                `).join("")}
+                            </div>
+                        ` : renderEmpty("fa-users-gear", "Chưa có dữ liệu chủ quản", "Nhập PhanCong_UAT hoặc DM_ChucNang để tổng hợp theo chủ quản.", true)}
+                    </div>
+                </section>
+
+                <section class="panel uat-dashboard-panel">
+                    <div class="panel-head">
+                        <div class="panel-title">
+                            <i class="fa-solid fa-graduation-cap"></i>
+                            <div>
+                                <h2>Sẵn sàng đào tạo</h2>
+                                <span>Theo MaTran_NangLuc</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="uat-readiness-card ${e(getProgressTone(trainingReadiness))}">
+                            <div>
+                                <span>Mức độ sẵn sàng đào tạo</span>
+                                <strong>${e(trainingReadiness)}%</strong>
+                            </div>
+                            <div class="progress progress-${e(getProgressTone(trainingReadiness))}">
+                                <span style="width:${clamp(trainingReadiness)}%"></span>
+                            </div>
+                        </div>
+                        <div class="uat-readiness-note">
+                            <span>${e(appState.matrix.length)} nhóm chức năng</span>
+                            <span>${e(sum(appState.matrix, "totalParticipation"))} lượt tham gia</span>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <section class="panel uat-dashboard-panel">
+                <div class="panel-head">
+                    <div class="panel-title">
+                        <i class="fa-solid fa-flag-checkered"></i>
+                        <div>
+                            <h2>Tổng hợp theo Sprint</h2>
+                            <span>${e(sprintRows.length)} sprint · quyết định từ TongKet_Sprint</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    ${sprintRows.length ? `
+                        <div class="uat-sprint-table-wrap">
+                            <table class="uat-sprint-table">
+                                <thead>
+                                    <tr>
+                                        <th>Sprint</th>
+                                        <th>Số Story</th>
+                                        <th>Tổng TC</th>
+                                        <th>TC đã chạy</th>
+                                        <th>Tỷ lệ bao phủ</th>
+                                        <th>Quyết định</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${sprintRows.map((row) => `
+                                        <tr>
+                                            <td>${tag(row.sprint, "teal")}</td>
+                                            <td>${e(row.storyCount)}</td>
+                                            <td>${e(row.totalCases)}</td>
+                                            <td>${e(row.executedCases)}</td>
+                                            <td>
+                                                <div class="uat-table-progress">
+                                                    <div class="progress progress-${e(getProgressTone(row.coverageRate))}">
+                                                        <span style="width:${clamp(row.coverageRate)}%"></span>
+                                                    </div>
+                                                    <b>${e(row.coverageRate)}%</b>
+                                                </div>
+                                            </td>
+                                            <td>${renderDecision(row.decision)}</td>
+                                        </tr>
+                                    `).join("")}
+                                </tbody>
+                            </table>
+                        </div>
+                    ` : renderEmpty("fa-flag-checkered", "Chưa có dữ liệu sprint", "Nhập PhanCong_UAT hoặc TongKet_Sprint để tổng hợp theo sprint.", true)}
+                </div>
         </section>
     `;
 }
@@ -1050,14 +1113,14 @@ function getDashboardSummaryRows() {
     const highBugs = sum(appState.daily, "highBugs") || sum(appState.readiness, "openHighBugs");
     const trainingReadiness = calculateTrainingReadiness();
     return [
-        { label: "Tổng Story", value: totalStories },
-        { label: "Story đã có lịch UAT", value: scheduledStories },
-        { label: "Tổng Testcase", value: totalCases },
-        { label: "TC đã thực hiện", value: executedCases },
-        { label: "Tỷ lệ bao phủ", value: `${coverageRate}%` },
-        { label: "Lỗi nghiêm trọng mở", value: criticalBugs },
-        { label: "Lỗi mức cao mở", value: highBugs },
-        { label: "Mức độ sẵn sàng đào tạo", value: `${trainingReadiness}%` }
+        { key: "totalStories", label: "Tổng Story", value: totalStories, numericValue: totalStories, tone: "teal" },
+        { key: "scheduledStories", label: "Story đã có lịch UAT", value: scheduledStories, numericValue: scheduledStories, tone: "blue" },
+        { key: "totalCases", label: "Tổng Testcase", value: totalCases, numericValue: totalCases, tone: "neutral" },
+        { key: "executedCases", label: "TC đã thực hiện", value: executedCases, numericValue: executedCases, tone: "neutral" },
+        { key: "coverageRate", label: "Tỷ lệ bao phủ", value: `${coverageRate}%`, numericValue: coverageRate, tone: getProgressTone(coverageRate) },
+        { key: "criticalBugs", label: "Lỗi nghiêm trọng mở", value: criticalBugs, numericValue: criticalBugs, tone: criticalBugs ? "red" : "green" },
+        { key: "highBugs", label: "Lỗi mức cao mở", value: highBugs, numericValue: highBugs, tone: highBugs ? "yellow" : "green" },
+        { key: "trainingReadiness", label: "Mức độ sẵn sàng đào tạo", value: `${trainingReadiness}%`, numericValue: trainingReadiness, tone: getProgressTone(trainingReadiness) }
     ];
 }
 
@@ -1612,6 +1675,7 @@ function getRecentActivities(limit = 8) {
 }
 
 function renderModule(mod) {
+    if (mod.collection === "guide") return renderGuideModule(mod);
     const rows = getFilteredRows(mod);
     const total = appState[mod.collection].length;
     return `
@@ -1636,6 +1700,137 @@ function renderModule(mod) {
             </section>
         </div>
     `;
+}
+
+function renderGuideModule(mod) {
+    const rows = getGuideRows();
+    const mainRows = rows.filter((row) => row.category === "Hướng dẫn");
+    const handoffRows = rows.filter((row) => ["Cập nhật mới", "Nguyên tắc", "Cột cần nhập", "Cột tự động", "Khóa liên kết"].includes(row.category));
+    const priorityRows = rows.filter((row) => row.category.includes("Priority"));
+    const statusRows = rows.filter((row) => row.category.includes("Status"));
+    return `
+        <div class="guide-page">
+            <section class="guide-hero">
+                <div>
+                    <span>HD_UAT</span>
+                    <h2>Hướng dẫn sử dụng bộ công cụ UAT Squad 2</h2>
+                    <p>Nội dung chuẩn theo sheet HD_UAT, trình bày lại thành các nhóm thông tin dễ đọc trên web.</p>
+                </div>
+                <div class="guide-hero-badge">
+                    <strong>${e(rows.length)}</strong>
+                    <span>đầu mục</span>
+                </div>
+            </section>
+
+            <section class="guide-section">
+                <div class="guide-section-head">
+                    <i class="fa-solid fa-list-check"></i>
+                    <div>
+                        <h3>Quy trình sử dụng</h3>
+                        <span>Các thao tác chính trong workbook UAT</span>
+                    </div>
+                </div>
+                <div class="guide-step-grid">
+                    ${mainRows.map((row) => `
+                        <article class="guide-step-card">
+                            <b>${e(row.index || "")}</b>
+                            <div>
+                                <strong>${e(row.topic)}</strong>
+                                <p>${e(row.content)}</p>
+                            </div>
+                        </article>
+                    `).join("")}
+                </div>
+            </section>
+
+            <section class="guide-section guide-section-accent">
+                <div class="guide-section-head">
+                    <i class="fa-solid fa-calendar-day"></i>
+                    <div>
+                        <h3>Lịch bàn giao theo User Story</h3>
+                        <span>Các nguyên tắc cập nhật ngày bàn giao UAT</span>
+                    </div>
+                </div>
+                <div class="guide-definition-grid">
+                    ${handoffRows.map((row) => `
+                        <article>
+                            <span>${e(row.category)}</span>
+                            <strong>${e(row.topic)}</strong>
+                            <p>${e(row.content)}</p>
+                        </article>
+                    `).join("")}
+                </div>
+            </section>
+
+            <div class="guide-reference-grid">
+                ${renderGuideReference("Ý nghĩa các mức độ ưu tiên (Priority)", "Mức độ", priorityRows)}
+                ${renderGuideReference("Ý nghĩa các trạng thái (Status)", "Trạng thái", statusRows)}
+            </div>
+        </div>
+    `;
+}
+
+function renderGuideReference(title, firstColumn, rows) {
+    return `
+        <section class="guide-section">
+            <div class="guide-section-head">
+                <i class="fa-solid fa-bookmark"></i>
+                <div>
+                    <h3>${e(title)}</h3>
+                    <span>${e(rows.length)} mục tham chiếu</span>
+                </div>
+            </div>
+            <div class="guide-reference-list">
+                ${rows.map((row) => `
+                    <article>
+                        <strong>${e(row.topic)}</strong>
+                        <span>${e(row.content)}</span>
+                    </article>
+                `).join("")}
+            </div>
+        </section>
+    `;
+}
+
+function getGuideRows() {
+    return appState.guide.length ? appState.guide : defaultGuideRows();
+}
+
+function defaultGuideRows() {
+    const rows = [
+        ["Hướng dẫn", 1, "Cập nhật lịch bàn giao", "Vào sheet Lich_UAT, chỉnh Ngày bàn giao/Bắt đầu/Kết thúc UAT theo lịch thực tế của TCT 217. DM_ChucNang và PhanCong_UAT tự động kế thừa."],
+        ["Hướng dẫn", 2, "Phân công Tester", "Vào sheet PhanCong_UAT, đánh dấu ✓ cho T1-T6. Mô hình mặc định đã luân chuyển 2 Tester/Story."],
+        ["Hướng dẫn", 3, "Theo dõi hằng ngày", "Vào sheet DieuHanh_Ngay để nhập số TC đã chạy, TC đạt, lỗi, blocker và người xử lý."],
+        ["Hướng dẫn", 4, "Đánh giá hằng tuần", "Sheet ChatLuong_Tuan tổng hợp Quality Gate theo tuần/Sprint."],
+        ["Hướng dẫn", 5, "Kết thúc Sprint", "Sheet TongKet_Sprint tự tính GO / CONDITIONAL GO / NO GO theo coverage, pass rate và lỗi mở."],
+        ["Hướng dẫn", 6, "Đào tạo chéo", "Sheet MaTran_NangLuc theo dõi mức độ mỗi Tester tham gia các nhóm chức năng để hình thành giảng viên nội bộ."],
+        ["Hướng dẫn", 7, "Báo cáo lãnh đạo", "Sheet Dashboard_UAT là bảng điều hành tổng hợp cho Squad Leader."],
+        ["Cập nhật mới", 1, "Lịch bàn giao theo User Story", "Sử dụng sheet Lich_BG_US để nhập ngày bàn giao UAT riêng cho từng US; DM_ChucNang tự động lấy ngày từ sheet này."],
+        ["Nguyên tắc", 2, "Không dùng lịch Sprint làm ngày bàn giao chính", "Trong cùng Sprint, mỗi US có thể có ngày bàn giao khác nhau."],
+        ["Cột cần nhập", 3, "Lich_BG_US!G:G", "Ngày bàn giao UAT theo US"],
+        ["Cột tự động", 4, "DM_ChucNang!W:Y", "Ngày bàn giao/bắt đầu/kết thúc UAT tự động theo Mã Jira"],
+        ["Khóa liên kết", 5, "Mã Jira", "SQ02_CNxxx_xxx"],
+        ["Ý nghĩa các mức độ ưu tiên (Priority)", 1, "Blocker", "Lỗi chặn UAT, không thể kiểm thử tiếp"],
+        ["Ý nghĩa các mức độ ưu tiên (Priority)", 2, "Critical", "Lỗi nghiêm trọng ảnh hưởng nghiệp vụ chính"],
+        ["Ý nghĩa các mức độ ưu tiên (Priority)", 3, "Major", "Lỗi nghiệp vụ quan trọng"],
+        ["Ý nghĩa các mức độ ưu tiên (Priority)", 4, "Minor", "Lỗi nhỏ, ảnh hưởng cục bộ"],
+        ["Ý nghĩa các mức độ ưu tiên (Priority)", 5, "Trivial", "Lỗi giao diện, hiển thị, wording"],
+        ["Ý nghĩa các trạng thái (Status)", 1, "Open", "Mới ghi nhận"],
+        ["Ý nghĩa các trạng thái (Status)", 2, "In Progress", "Dev đang xử lý"],
+        ["Ý nghĩa các trạng thái (Status)", 3, "Reopened", "Đã fix nhưng bị mở lại"],
+        ["Ý nghĩa các trạng thái (Status)", 4, "Resolved", "Dev đã fix, chờ retest"],
+        ["Ý nghĩa các trạng thái (Status)", 5, "Closed", "Đã retest thành công"],
+        ["Ý nghĩa các trạng thái (Status)", 6, "Cancelled", "Hủy lỗi"],
+        ["Ý nghĩa các trạng thái (Status)", 7, "Pending", "Chờ xử lý"],
+        ["Ý nghĩa các trạng thái (Status)", 8, "SIT Fail", "Phát hiện từ SIT/UAT, chưa xử lý"]
+    ];
+    return rows.map(([category, index, topic, content]) => ({
+        id: `${category}-${index}-${topic}`,
+        category,
+        index,
+        topic,
+        content
+    }));
 }
 
 function renderToolbar(mod, visibleCount, totalCount) {
