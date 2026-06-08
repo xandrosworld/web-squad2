@@ -1,7 +1,7 @@
 const STORAGE_KEY = "squad2_uat_command_center_v1";
 const MIGRATION_FLAG_KEY = `${STORAGE_KEY}_remote_migration_checked`;
 const LEGACY_BACKUP_KEY = `${STORAGE_KEY}_legacy_backup`;
-const COLUMN_WIDTHS_KEY = `${STORAGE_KEY}_column_widths_v2`;
+const COLUMN_WIDTHS_KEY = `${STORAGE_KEY}_column_widths_v3`;
 const API_BASE = "/api";
 const SYNC_INTERVAL_MS = 30000;
 const GROUP_CHAT_POLL_INTERVAL_MS = 15000;
@@ -1833,7 +1833,20 @@ function renderGuideReference(title, firstColumn, rows) {
 }
 
 function getGuideRows() {
-    return appState.guide.length ? appState.guide : defaultGuideRows();
+    return normalizeGuideRowsForDisplay(appState.guide.length ? appState.guide : defaultGuideRows());
+}
+
+function normalizeGuideRowsForDisplay(rows) {
+    return rows.map((row) => {
+        if (row.category !== "Cột tự động") return row;
+        const topic = String(row.topic || "").trim();
+        if (topic !== "DM_ChucNang!W:Y" && topic !== "DM_ChucNang!P:R, U:X") return row;
+        return {
+            ...row,
+            topic: "DM_ChucNang!P:R, U:X",
+            content: "P:R lấy ngày bàn giao/bắt đầu/kết thúc từ Lich_BG_US theo Mã Jira; U:X tự tính trạng thái, %TC, lỗi mở và cảnh báo."
+        };
+    });
 }
 
 function defaultGuideRows() {
@@ -1848,7 +1861,7 @@ function defaultGuideRows() {
         ["Cập nhật mới", 1, "Lịch bàn giao theo User Story", "Sử dụng sheet Lich_BG_US để nhập ngày bàn giao UAT riêng cho từng US; DM_ChucNang tự động lấy ngày từ sheet này."],
         ["Nguyên tắc", 2, "Không dùng lịch Sprint làm ngày bàn giao chính", "Trong cùng Sprint, mỗi US có thể có ngày bàn giao khác nhau."],
         ["Cột cần nhập", 3, "Lich_BG_US!G:G", "Ngày bàn giao UAT theo US"],
-        ["Cột tự động", 4, "DM_ChucNang!W:Y", "Ngày bàn giao/bắt đầu/kết thúc UAT tự động theo Mã Jira"],
+        ["Cột tự động", 4, "DM_ChucNang!P:R, U:X", "P:R lấy ngày bàn giao/bắt đầu/kết thúc từ Lich_BG_US theo Mã Jira; U:X tự tính trạng thái, %TC, lỗi mở và cảnh báo."],
         ["Khóa liên kết", 5, "Mã Jira", "SQ02_CNxxx_xxx"],
         ["Ý nghĩa các mức độ ưu tiên (Priority)", 1, "Blocker", "Lỗi chặn UAT, không thể kiểm thử tiếp"],
         ["Ý nghĩa các mức độ ưu tiên (Priority)", 2, "Critical", "Lỗi nghiêm trọng ảnh hưởng nghiệp vụ chính"],
@@ -2054,9 +2067,8 @@ function parseColumnWidth(width) {
 
 function getResolvedColumnWidth(mod, col, rows) {
     const storedWidth = getStoredColumnWidth(mod, col.key);
-    const minWidth = getColumnResizeMinWidth(col.key, mod);
     return {
-        width: Math.max(minWidth, storedWidth || getDefaultColumnWidth(mod, col, rows)),
+        width: storedWidth || getDefaultColumnWidth(mod, col, rows),
         userSized: Boolean(storedWidth)
     };
 }
@@ -2163,7 +2175,7 @@ function isElasticFillColumn(col) {
 function getStoredColumnWidth(mod, columnKey) {
     const value = Number(ui.columnWidths?.[columnWidthStorageKey(mod, columnKey)]);
     if (!Number.isFinite(value) || value <= 0) return null;
-    return Math.max(getColumnResizeMinWidth(columnKey, mod), Math.round(value));
+    return Math.max(getColumnResizeMinWidth(columnKey), Math.round(value));
 }
 
 function getDefaultColumnWidth(mod, col, rows) {
@@ -2262,11 +2274,8 @@ function getColumnDefaultMaxWidth(mod, col) {
     return Math.max(130, Math.min(220, declared));
 }
 
-function getColumnResizeMinWidth(columnKey, mod = modules[ui.activeTab]) {
-    if (columnKey === ACTION_COLUMN_KEY) return ACTION_COLUMN_DEFAULT_WIDTH;
-    const col = mod?.columns?.find((item) => item.key === columnKey);
-    const headerWidth = col ? getColumnHeaderWidth(col) : 0;
-    return Math.max(COLUMN_RESIZE_MIN_WIDTH, headerWidth);
+function getColumnResizeMinWidth(columnKey) {
+    return columnKey === ACTION_COLUMN_KEY ? 76 : COLUMN_RESIZE_MIN_WIDTH;
 }
 
 function clampColumnWidth(value, minWidth, maxWidth) {
@@ -2742,10 +2751,12 @@ function bindColumnResizeEvents() {
 
 function fitTableHeadersToLabels() {
     document.querySelectorAll("[data-resizable-table]").forEach((table) => {
+        const mod = Object.values(modules).find((item) => item.collection === table.dataset.resizableTable);
         let resized = false;
         table.querySelectorAll("thead th[data-column-key]").forEach((header) => {
             const label = header.querySelector(".th-label");
             const columnKey = header.dataset.columnKey;
+            if (mod && ui.columnWidths[columnWidthStorageKey(mod, columnKey)]) return;
             const col = getTableColumnElement(table, columnKey);
             if (!label || !col) return;
             const deficit = label.scrollWidth - label.clientWidth;
@@ -2798,7 +2809,7 @@ function startColumnResize(event) {
 
     const startX = event.clientX;
     const startWidth = getTableColumnWidth(col);
-    const minWidth = getColumnResizeMinWidth(columnKey, mod);
+    const minWidth = getColumnResizeMinWidth(columnKey);
     let nextWidth = startWidth;
 
     table.classList.add("is-resizing-column");
@@ -2843,7 +2854,7 @@ function handleColumnResizeKeydown(event) {
     event.preventDefault();
     const direction = event.key === "ArrowRight" ? 1 : -1;
     const step = event.shiftKey ? 24 : 8;
-    const nextWidth = Math.max(getColumnResizeMinWidth(columnKey, mod), getTableColumnWidth(col) + (direction * step));
+    const nextWidth = Math.max(getColumnResizeMinWidth(columnKey), getTableColumnWidth(col) + (direction * step));
     applyTableColumnWidth(table, columnKey, nextWidth);
     ui.columnWidths[columnWidthStorageKey(mod, columnKey)] = nextWidth;
     saveColumnWidths();
