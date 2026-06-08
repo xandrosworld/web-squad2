@@ -1706,6 +1706,8 @@ function renderGuideModule(mod) {
     const rows = getGuideRows();
     const mainRows = rows.filter((row) => row.category === "Hướng dẫn");
     const handoffRows = rows.filter((row) => ["Cập nhật mới", "Nguyên tắc", "Cột cần nhập", "Cột tự động", "Khóa liên kết"].includes(row.category));
+    const handoffMain = handoffRows[0];
+    const handoffFacts = handoffRows.slice(1);
     const priorityRows = rows.filter((row) => row.category.includes("Priority"));
     const statusRows = rows.filter((row) => row.category.includes("Status"));
     return `
@@ -1751,14 +1753,23 @@ function renderGuideModule(mod) {
                         <span>Các nguyên tắc cập nhật ngày bàn giao UAT</span>
                     </div>
                 </div>
-                <div class="guide-definition-grid">
-                    ${handoffRows.map((row) => `
-                        <article>
-                            <span>${e(row.category)}</span>
-                            <strong>${e(row.topic)}</strong>
-                            <p>${e(row.content)}</p>
+                <div class="guide-handoff-layout">
+                    ${handoffMain ? `
+                        <article class="guide-handoff-primary">
+                            <span>${e(handoffMain.category)}</span>
+                            <h4>${e(handoffMain.topic)}</h4>
+                            <p>${e(handoffMain.content)}</p>
                         </article>
-                    `).join("")}
+                    ` : ""}
+                    <div class="guide-handoff-facts">
+                        ${handoffFacts.map((row) => `
+                            <article>
+                                <span>${e(row.category)}</span>
+                                <strong>${e(row.topic)}</strong>
+                                <p>${e(row.content)}</p>
+                            </article>
+                        `).join("")}
+                    </div>
                 </div>
             </section>
 
