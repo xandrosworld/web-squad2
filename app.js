@@ -1,12 +1,17 @@
 const STORAGE_KEY = "squad2_uat_command_center_v1";
 const MIGRATION_FLAG_KEY = `${STORAGE_KEY}_remote_migration_checked`;
 const LEGACY_BACKUP_KEY = `${STORAGE_KEY}_legacy_backup`;
+const COLUMN_WIDTHS_KEY = `${STORAGE_KEY}_column_widths`;
 const API_BASE = "/api";
 const SYNC_INTERVAL_MS = 30000;
 const GROUP_CHAT_POLL_INTERVAL_MS = 15000;
 const GROUP_CHAT_LIMIT = 50;
 const MAX_AVATAR_FILE_SIZE_MB = 6;
 const MAX_AVATAR_FILE_SIZE_BYTES = MAX_AVATAR_FILE_SIZE_MB * 1024 * 1024;
+const ACTION_COLUMN_KEY = "__actions";
+const ACTION_COLUMN_DEFAULT_WIDTH = 104;
+const COLUMN_RESIZE_MIN_WIDTH = 48;
+const COLUMN_DEFAULT_SAMPLE_SIZE = 80;
 
 const e = (value) => String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -531,6 +536,7 @@ let ui = {
     query: "",
     filters: {},
     columnFilters: {},
+    columnWidths: loadColumnWidths(),
     openColumnFilter: null,
     modal: null,
     profileOpen: false,
@@ -578,6 +584,25 @@ function loadCachedState() {
 
 function cacheState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+}
+
+function loadColumnWidths() {
+    try {
+        const raw = localStorage.getItem(COLUMN_WIDTHS_KEY);
+        const parsed = raw ? JSON.parse(raw) : {};
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+        return Object.fromEntries(
+            Object.entries(parsed)
+                .map(([key, value]) => [key, Number(value)])
+                .filter(([, value]) => Number.isFinite(value) && value > 0)
+        );
+    } catch {
+        return {};
+    }
+}
+
+function saveColumnWidths() {
+    localStorage.setItem(COLUMN_WIDTHS_KEY, JSON.stringify(ui.columnWidths || {}));
 }
 
 function setDataStatus(mode, message) {
@@ -1845,20 +1870,25 @@ function defaultGuideRows() {
 }
 
 function renderTable(mod, rows) {
-    const colgroup = mod.columns.map((col) => `<col style="width:${e(col.width || "140px")}">`).join("") + `<col style="width:104px">`;
-    const minWidth = tableMinWidth(mod);
-    const columnMeta = tableColumnMeta(mod);
+    const layout = tableColumnLayout(mod, rows);
+    const colgroup = layout.columns.map(({ col, width }) => (
+        `<col data-column-key="${e(col.key)}" style="width:${e(`${width}px`)}">`
+    )).join("") + `<col data-column-key="${e(ACTION_COLUMN_KEY)}" style="width:${e(`${layout.actionWidth}px`)}">`;
+    const columnMeta = layout.columnMeta;
     const tableClass = ["data-table", mod.compactTable ? "is-compact" : "", mod.stickyColumns ? "has-sticky-columns" : ""]
         .filter(Boolean)
         .join(" ");
     return `
         <div class="table-wrap">
-            <table class="${e(tableClass)}" style="min-width:${e(minWidth)}">
+            <table class="${e(tableClass)}" data-resizable-table="${e(mod.collection)}" style="width:${e(`${layout.totalWidth}px`)}; min-width:${e(`${layout.totalWidth}px`)}">
                 <colgroup>${colgroup}</colgroup>
                 <thead>
                     <tr>
                         ${mod.columns.map((col, index) => renderTableHeaderCell(mod, col, columnMeta[index])).join("")}
-                        <th class="col-actions">Thao tác</th>
+                        <th class="col-actions">
+                            <span>Thao tác</span>
+                            ${renderColumnResizeHandle(ACTION_COLUMN_KEY, "Thao tác")}
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1887,7 +1917,7 @@ function renderTableRows(mod, rows, columnMeta) {
             ${sectionMarkup}
                             <tr>
                                 ${mod.columns.map((col, index) => `<td${tableCellAttrs(columnMeta[index])}>${renderCell(row, col)}</td>`).join("")}
-                                <td>
+                                <td class="col-actions">
                                     <div class="row-actions">
                                         ${canEdit ? `
                                             <button class="icon-btn" data-action="open-edit" data-id="${e(row.id)}" title="Sửa" aria-label="Sửa">
@@ -1921,7 +1951,14 @@ function renderTableHeaderCell(mod, col, meta) {
                 </button>
                 ${isOpen ? renderColumnFilterPopover(mod, col) : ""}
             </div>
+            ${renderColumnResizeHandle(col.key, col.label)}
         </th>
+    `;
+}
+
+function renderColumnResizeHandle(columnKey, label) {
+    return `
+        <button type="button" class="column-resize-handle" data-column-resizer="${e(columnKey)}" title="Kéo để đổi độ rộng, nhấp đúp để đặt lại" aria-label="Kéo dãn cột ${e(label)}"></button>
     `;
 }
 
@@ -1958,15 +1995,33 @@ function renderSectionRow(mod, section) {
     `;
 }
 
-function tableColumnMeta(mod) {
+function tableColumnLayout(mod, rows) {
+    const columns = mod.columns.map((col) => ({
+        col,
+        width: getResolvedColumnWidth(mod, col, rows)
+    }));
+    const actionWidth = getStoredColumnWidth(mod, ACTION_COLUMN_KEY) || ACTION_COLUMN_DEFAULT_WIDTH;
+    const totalWidth = columns.reduce((total, item) => total + item.width, actionWidth);
+    return {
+        columns,
+        actionWidth,
+        totalWidth,
+        columnMeta: tableColumnMeta(mod, columns)
+    };
+}
+
+function tableColumnMeta(mod, columnLayout) {
     const stickyCount = Number(mod.stickyColumns || 0);
     let left = 0;
-    return mod.columns.map((col, index) => {
-        const width = parseColumnWidth(col.width);
+    return columnLayout.map(({ col, width }, index) => {
         const sticky = index < stickyCount;
         const meta = {
             className: sticky ? `sticky-col${index === stickyCount - 1 ? " sticky-boundary" : ""}` : "",
-            style: sticky ? `left:${left}px` : ""
+            style: sticky ? `left:${left}px` : "",
+            attrs: {
+                "data-column-key": col.key,
+                "data-column-index": index
+            }
         };
         if (sticky) left += width;
         return meta;
@@ -1975,20 +2030,130 @@ function tableColumnMeta(mod) {
 
 function tableCellAttrs(meta, extraClass = "") {
     const className = [meta?.className, extraClass].filter(Boolean).join(" ");
-    if (!className && !meta?.style) return "";
-    return `${className ? ` class="${e(className)}"` : ""}${meta?.style ? ` style="${e(meta.style)}"` : ""}`;
-}
-
-function tableMinWidth(mod) {
-    const columnWidth = mod.columns.reduce((total, col) => {
-        return total + parseColumnWidth(col.width);
-    }, 104);
-    return `${Math.max(columnWidth, 980)}px`;
+    const attrs = meta?.attrs
+        ? Object.entries(meta.attrs).map(([key, value]) => ` ${key}="${e(value)}"`).join("")
+        : "";
+    if (!className && !meta?.style && !attrs) return "";
+    return `${className ? ` class="${e(className)}"` : ""}${meta?.style ? ` style="${e(meta.style)}"` : ""}${attrs}`;
 }
 
 function parseColumnWidth(width) {
     const value = Number.parseInt(String(width || ""), 10);
     return Number.isFinite(value) ? value : 140;
+}
+
+function getResolvedColumnWidth(mod, col, rows) {
+    return getStoredColumnWidth(mod, col.key) || getDefaultColumnWidth(mod, col, rows);
+}
+
+function getStoredColumnWidth(mod, columnKey) {
+    const value = Number(ui.columnWidths?.[columnWidthStorageKey(mod, columnKey)]);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return Math.max(getColumnResizeMinWidth(columnKey), Math.round(value));
+}
+
+function getDefaultColumnWidth(mod, col, rows) {
+    const minWidth = getColumnDefaultMinWidth(col);
+    const maxWidth = getColumnDefaultMaxWidth(mod, col);
+    const headerWidth = estimateTableTextWidth(col.label) + 52;
+    const sampleWidth = getColumnSampleWidth(col, rows);
+    return clampColumnWidth(Math.ceil(Math.max(minWidth, headerWidth, sampleWidth)), minWidth, maxWidth);
+}
+
+function getColumnSampleWidth(col, rows) {
+    const values = (rows || [])
+        .slice(0, COLUMN_DEFAULT_SAMPLE_SIZE)
+        .map((row) => getColumnDisplayText(row, col))
+        .filter((text) => text && text !== "-")
+        .map((text) => estimateCellTextWidth(text, col) + 24)
+        .sort((a, b) => a - b);
+    if (!values.length) return 0;
+    return values[Math.floor((values.length - 1) * 0.85)];
+}
+
+function getColumnDisplayText(row, col) {
+    const raw = getColumnRawValue(row, col);
+    if (raw !== "" && raw != null) return normalizeColumnText(raw);
+    return normalizeColumnText(stripHtml(renderCell(row, col)));
+}
+
+function normalizeColumnText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function stripHtml(html) {
+    return String(html || "")
+        .replace(/<[^>]*>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, "\"")
+        .replace(/&#039;/g, "'");
+}
+
+function estimateCellTextWidth(text, col) {
+    const fullWidth = estimateTableTextWidth(text);
+    const comfortChars = getColumnComfortChars(col);
+    if ([...text].length <= comfortChars) return fullWidth;
+    const segmentWidth = Math.max(
+        ...text.split(/[\s,;:/|()[\]{}]+/).map(estimateTableTextWidth).filter(Boolean),
+        0
+    );
+    return Math.max(segmentWidth, estimateTableTextWidth([...text].slice(0, comfortChars).join("")));
+}
+
+function estimateTableTextWidth(text) {
+    return [...String(text || "")].reduce((width, char) => {
+        if (/\s/.test(char)) return width + 3.5;
+        if (/[MW@#%]/.test(char)) return width + 8.2;
+        if (/[A-Z0-9]/.test(char)) return width + 7.2;
+        return width + 6.4;
+    }, 0);
+}
+
+function getColumnComfortChars(col) {
+    const key = String(col.key || "").toLowerCase();
+    if (key.includes("link")) return 18;
+    if (key.includes("content")) return 48;
+    if (key.includes("note") || key.includes("scope") || key.includes("blocker")) return 40;
+    if (key.includes("name") || key.includes("feature") || key.includes("group") || key.includes("topic")) return 34;
+    return 24;
+}
+
+function getColumnDefaultMinWidth(col) {
+    const key = String(col.key || "").toLowerCase();
+    if (key === "stt" || /^t[1-6]$/.test(key)) return 56;
+    if (key.includes("link")) return 88;
+    return 72;
+}
+
+function getColumnDefaultMaxWidth(mod, col) {
+    const key = String(col.key || "").toLowerCase();
+    const field = getFieldForColumn(mod, col);
+    const declared = parseColumnWidth(col.width);
+    if (key === "stt" || /^t[1-6]$/.test(key)) return 72;
+    if (key.includes("link")) return 124;
+    if (key.includes("date") || key.includes("handoff") || key.includes("start") || key.includes("end") || key.includes("done") || key.includes("signed")) return 170;
+    if (key.includes("sprint")) return 140;
+    if (key.includes("status") || key.includes("decision") || key.includes("warning") || key.includes("level")) return 170;
+    if (key.includes("name") || key.includes("feature") || key.includes("group") || key.includes("topic") || key.includes("content") || key.includes("scope") || key.includes("note") || key.includes("blocker") || field?.type === "textarea" || field?.full) {
+        return Math.max(220, Math.min(340, declared));
+    }
+    if (key.includes("code") || key.includes("jira") || key.includes("story") || key.includes("email")) return 190;
+    return Math.max(130, Math.min(220, declared));
+}
+
+function getColumnResizeMinWidth(columnKey) {
+    return columnKey === ACTION_COLUMN_KEY ? 76 : COLUMN_RESIZE_MIN_WIDTH;
+}
+
+function clampColumnWidth(value, minWidth, maxWidth) {
+    return Math.max(minWidth, Math.min(maxWidth, value));
+}
+
+function columnWidthStorageKey(mod, columnKey) {
+    return `${mod.collection}:${columnKey}`;
 }
 
 function renderColumnFilterControl(mod, col, autofocus = false) {
@@ -2424,6 +2589,8 @@ function bindEvents() {
         input.addEventListener(input.tagName === "SELECT" ? "change" : "input", updateColumnFilter);
     });
 
+    bindColumnResizeEvents();
+
     bindComboFields();
 
     const form = document.getElementById("recordForm");
@@ -2440,6 +2607,132 @@ function bindEvents() {
 
     const importInput = document.getElementById("importDataInput");
     if (importInput) importInput.addEventListener("change", handleImport);
+}
+
+function bindColumnResizeEvents() {
+    document.querySelectorAll("[data-column-resizer]").forEach((handle) => {
+        handle.addEventListener("pointerdown", startColumnResize);
+        handle.addEventListener("dblclick", resetColumnWidth);
+        handle.addEventListener("keydown", handleColumnResizeKeydown);
+    });
+}
+
+function startColumnResize(event) {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const handle = event.currentTarget;
+    const table = handle.closest("[data-resizable-table]");
+    const mod = modules[ui.activeTab];
+    const columnKey = handle.dataset.columnResizer;
+    const col = getTableColumnElement(table, columnKey);
+    if (!table || !mod || !columnKey || !col) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const startX = event.clientX;
+    const startWidth = getTableColumnWidth(col);
+    const minWidth = getColumnResizeMinWidth(columnKey);
+    let nextWidth = startWidth;
+
+    table.classList.add("is-resizing-column");
+    handle.classList.add("active");
+    document.body.classList.add("is-column-resizing");
+    try {
+        handle.setPointerCapture(event.pointerId);
+    } catch {
+        // Pointer capture is only an enhancement; window listeners keep dragging usable.
+    }
+
+    const handleMove = (moveEvent) => {
+        nextWidth = Math.max(minWidth, Math.round(startWidth + moveEvent.clientX - startX));
+        applyTableColumnWidth(table, columnKey, nextWidth);
+    };
+
+    const handleEnd = () => {
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleEnd);
+        window.removeEventListener("pointercancel", handleEnd);
+        table.classList.remove("is-resizing-column");
+        handle.classList.remove("active");
+        document.body.classList.remove("is-column-resizing");
+        ui.columnWidths[columnWidthStorageKey(mod, columnKey)] = nextWidth;
+        saveColumnWidths();
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
+}
+
+function handleColumnResizeKeydown(event) {
+    if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    const handle = event.currentTarget;
+    const table = handle.closest("[data-resizable-table]");
+    const mod = modules[ui.activeTab];
+    const columnKey = handle.dataset.columnResizer;
+    const col = getTableColumnElement(table, columnKey);
+    if (!table || !mod || !columnKey || !col) return;
+
+    event.preventDefault();
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    const step = event.shiftKey ? 24 : 8;
+    const nextWidth = Math.max(getColumnResizeMinWidth(columnKey), getTableColumnWidth(col) + (direction * step));
+    applyTableColumnWidth(table, columnKey, nextWidth);
+    ui.columnWidths[columnWidthStorageKey(mod, columnKey)] = nextWidth;
+    saveColumnWidths();
+}
+
+function resetColumnWidth(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const mod = modules[ui.activeTab];
+    const columnKey = event.currentTarget.dataset.columnResizer;
+    if (!mod || !columnKey) return;
+    delete ui.columnWidths[columnWidthStorageKey(mod, columnKey)];
+    saveColumnWidths();
+    render();
+}
+
+function applyTableColumnWidth(table, columnKey, width) {
+    const col = getTableColumnElement(table, columnKey);
+    if (!col) return;
+    col.style.width = `${Math.round(width)}px`;
+    syncTableWidth(table);
+    syncStickyColumnOffsets(table);
+}
+
+function syncTableWidth(table) {
+    const totalWidth = [...table.querySelectorAll("col[data-column-key]")]
+        .reduce((total, col) => total + getTableColumnWidth(col), 0);
+    table.style.width = `${totalWidth}px`;
+    table.style.minWidth = `${totalWidth}px`;
+}
+
+function syncStickyColumnOffsets(table) {
+    const mod = modules[ui.activeTab];
+    const stickyCount = Number(mod?.stickyColumns || 0);
+    let left = 0;
+    for (let index = 0; index < stickyCount; index += 1) {
+        const col = getTableColumnElement(table, mod.columns[index]?.key);
+        table.querySelectorAll(`[data-column-index="${index}"]`).forEach((cell) => {
+            cell.style.left = `${left}px`;
+        });
+        left += getTableColumnWidth(col);
+    }
+}
+
+function getTableColumnElement(table, columnKey) {
+    if (!table || !columnKey) return null;
+    return [...table.querySelectorAll("col[data-column-key]")]
+        .find((col) => col.dataset.columnKey === columnKey) || null;
+}
+
+function getTableColumnWidth(col) {
+    if (!col) return 0;
+    const styleWidth = Number.parseFloat(col.style.width);
+    if (Number.isFinite(styleWidth) && styleWidth > 0) return styleWidth;
+    const rectWidth = col.getBoundingClientRect?.().width;
+    return Number.isFinite(rectWidth) && rectWidth > 0 ? rectWidth : 0;
 }
 
 function bindComboFields() {

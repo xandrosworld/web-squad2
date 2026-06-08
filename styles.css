@@ -1123,15 +1123,20 @@ button {
 }
 
 .data-table {
-    width: 100%;
-    min-width: 980px;
+    width: max-content;
+    min-width: 0;
     border-collapse: collapse;
     table-layout: fixed;
 }
 
+.data-table th,
+.data-table td {
+    box-sizing: border-box;
+}
+
 .data-table th {
     height: 42px;
-    padding: 0 10px;
+    padding: 0 18px 0 10px;
     background: #f8fafc;
     color: #374151;
     border-bottom: 1px solid var(--line);
@@ -1150,6 +1155,48 @@ button {
 
 .data-table thead tr:first-child th.filter-open {
     z-index: 20;
+}
+
+.column-resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 12;
+    width: 10px;
+    height: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: col-resize;
+    touch-action: none;
+}
+
+.column-resize-handle::after {
+    content: "";
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    left: 4px;
+    width: 1px;
+    border-radius: 999px;
+    background: transparent;
+    transition: background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.column-resize-handle:hover::after,
+.column-resize-handle:focus-visible::after,
+.column-resize-handle.active::after {
+    background: var(--bidv-teal);
+    box-shadow: 0 0 0 2px rgba(0, 107, 104, 0.12);
+}
+
+body.is-column-resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+body.is-column-resizing * {
+    cursor: col-resize !important;
 }
 
 .th-control {
@@ -1310,7 +1357,7 @@ button {
 
 .data-table.is-compact th {
     height: 36px;
-    padding: 0 8px;
+    padding: 0 16px 0 8px;
     font-size: 10.5px;
 }
 
@@ -1439,7 +1486,6 @@ button {
 }
 
 .col-actions {
-    width: 104px;
     text-align: right;
 }
 
