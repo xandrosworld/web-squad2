@@ -545,6 +545,7 @@ let ui = {
     query: "",
     filters: {},
     columnFilters: {},
+    openColumnFilter: null,
     modal: null,
     profileOpen: false,
     groupChatOpen: false,
@@ -753,14 +754,20 @@ function render() {
 
     bindEvents();
 
+    let restoredFocus = false;
     if (focus?.id) {
         const restored = document.getElementById(focus.id);
         if (restored) {
             restored.focus();
+            restoredFocus = true;
             if (typeof focus.start === "number" && typeof restored.setSelectionRange === "function") {
                 restored.setSelectionRange(focus.start, focus.end);
             }
         }
+    }
+    if (!restoredFocus) {
+        const openedFilter = document.querySelector("[data-column-filter-autofocus]");
+        if (openedFilter) requestAnimationFrame(() => openedFilter.focus());
     }
 }
 
@@ -1678,6 +1685,7 @@ function renderModule(mod) {
     if (mod.collection === "guide") return renderGuideModule(mod);
     const rows = getFilteredRows(mod);
     const total = appState[mod.collection].length;
+    const activeFilters = countActiveFilters(mod);
     return `
         <div class="content-grid content-grid-single">
             <section class="panel">
@@ -1689,12 +1697,18 @@ function renderModule(mod) {
                             <span>${e(total)} bản ghi · ${e(rows.length)} đang hiển thị</span>
                         </div>
                     </div>
-                    <button class="primary-btn" data-action="open-create">
-                        <i class="fa-solid fa-plus"></i><span>Thêm bản ghi</span>
-                    </button>
+                    <div class="panel-actions">
+                        ${activeFilters ? `
+                            <button class="ghost-btn compact-reset-btn" data-action="reset-filters" title="Xóa toàn bộ lọc">
+                                <i class="fa-solid fa-filter-circle-xmark"></i><span>${e(activeFilters)} lọc</span>
+                            </button>
+                        ` : ""}
+                        <button class="primary-btn" data-action="open-create">
+                            <i class="fa-solid fa-plus"></i><span>Thêm bản ghi</span>
+                        </button>
+                    </div>
                 </div>
                 <div class="panel-body">
-                    ${renderToolbar(mod, rows.length, total)}
                     ${renderTable(mod, rows)}
                 </div>
             </section>
@@ -1844,25 +1858,6 @@ function defaultGuideRows() {
     }));
 }
 
-function renderToolbar(mod, visibleCount, totalCount) {
-    const activeFilters = countActiveFilters(mod);
-    return `
-        <div class="toolbar">
-            <div class="input-wrap">
-                <i class="fa-solid fa-magnifying-glass"></i>
-                <input id="searchInput" class="search-input" value="${e(ui.query)}" placeholder="Tìm kiếm" autocomplete="off">
-            </div>
-            <div class="toolbar-status">
-                <span class="pill"><i class="fa-solid fa-table-list"></i>${e(visibleCount)}/${e(totalCount)} bản ghi</span>
-                ${activeFilters ? `<span class="pill warn"><i class="fa-solid fa-filter"></i>${e(activeFilters)} lọc</span>` : ""}
-            </div>
-            <button class="ghost-btn" data-action="reset-filters" title="Xóa lọc">
-                <i class="fa-solid fa-rotate-left"></i><span>Xóa lọc</span>
-            </button>
-        </div>
-    `;
-}
-
 function renderTable(mod, rows) {
     const colgroup = mod.columns.map((col) => `<col style="width:${e(col.width || "140px")}">`).join("") + `<col style="width:104px">`;
     const minWidth = tableMinWidth(mod);
@@ -1876,12 +1871,8 @@ function renderTable(mod, rows) {
                 <colgroup>${colgroup}</colgroup>
                 <thead>
                     <tr>
-                        ${mod.columns.map((col, index) => `<th${tableCellAttrs(columnMeta[index])}><span class="th-label">${e(col.label)}</span></th>`).join("")}
+                        ${mod.columns.map((col, index) => renderTableHeaderCell(mod, col, columnMeta[index])).join("")}
                         <th class="col-actions">Thao tác</th>
-                    </tr>
-                    <tr class="filter-row">
-                        ${mod.columns.map((col, index) => `<th${tableCellAttrs(columnMeta[index])}>${renderColumnFilter(mod, col)}</th>`).join("")}
-                        <th class="col-actions"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1931,6 +1922,46 @@ function renderTableRows(mod, rows, columnMeta) {
     }).join("");
 }
 
+function renderTableHeaderCell(mod, col, meta) {
+    const key = columnFilterKey(mod, col);
+    const value = ui.columnFilters[key] || "";
+    const isOpen = ui.openColumnFilter === key;
+    return `
+        <th${tableCellAttrs(meta, isOpen ? "filter-open" : "")}>
+            <div class="th-control" data-column-filter-shell="${e(key)}">
+                <span class="th-label" title="${e(col.label)}">${e(col.label)}</span>
+                <button type="button" class="th-filter-btn ${value ? "active" : ""}" data-action="toggle-column-filter" data-column-key="${e(col.key)}" title="Lọc ${e(col.label)}" aria-label="Lọc ${e(col.label)}">
+                    <i class="fa-solid fa-filter"></i>
+                </button>
+                ${isOpen ? renderColumnFilterPopover(mod, col) : ""}
+            </div>
+        </th>
+    `;
+}
+
+function renderColumnFilterPopover(mod, col) {
+    const key = columnFilterKey(mod, col);
+    const value = ui.columnFilters[key] || "";
+    return `
+        <div class="column-filter-popover">
+            <div class="column-filter-head">
+                <strong>${e(col.label)}</strong>
+                <button type="button" class="mini-icon-btn" data-action="close-column-filter" title="Đóng" aria-label="Đóng">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            ${renderColumnFilterControl(mod, col, true)}
+            <div class="column-filter-foot">
+                ${value ? `
+                    <button type="button" class="mini-text-btn" data-action="clear-column-filter" data-column-key="${e(col.key)}">
+                        Xóa lọc
+                    </button>
+                ` : `<span></span>`}
+            </div>
+        </div>
+    `;
+}
+
 function renderSectionRow(mod, section) {
     return `
         <tr class="section-row">
@@ -1956,9 +1987,10 @@ function tableColumnMeta(mod) {
     });
 }
 
-function tableCellAttrs(meta) {
-    if (!meta?.className && !meta?.style) return "";
-    return `${meta.className ? ` class="${e(meta.className)}"` : ""}${meta.style ? ` style="${e(meta.style)}"` : ""}`;
+function tableCellAttrs(meta, extraClass = "") {
+    const className = [meta?.className, extraClass].filter(Boolean).join(" ");
+    if (!className && !meta?.style) return "";
+    return `${className ? ` class="${e(className)}"` : ""}${meta?.style ? ` style="${e(meta.style)}"` : ""}`;
 }
 
 function tableMinWidth(mod) {
@@ -1973,22 +2005,23 @@ function parseColumnWidth(width) {
     return Number.isFinite(value) ? value : 140;
 }
 
-function renderColumnFilter(mod, col) {
+function renderColumnFilterControl(mod, col, autofocus = false) {
     const key = columnFilterKey(mod, col);
     const inputId = `colFilter_${mod.collection}_${col.key}`;
     const value = ui.columnFilters[key] || "";
     const field = getFieldForColumn(mod, col);
     const options = getColumnFilterOptions(mod, col, field);
+    const autofocusAttr = autofocus ? ` data-column-filter-autofocus="true"` : "";
     if (options.length) {
         return `
-            <select id="${e(inputId)}" class="column-filter" data-column-filter="${e(col.key)}" aria-label="Lọc ${e(col.label)}">
+            <select id="${e(inputId)}" class="column-filter" data-column-filter="${e(col.key)}"${autofocusAttr} aria-label="Lọc ${e(col.label)}">
                 <option value="">Tất cả</option>
                 ${options.map((option) => `<option value="${e(option)}" ${String(option) === String(value) ? "selected" : ""}>${e(option)}</option>`).join("")}
             </select>
         `;
     }
     return `
-        <input id="${e(inputId)}" class="column-filter" data-column-filter="${e(col.key)}" value="${e(value)}" placeholder="Lọc" aria-label="Lọc ${e(col.label)}">
+        <input id="${e(inputId)}" class="column-filter" data-column-filter="${e(col.key)}"${autofocusAttr} value="${e(value)}" placeholder="Lọc" aria-label="Lọc ${e(col.label)}">
     `;
 }
 
@@ -2347,6 +2380,7 @@ function bindEvents() {
         button.addEventListener("click", () => {
             ui.activeTab = button.dataset.tab;
             ui.query = "";
+            ui.openColumnFilter = null;
             history.replaceState(null, "", `#${ui.activeTab}`);
             render();
         });
@@ -2592,6 +2626,7 @@ async function handleAuthAction(event) {
     ui.query = "";
     ui.filters = {};
     ui.columnFilters = {};
+    ui.openColumnFilter = null;
     resetGroupChatState();
     render();
 }
@@ -2800,11 +2835,33 @@ function handleAction(event) {
     if (action === "delete-row") return deleteRow(id);
     if (action === "close-modal") return closeModal();
     if (action === "reset-filters") return resetFilters();
+    if (action === "toggle-column-filter") return toggleColumnFilter(event.currentTarget.dataset.columnKey);
+    if (action === "clear-column-filter") return clearColumnFilter(event.currentTarget.dataset.columnKey);
+    if (action === "close-column-filter") {
+        ui.openColumnFilter = null;
+        return render();
+    }
     if (action === "export-excel") return exportExcel();
     if (action === "import-data") {
         if (authState.user?.role !== "admin") return showToast("Chỉ admin được nhập dữ liệu.");
         return document.getElementById("importDataInput")?.click();
     }
+}
+
+function toggleColumnFilter(columnKey) {
+    const mod = modules[ui.activeTab];
+    if (!mod || !columnKey) return;
+    const key = columnFilterKey(mod, { key: columnKey });
+    ui.openColumnFilter = ui.openColumnFilter === key ? null : key;
+    render();
+}
+
+function clearColumnFilter(columnKey) {
+    const mod = modules[ui.activeTab];
+    if (!mod || !columnKey) return;
+    delete ui.columnFilters[columnFilterKey(mod, { key: columnKey })];
+    ui.openColumnFilter = null;
+    render();
 }
 
 function openCreate() {
@@ -2932,6 +2989,7 @@ async function deleteRow(id) {
 function resetFilters() {
     const mod = modules[ui.activeTab];
     ui.query = "";
+    ui.openColumnFilter = null;
     if (mod) {
         Object.keys(ui.filters)
             .filter((key) => key.startsWith(`${mod.collection}:`))
@@ -3104,7 +3162,7 @@ function countActiveFilters(mod) {
     const columnCount = Object.keys(ui.columnFilters)
         .filter((key) => key.startsWith(`${mod.collection}:`) && ui.columnFilters[key])
         .length;
-    return legacyCount + columnCount + (ui.query.trim() ? 1 : 0);
+    return legacyCount + columnCount;
 }
 
 function columnFilterKey(mod, col) {
@@ -3516,6 +3574,7 @@ window.addEventListener("storage", (event) => {
 window.addEventListener("hashchange", () => {
     ui.activeTab = getInitialTab();
     ui.query = "";
+    ui.openColumnFilter = null;
     render();
 });
 

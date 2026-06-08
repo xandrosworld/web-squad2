@@ -149,6 +149,12 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
     if (rowsOrEmpty < 1) {
       throw new Error(`Module ${tab} did not render rows or empty state.`);
     }
+    if (await page.locator(".data-table .filter-row").count()) {
+      throw new Error(`Module ${tab} still renders the large filter row.`);
+    }
+    if (await page.locator(".data-table .th-filter-btn").count() < 1) {
+      throw new Error(`Module ${tab} did not render compact column filters.`);
+    }
 
     await page.locator(".content-grid-single .panel-head button[data-action=\"open-create\"]").click();
     await page.waitForSelector("#recordForm", { timeout: 5000 });
