@@ -20,7 +20,7 @@ if (!executablePath) {
   throw new Error("No Chrome or Edge executable found. Set SMOKE_BROWSER to a local browser path.");
 }
 
-const moduleTabs = ["features", "plans", "matrix", "daily", "weekly", "readiness"];
+const moduleTabs = ["features", "personnel", "schedule", "handoffs", "plans", "daily", "weekly", "readiness", "matrix", "guide"];
 const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00bb|\u00c4\u2018|\u00c6[\u00a0-\u00bf]/;
 
 (async () => {

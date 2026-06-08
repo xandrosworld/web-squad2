@@ -83,14 +83,28 @@ const modules = {
             { key: "code", label: "Mã chức năng", type: "text", required: true },
             { key: "storyCode", label: "Mã Story", type: "text" },
             { key: "jiraCode", label: "Mã Jira", type: "text" },
+            { key: "group", label: "Nhóm chức năng", type: "text", full: true },
             { key: "jiraName", label: "Tên Jira", type: "text", full: true },
             { key: "name", label: "Tên chức năng", type: "text", required: true, full: true },
+            { key: "jiraLink", label: "Link Jira", type: "text" },
+            { key: "rsdLink", label: "Link RSD", type: "text" },
+            { key: "sprintBA", label: "Sprint BA", type: "text" },
+            { key: "sprintDev", label: "Sprint DEV", type: "text" },
+            { key: "sprintQC", label: "Sprint QC", type: "text" },
+            { key: "businessSprint", label: "Sprint Nghiệp vụ", type: "text" },
             { key: "sprint", label: "Sprint", type: "text" },
             { key: "status", label: "Trạng thái", type: "select", options: statusOptions },
-            { key: "owner", label: "Nghiệp vụ", type: "select", options: ownerOptions },
+            { key: "owner", label: "Nghiệp vụ", type: "text" },
             { key: "uatStatus", label: "Trạng thái UAT", type: "text" },
             { key: "uatHandoff", label: "Bàn giao UAT", type: "date" },
-            { key: "uatDone", label: "Hoàn thành UAT", type: "date" }
+            { key: "uatStart", label: "Bắt đầu UAT", type: "date" },
+            { key: "uatEnd", label: "Kết thúc UAT", type: "date" },
+            { key: "uatDone", label: "Hoàn thành UAT", type: "date" },
+            { key: "uatSigned", label: "Ngày ký UAT", type: "date" },
+            { key: "handoffStatus", label: "Tình trạng bàn giao", type: "text" },
+            { key: "completionRate", label: "% Hoàn thành TC", type: "percent" },
+            { key: "openBugs", label: "Số lỗi mở", type: "number" },
+            { key: "uatWarning", label: "Cảnh báo UAT", type: "text" }
         ],
         filters: [
             { key: "sprint", label: "Sprint" },
@@ -102,14 +116,124 @@ const modules = {
             { key: "code", label: "Mã chức năng", width: "104px", render: (row) => tag(row.code, "teal") },
             { key: "storyCode", label: "Mã Story", width: "84px", render: (row) => tag(row.storyCode, "gray") },
             { key: "jiraCode", label: "Mã Jira", width: "132px" },
+            { key: "group", label: "Nhóm", width: "190px" },
             { key: "jiraName", label: "Tên Jira", width: "220px" },
             { key: "name", label: "Tên chức năng", width: "250px", render: (row) => strongText(row.name) },
-            { key: "sprint", label: "Sprint", width: "88px" },
+            { key: "sprintBA", label: "BA", width: "78px" },
+            { key: "sprintDev", label: "DEV", width: "78px" },
+            { key: "sprintQC", label: "QC", width: "78px" },
+            { key: "businessSprint", label: "NV", width: "78px" },
             { key: "status", label: "Trạng thái", width: "112px", render: (row) => renderStatus(row.status) },
             { key: "owner", label: "Nghiệp vụ", width: "188px" },
-            { key: "uatStatus", label: "Trạng thái UAT", width: "124px", render: (row) => renderStatus(row.uatStatus) },
             { key: "uatHandoff", label: "Bàn giao UAT", width: "118px", render: (row) => formatDate(row.uatHandoff || row.handoffDate) },
-            { key: "uatDone", label: "Hoàn thành UAT", width: "126px", render: (row) => formatDate(row.uatDone) }
+            { key: "uatStart", label: "Bắt đầu", width: "110px", render: (row) => formatDate(row.uatStart) },
+            { key: "uatEnd", label: "Kết thúc", width: "110px", render: (row) => formatDate(row.uatEnd) },
+            { key: "uatDone", label: "Hoàn thành UAT", width: "126px", render: (row) => formatDate(row.uatDone) },
+            { key: "handoffStatus", label: "Bàn giao", width: "134px", render: (row) => renderStatus(row.handoffStatus) },
+            { key: "completionRate", label: "% TC", width: "116px", render: (row) => progressCell(row.completionRate) },
+            { key: "openBugs", label: "Lỗi mở", width: "90px", render: (row) => bugTag(row.openBugs) },
+            { key: "uatWarning", label: "Cảnh báo", width: "150px", render: (row) => renderStatus(row.uatWarning) }
+        ]
+    },
+    personnel: {
+        label: "Nhân sự UAT",
+        shortLabel: "Nhân sự",
+        icon: "fa-users",
+        collection: "personnel",
+        description: "Danh sách nhân sự tham gia UAT, vai trò, phạm vi phụ trách và thông tin liên hệ.",
+        emptyIcon: "fa-user-plus",
+        emptyTitle: "Chưa có dữ liệu nhân sự",
+        emptyText: "Danh sách nhân sự từ sheet NhanSu_UAT sẽ hiển thị tại đây sau khi nhập Excel.",
+        fields: [
+            { key: "staffCode", label: "Mã nhân sự", type: "text", required: true },
+            { key: "name", label: "Họ tên", type: "text", required: true },
+            { key: "role", label: "Vai trò", type: "text" },
+            { key: "scope", label: "Phạm vi chính", type: "textarea", full: true },
+            { key: "status", label: "Trạng thái", type: "text" },
+            { key: "birthYear", label: "Năm sinh", type: "number" },
+            { key: "phone", label: "SĐT", type: "text" },
+            { key: "email", label: "Email", type: "text" },
+            { key: "unit", label: "Đơn vị", type: "text" }
+        ],
+        filters: [
+            { key: "role", label: "Vai trò" },
+            { key: "status", label: "Trạng thái" },
+            { key: "unit", label: "Đơn vị" }
+        ],
+        columns: [
+            { key: "staffCode", label: "Mã NS", width: "92px", render: (row) => tag(row.staffCode, "teal") },
+            { key: "name", label: "Họ tên", width: "180px", render: (row) => strongText(row.name, row.email) },
+            { key: "role", label: "Vai trò", width: "190px" },
+            { key: "scope", label: "Phạm vi chính", width: "280px" },
+            { key: "status", label: "Trạng thái", width: "140px", render: (row) => renderStatus(row.status) },
+            { key: "birthYear", label: "Năm sinh", width: "96px" },
+            { key: "phone", label: "SĐT", width: "130px" },
+            { key: "unit", label: "Đơn vị", width: "150px" }
+        ]
+    },
+    schedule: {
+        label: "Lịch UAT",
+        shortLabel: "Lịch",
+        icon: "fa-calendar-check",
+        collection: "schedule",
+        description: "Lịch bàn giao, bắt đầu và kết thúc UAT theo Sprint.",
+        emptyIcon: "fa-calendar-plus",
+        emptyTitle: "Chưa có lịch UAT",
+        emptyText: "Lịch từ sheet Lich_UAT sẽ hiển thị tại đây sau khi nhập Excel.",
+        fields: [
+            { key: "sprint", label: "Sprint", type: "text", required: true },
+            { key: "handoffDate", label: "Ngày bàn giao UAT", type: "date" },
+            { key: "startDate", label: "Ngày bắt đầu UAT", type: "date" },
+            { key: "endDate", label: "Ngày kết thúc UAT", type: "date" },
+            { key: "note", label: "Ghi chú", type: "textarea", full: true }
+        ],
+        filters: [
+            { key: "sprint", label: "Sprint" }
+        ],
+        columns: [
+            { key: "sprint", label: "Sprint", width: "120px", render: (row) => tag(row.sprint, "teal") },
+            { key: "handoffDate", label: "Bàn giao", width: "130px", render: (row) => formatDate(row.handoffDate) },
+            { key: "startDate", label: "Bắt đầu", width: "130px", render: (row) => formatDate(row.startDate) },
+            { key: "endDate", label: "Kết thúc", width: "130px", render: (row) => formatDate(row.endDate) },
+            { key: "note", label: "Ghi chú", width: "260px" }
+        ]
+    },
+    handoffs: {
+        label: "Bàn giao US",
+        shortLabel: "Bàn giao",
+        icon: "fa-truck-fast",
+        collection: "handoffs",
+        description: "Lịch bàn giao UAT chi tiết theo từng User Story.",
+        emptyIcon: "fa-calendar-day",
+        emptyTitle: "Chưa có lịch bàn giao US",
+        emptyText: "Dữ liệu từ sheet Lich_BG_US sẽ hiển thị tại đây sau khi nhập Excel.",
+        fields: [
+            { key: "jiraCode", label: "Mã Jira", type: "text", required: true },
+            { key: "code", label: "Mã CN", type: "text" },
+            { key: "storyCode", label: "Mã Story", type: "text" },
+            { key: "name", label: "Tên chức năng", type: "text", required: true, full: true },
+            { key: "sprint", label: "Sprint", type: "text" },
+            { key: "defaultHandoffDate", label: "Ngày mặc định theo Sprint", type: "date" },
+            { key: "uatHandoff", label: "Ngày bàn giao theo US", type: "date" },
+            { key: "uatStart", label: "Ngày bắt đầu theo US", type: "date" },
+            { key: "uatEnd", label: "Ngày kết thúc theo US", type: "date" },
+            { key: "handoffStatus", label: "Trạng thái bàn giao", type: "text" },
+            { key: "note", label: "Ghi chú", type: "textarea", full: true }
+        ],
+        filters: [
+            { key: "sprint", label: "Sprint" },
+            { key: "handoffStatus", label: "Trạng thái" }
+        ],
+        columns: [
+            { key: "jiraCode", label: "Mã Jira", width: "140px" },
+            { key: "code", label: "Mã CN", width: "92px", render: (row) => tag(row.code, "teal") },
+            { key: "storyCode", label: "Story", width: "80px", render: (row) => tag(row.storyCode, "gray") },
+            { key: "name", label: "Tên chức năng", width: "280px", render: (row) => strongText(row.name, row.note) },
+            { key: "sprint", label: "Sprint", width: "96px" },
+            { key: "uatHandoff", label: "Bàn giao US", width: "130px", render: (row) => formatDate(row.uatHandoff) },
+            { key: "uatStart", label: "Bắt đầu", width: "120px", render: (row) => formatDate(row.uatStart) },
+            { key: "uatEnd", label: "Kết thúc", width: "120px", render: (row) => formatDate(row.uatEnd) },
+            { key: "handoffStatus", label: "Trạng thái", width: "150px", render: (row) => renderStatus(row.handoffStatus) }
         ]
     },
     plans: {
@@ -117,20 +241,29 @@ const modules = {
         shortLabel: "Phân công",
         icon: "fa-calendar-days",
         collection: "plans",
-        description: "Phân công chức năng theo sprint, chủ quản và các mốc T1-T6.",
+        description: "Phân công chức năng theo sprint, đầu mối nghiệp vụ, tester T1-T6 và trạng thái testcase.",
         emptyIcon: "fa-calendar-plus",
         emptyTitle: "Chưa có phân công Sprint",
         emptyText: "Kế hoạch phân công sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "sprint", label: "Sprint", type: "text", required: true },
+            { key: "uatHandoff", label: "Ngày bàn giao UAT", type: "date" },
+            { key: "code", label: "Mã chức năng", type: "text" },
+            { key: "jiraCode", label: "Mã Jira", type: "text" },
+            { key: "group", label: "Nhóm chức năng", type: "text", full: true },
             { key: "feature", label: "Chức năng", type: "text", required: true, full: true },
-            { key: "owner", label: "Chủ quản", type: "text" },
-            { key: "t1", label: "T1", type: "date" },
-            { key: "t2", label: "T2", type: "date" },
-            { key: "t3", label: "T3", type: "date" },
-            { key: "t4", label: "T4", type: "date" },
-            { key: "t5", label: "T5", type: "date" },
-            { key: "t6", label: "T6", type: "date" },
+            { key: "owner", label: "Đầu mối nghiệp vụ", type: "text" },
+            { key: "t1", label: "T1", type: "text" },
+            { key: "t2", label: "T2", type: "text" },
+            { key: "t3", label: "T3", type: "text" },
+            { key: "t4", label: "T4", type: "text" },
+            { key: "t5", label: "T5", type: "text" },
+            { key: "t6", label: "T6", type: "text" },
+            { key: "totalCases", label: "Tổng Testcase", type: "number" },
+            { key: "executedCases", label: "Đã thực hiện", type: "number" },
+            { key: "progress", label: "% hoàn thành", type: "percent" },
+            { key: "uatStatus", label: "Trạng thái UAT", type: "text" },
+            { key: "rotationWarning", label: "Cảnh báo luân chuyển", type: "text" },
             { key: "note", label: "Ghi chú", type: "textarea", full: true }
         ],
         filters: [
@@ -139,14 +272,22 @@ const modules = {
         ],
         columns: [
             { key: "sprint", label: "Sprint", width: "110px", render: (row) => tag(row.sprint, "teal") },
-            { key: "feature", label: "Chức năng", width: "260px", render: (row) => strongText(row.feature, row.note) },
-            { key: "owner", label: "Chủ quản", width: "140px" },
-            { key: "t1", label: "T1", width: "104px", render: (row) => formatDate(row.t1) },
-            { key: "t2", label: "T2", width: "104px", render: (row) => formatDate(row.t2) },
-            { key: "t3", label: "T3", width: "104px", render: (row) => formatDate(row.t3) },
-            { key: "t4", label: "T4", width: "104px", render: (row) => formatDate(row.t4) },
-            { key: "t5", label: "T5", width: "104px", render: (row) => formatDate(row.t5) },
-            { key: "t6", label: "T6", width: "104px", render: (row) => formatDate(row.t6) }
+            { key: "uatHandoff", label: "Bàn giao", width: "118px", render: (row) => formatDate(row.uatHandoff) },
+            { key: "jiraCode", label: "Mã Jira", width: "132px" },
+            { key: "group", label: "Nhóm", width: "190px" },
+            { key: "feature", label: "Chức năng", width: "250px", render: (row) => strongText(row.feature, row.note) },
+            { key: "owner", label: "Đầu mối", width: "180px" },
+            { key: "t1", label: "T1", width: "56px", render: (row) => checkTag(row.t1) },
+            { key: "t2", label: "T2", width: "56px", render: (row) => checkTag(row.t2) },
+            { key: "t3", label: "T3", width: "56px", render: (row) => checkTag(row.t3) },
+            { key: "t4", label: "T4", width: "56px", render: (row) => checkTag(row.t4) },
+            { key: "t5", label: "T5", width: "56px", render: (row) => checkTag(row.t5) },
+            { key: "t6", label: "T6", width: "56px", render: (row) => checkTag(row.t6) },
+            { key: "totalCases", label: "Tổng TC", width: "96px", render: (row) => numberText(row.totalCases) },
+            { key: "executedCases", label: "Đã chạy", width: "96px", render: (row) => numberText(row.executedCases) },
+            { key: "progress", label: "% HT", width: "120px", render: (row) => progressCell(resolveRate(row.progress, row.executedCases, row.totalCases)) },
+            { key: "uatStatus", label: "UAT", width: "122px", render: (row) => renderStatus(row.uatStatus) },
+            { key: "rotationWarning", label: "Luân chuyển", width: "140px", render: (row) => renderStatus(row.rotationWarning) }
         ]
     },
     matrix: {
@@ -265,11 +406,18 @@ const modules = {
         emptyText: "Dữ liệu kết thúc Sprint sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "sprint", label: "Sprint", type: "text", required: true },
+            { key: "handoffDate", label: "Ngày bàn giao UAT", type: "date" },
+            { key: "totalStories", label: "Tổng Story", type: "number" },
+            { key: "totalCases", label: "Tổng Testcase", type: "number" },
+            { key: "executedCases", label: "TC đã chạy", type: "number" },
             { key: "coverageRate", label: "Tỷ lệ bao phủ", type: "percent" },
+            { key: "passedCases", label: "TC đạt", type: "number" },
             { key: "successRate", label: "Tỷ lệ thành công", type: "percent" },
             { key: "openCriticalBugs", label: "Lỗi nghiêm trọng tồn đọng", type: "number" },
-            { key: "readinessLevel", label: "Mức độ sẵn sàng", type: "percent" },
-            { key: "decision", label: "Quyết định", type: "select", options: decisionOptions }
+            { key: "openHighBugs", label: "Lỗi cao mở", type: "number" },
+            { key: "readinessLevel", label: "Mức độ sẵn sàng", type: "text" },
+            { key: "decision", label: "Quyết định", type: "text" },
+            { key: "note", label: "Ghi chú", type: "textarea", full: true }
         ],
         filters: [
             { key: "sprint", label: "Sprint" },
@@ -277,11 +425,42 @@ const modules = {
         ],
         columns: [
             { key: "sprint", label: "Sprint", width: "110px", render: (row) => tag(row.sprint, "teal") },
+            { key: "handoffDate", label: "Bàn giao", width: "120px", render: (row) => formatDate(row.handoffDate) },
+            { key: "totalStories", label: "Story", width: "86px", render: (row) => numberText(row.totalStories) },
+            { key: "totalCases", label: "Tổng TC", width: "96px", render: (row) => numberText(row.totalCases) },
+            { key: "executedCases", label: "TC chạy", width: "96px", render: (row) => numberText(row.executedCases) },
             { key: "coverageRate", label: "Tỷ lệ bao phủ", width: "150px", render: (row) => progressCell(row.coverageRate) },
+            { key: "passedCases", label: "TC đạt", width: "86px", render: (row) => numberText(row.passedCases) },
             { key: "successRate", label: "Tỷ lệ thành công", width: "160px", render: (row) => progressCell(row.successRate) },
-            { key: "openCriticalBugs", label: "Lỗi nghiêm trọng tồn đọng", width: "190px", render: (row) => bugTag(row.openCriticalBugs) },
-            { key: "readinessLevel", label: "Mức độ sẵn sàng", width: "160px", render: (row) => progressCell(row.readinessLevel) },
+            { key: "openCriticalBugs", label: "Lỗi nghiêm trọng", width: "150px", render: (row) => bugTag(row.openCriticalBugs) },
+            { key: "openHighBugs", label: "Lỗi cao", width: "100px", render: (row) => bugTag(row.openHighBugs, "yellow") },
+            { key: "readinessLevel", label: "Sẵn sàng", width: "120px", render: (row) => renderStatus(row.readinessLevel) },
             { key: "decision", label: "Quyết định", width: "140px", render: (row) => renderDecision(row.decision) }
+        ]
+    },
+    guide: {
+        label: "Hướng dẫn UAT",
+        shortLabel: "Hướng dẫn",
+        icon: "fa-book-open",
+        collection: "guide",
+        description: "Các hướng dẫn sử dụng, quy ước priority/status và ghi chú vận hành từ workbook.",
+        emptyIcon: "fa-book",
+        emptyTitle: "Chưa có hướng dẫn",
+        emptyText: "Nội dung từ sheet HD_UAT sẽ hiển thị tại đây sau khi nhập Excel.",
+        fields: [
+            { key: "category", label: "Nhóm nội dung", type: "text" },
+            { key: "index", label: "STT", type: "number" },
+            { key: "topic", label: "Nội dung", type: "text", required: true, full: true },
+            { key: "content", label: "Cách sử dụng / Ý nghĩa", type: "textarea", required: true, full: true }
+        ],
+        filters: [
+            { key: "category", label: "Nhóm" }
+        ],
+        columns: [
+            { key: "category", label: "Nhóm", width: "150px", render: (row) => tag(row.category, "teal") },
+            { key: "index", label: "STT", width: "64px" },
+            { key: "topic", label: "Nội dung", width: "260px", render: (row) => strongText(row.topic) },
+            { key: "content", label: "Cách sử dụng / Ý nghĩa", width: "640px" }
         ]
     }
 };
@@ -289,11 +468,15 @@ const modules = {
 const tabs = [
     { id: "dashboard", label: "Dashboard", icon: "fa-gauge-high" },
     { id: "features", label: "Danh mục", icon: modules.features.icon },
+    { id: "personnel", label: "Nhân sự", icon: modules.personnel.icon },
+    { id: "schedule", label: "Lịch", icon: modules.schedule.icon },
+    { id: "handoffs", label: "Bàn giao", icon: modules.handoffs.icon },
     { id: "plans", label: "Phân công", icon: modules.plans.icon },
-    { id: "matrix", label: "Ma trận", icon: modules.matrix.icon },
     { id: "daily", label: "Daily", icon: modules.daily.icon },
     { id: "weekly", label: "Chất lượng", icon: modules.weekly.icon },
-    { id: "readiness", label: "Kết thúc", icon: modules.readiness.icon }
+    { id: "readiness", label: "Kết thúc", icon: modules.readiness.icon },
+    { id: "matrix", label: "Ma trận", icon: modules.matrix.icon },
+    { id: "guide", label: "Hướng dẫn", icon: modules.guide.icon }
 ];
 
 function getInitialTab() {
@@ -303,11 +486,15 @@ function getInitialTab() {
 
 const emptyState = () => ({
     features: [],
+    personnel: [],
+    schedule: [],
+    handoffs: [],
     plans: [],
-    matrix: [],
     daily: [],
     weekly: [],
     readiness: [],
+    matrix: [],
+    guide: [],
     updatedAt: null
 });
 
@@ -525,7 +712,7 @@ function render() {
         ${renderProfileModal()}
         ${renderFloatingGroupChat()}
         <div class="toast ${ui.toast ? "show" : ""}">${e(ui.toast || "")}</div>
-        <input id="importDataInput" class="hidden-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json,.json">
+        <input id="importDataInput" class="hidden-input" type="file" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12,application/json,.json">
     `;
 
     bindEvents();
@@ -2413,7 +2600,7 @@ function handleImport(event) {
     if (!file) return;
     const fileName = String(file.name || "").toLowerCase();
     const fileType = String(file.type || "").toLowerCase();
-    if (fileName.endsWith(".xlsx") || fileType.includes("spreadsheetml")) {
+    if (fileName.endsWith(".xlsx") || fileName.endsWith(".xlsm") || fileType.includes("spreadsheetml") || fileType.includes("macroenabled")) {
         importExcelFile(file, event.target);
         return;
     }
@@ -2421,7 +2608,7 @@ function handleImport(event) {
         importJsonFile(file, event.target);
         return;
     }
-    showToast("Chỉ hỗ trợ file .xlsx hoặc .json.");
+    showToast("Chỉ hỗ trợ file .xlsx, .xlsm hoặc .json.");
     event.target.value = "";
 }
 
@@ -2467,12 +2654,12 @@ function importJsonFile(file, input) {
 }
 
 async function importExcelFile(file, input) {
-    if (!confirm("Nhập Excel sẽ thay thế riêng danh mục UAT hiện tại trên Railway DB. Tiếp tục?")) {
+    if (!confirm("Nhập Excel sẽ thay thế toàn bộ dữ liệu UAT hiện tại trên Railway DB bằng các sheet trong workbook. Tiếp tục?")) {
         input.value = "";
         return;
     }
     ui.saving = true;
-    showToast("Đang nhập Excel danh mục UAT...");
+    showToast("Đang nhập toàn bộ workbook Excel...");
     try {
         const response = await fetch(`${API_BASE}/import/excel`, {
             method: "POST",
@@ -2494,7 +2681,7 @@ async function importExcelFile(file, input) {
         setDataStatus("online", "Railway Postgres đang hoạt động");
         localStorage.setItem(MIGRATION_FLAG_KEY, "uploaded");
         cacheState();
-        showToast(`Đã nhập ${data.imported || 0} bản ghi danh mục UAT từ Excel.`);
+        showToast(`Đã nhập workbook Excel vào Railway DB.`);
     } catch (error) {
         setDataStatus("offline", error.message || "Không nhập được Excel");
         showToast(error.message ? `Không nhập được Excel: ${error.message}` : "File Excel không hợp lệ.");
@@ -2589,9 +2776,6 @@ function getColumnRawValue(row, col) {
 
 function validateRecord(mod, payload) {
     const errors = [];
-    if (mod.collection === "features" && payload.owner && !ownerOptions.includes(payload.owner)) {
-        errors.push("Nghiệp vụ phải chọn trong danh sách hợp lệ.");
-    }
     const percentFields = mod.fields.filter((field) => field.type === "percent");
     percentFields.forEach((field) => {
         const value = payload[field.key];
@@ -2700,6 +2884,10 @@ function tag(value, tone = "gray") {
     return `<span class="tag ${tone}">${e(value)}</span>`;
 }
 
+function checkTag(value) {
+    return String(value || "").trim() ? tag("✓", "teal") : `<span style="color:#cbd5e1">-</span>`;
+}
+
 function strongText(title, sub) {
     return `
         <div>
@@ -2716,11 +2904,14 @@ function renderPriority(value) {
 
 function renderStatus(value) {
     const tone = value === "Done UAT" || value === "Hoàn thành" ? "green"
-        : value === "Done SIT" || value === "Retest" ? "purple"
-            : value === "Done DEV" || value === "Đang kiểm thử" ? "blue"
-                : value === "Done RSD" ? "yellow"
-                    : value === "Chờ fix" || value === "Tạm hoãn" ? "red"
-                        : "gray";
+        : value === "Đạt" || value === "Xanh" ? "green"
+            : value === "Vàng" || value === "Đạt có điều kiện" || value === "Chưa hoàn thành TC" ? "yellow"
+                : value === "Đỏ" || value === "Chưa đạt" || value === "Thiếu tester" ? "red"
+                    : value === "Done SIT" || value === "Retest" ? "purple"
+                        : value === "Done DEV" || value === "Đang kiểm thử" ? "blue"
+                            : value === "Done RSD" ? "yellow"
+                                : value === "Chờ fix" || value === "Tạm hoãn" ? "red"
+                                    : "gray";
     return tag(value, tone);
 }
 
@@ -2730,7 +2921,10 @@ function renderAssessment(value) {
 }
 
 function renderDecision(value) {
-    const tone = value === "Sẵn sàng" ? "green" : value === "Chưa sẵn sàng" ? "red" : value === "Có điều kiện" ? "yellow" : "gray";
+    const tone = value === "GO" || value === "Sẵn sàng" ? "green"
+        : value === "NO GO" || value === "Chưa sẵn sàng" ? "red"
+            : value === "CONDITIONAL GO" || value === "Có điều kiện" ? "yellow"
+                : "gray";
     return tag(value, tone);
 }
 

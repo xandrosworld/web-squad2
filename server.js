@@ -32,7 +32,18 @@ const defaultUsers = [
 ];
 const adminIdentities = ["yenuth@bidv.com.vn", "thanhmt@bidv.com.vn"];
 
-const collections = ["features", "plans", "matrix", "daily", "weekly", "readiness"];
+const collections = [
+  "features",
+  "personnel",
+  "schedule",
+  "handoffs",
+  "plans",
+  "daily",
+  "weekly",
+  "readiness",
+  "matrix",
+  "guide"
+];
 const collectionSet = new Set(collections);
 const functionGroups = [
   "Luồng xử lý",
@@ -56,49 +67,63 @@ const ownerOptions = [
 const collectionRules = {
   features: {
     required: ["code", "name"],
-    numbers: [],
-    percents: [],
-    enums: {
-      group: functionGroups,
-      priority: ["Critical", "Cao", "Trung bình", "Thấp"],
-      status: [...featureStatusOptions, ...legacyFeatureStatusOptions],
-      owner: ownerOptions
-    }
+    numbers: ["stt", "openBugs"],
+    percents: ["completionRate"],
+    enums: {}
   },
-  plans: {
-    required: ["sprint", "feature"],
+  personnel: {
+    required: ["staffCode", "name"],
+    numbers: ["birthYear"],
+    percents: [],
+    enums: {}
+  },
+  schedule: {
+    required: ["sprint"],
     numbers: [],
     percents: [],
     enums: {}
   },
-  matrix: {
-    required: ["group"],
+  handoffs: {
+    required: ["jiraCode", "name"],
     numbers: [],
     percents: [],
-    enums: { group: functionGroups }
+    enums: {}
+  },
+  plans: {
+    required: ["sprint", "feature"],
+    numbers: ["totalCases", "executedCases"],
+    percents: ["progress"],
+    enums: {}
   },
   daily: {
-    required: ["date", "feature"],
-    numbers: ["totalCases", "executedCases", "criticalBugs", "highBugs"],
+    required: [],
+    numbers: ["totalCases", "executedCases", "passedCases", "failedCases", "criticalBugs", "highBugs"],
     percents: [],
     enums: {}
   },
   weekly: {
-    required: ["week", "group"],
-    numbers: ["totalCases", "executedCases", "criticalBugs", "reopenedBugs"],
+    required: ["week"],
+    numbers: ["totalStories", "totalCases", "executedCases", "passedCases", "criticalBugs", "highBugs", "reopenedBugs"],
     percents: ["coverageRate", "successRate"],
-    enums: {
-      group: functionGroups,
-      assessment: ["Tốt", "Cần theo dõi", "Rủi ro", "Blocker"]
-    }
+    enums: {}
   },
   readiness: {
     required: ["sprint"],
-    numbers: ["openCriticalBugs"],
-    percents: ["coverageRate", "successRate", "readinessLevel", "trainingReadiness", "pilotReadiness"],
-    enums: {
-      decision: ["Chưa quyết định", "Sẵn sàng", "Có điều kiện", "Chưa sẵn sàng"]
-    }
+    numbers: ["totalStories", "totalCases", "executedCases", "passedCases", "openCriticalBugs", "openHighBugs"],
+    percents: ["coverageRate", "successRate", "trainingReadiness", "pilotReadiness"],
+    enums: {}
+  },
+  matrix: {
+    required: ["group"],
+    numbers: ["t1", "t2", "t3", "t4", "t5", "t6", "totalParticipation", "target"],
+    percents: [],
+    enums: {}
+  },
+  guide: {
+    required: ["topic", "content"],
+    numbers: ["index"],
+    percents: [],
+    enums: {}
   }
 };
 const excelSheets = [
@@ -374,6 +399,7 @@ app.get("/api/export/excel", asyncHandler(async (req, res) => {
 app.post("/api/import/excel", requireAdmin, express.raw({
   type: [
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-excel.sheet.macroEnabled.12",
     "application/octet-stream"
   ],
   limit: requestBodyLimit
@@ -383,23 +409,27 @@ app.post("/api/import/excel", requireAdmin, express.raw({
     throw httpError(400, "File Excel không hợp lệ.");
   }
 
-  const records = await parseFeatureImportWorkbook(req.body);
-  if (!records.length) {
-    throw httpError(400, "Không tìm thấy dòng danh mục UAT hợp lệ trong file Excel.");
+  const importState = await parseWorkbookImportState(req.body);
+  if (!stateRecordTotal(importState)) {
+    throw httpError(400, "Không tìm thấy dữ liệu UAT hợp lệ trong file Excel.");
   }
-  records.forEach((record) => validateRecordForCollection("features", record));
+  for (const collection of collections) {
+    importState[collection].forEach((record) => validateRecordForCollection(collection, record));
+  }
 
   const client = await getPool().connect();
   try {
     await client.query("begin");
-    await client.query("delete from uat_records where collection = $1", ["features"]);
-    for (const record of records) {
-      await createRecord(client, "features", record, req.user);
+    await client.query("delete from uat_records where collection = any($1)", [collections]);
+    for (const collection of collections) {
+      for (const record of importState[collection]) {
+        await createRecord(client, collection, record, req.user);
+      }
     }
     await touchMeta(client);
     const state = await readState(client, req.user);
     await client.query("commit");
-    res.json({ state, imported: records.length });
+    res.json({ state, imported: summarizeImportState(importState) });
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -869,6 +899,361 @@ function formatDateForInput(date) {
   return date.toISOString().slice(0, 10);
 }
 
+async function parseWorkbookImportState(buffer) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const state = emptyState();
+  state.features = parseDmChucNangSheet(workbook.getWorksheet("DM_ChucNang"));
+  state.personnel = parsePersonnelSheet(workbook.getWorksheet("NhanSu_UAT"));
+  state.schedule = parseScheduleSheet(workbook.getWorksheet("Lich_UAT"));
+  state.handoffs = parseHandoffSheet(workbook.getWorksheet("Lich_BG_US"));
+  state.plans = parsePlanSheet(workbook.getWorksheet("PhanCong_UAT"));
+  state.daily = parseDailySheet(workbook.getWorksheet("DieuHanh_Ngay"));
+  state.weekly = parseWeeklySheet(workbook.getWorksheet("ChatLuong_Tuan"));
+  state.readiness = parseReadinessSheet(workbook.getWorksheet("TongKet_Sprint"));
+  state.matrix = parseMatrixSheet(workbook.getWorksheet("MaTran_NangLuc"));
+  state.guide = parseGuideSheet(workbook.getWorksheet("HD_UAT"));
+  assignSortOrder(state);
+  state.updatedAt = new Date().toISOString();
+  return state;
+}
+
+function parseDmChucNangSheet(worksheet) {
+  if (!worksheet) return [];
+  const records = [];
+  for (let rowNumber = 5; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber);
+    const jiraCode = cellTextAt(row, 4);
+    const code = cellTextAt(row, 2);
+    const name = cellTextAt(row, 6);
+    if (!jiraCode && !code && !name) continue;
+    const group = cellTextAt(row, 5);
+    records.push({
+      id: importId("features", jiraCode || code || name),
+      stt: toImportNumber(cellValueAt(row, 1)) || records.length + 1,
+      code,
+      storyCode: cellTextAt(row, 3),
+      jiraCode,
+      group,
+      name,
+      jiraName: cellTextAt(row, 7),
+      jiraLink: cellTextAt(row, 8),
+      rsdLink: cellTextAt(row, 9),
+      sprintBA: cellTextAt(row, 10),
+      sprintDev: cellTextAt(row, 11),
+      sprintQC: cellTextAt(row, 12),
+      businessSprint: cellTextAt(row, 13),
+      sprint: cellTextAt(row, 13) || cellTextAt(row, 12),
+      status: cellTextAt(row, 14),
+      owner: normalizeImportedOwner(cellValueAt(row, 15)),
+      uatHandoff: toImportDate(cellValueAt(row, 16)),
+      uatStart: toImportDate(cellValueAt(row, 17)),
+      uatEnd: toImportDate(cellValueAt(row, 18)),
+      uatDone: toImportDate(cellValueAt(row, 19)),
+      uatSigned: toImportDate(cellValueAt(row, 20)),
+      handoffStatus: cellTextAt(row, 21),
+      completionRate: toImportPercent(cellValueAt(row, 22)),
+      openBugs: toImportNumber(cellValueAt(row, 23)),
+      uatWarning: cellTextAt(row, 24),
+      sectionTitle: group
+    });
+  }
+  return records;
+}
+
+function parsePersonnelSheet(worksheet) {
+  if (!worksheet) return [];
+  return parseRows(worksheet, 4, (row) => {
+    const staffCode = cellTextAt(row, 1);
+    const name = cellTextAt(row, 2);
+    if (!staffCode || !name) return null;
+    return {
+      id: importId("personnel", staffCode),
+      staffCode,
+      name,
+      role: cellTextAt(row, 3),
+      scope: cellTextAt(row, 4),
+      status: cellTextAt(row, 5),
+      birthYear: toImportNumber(cellValueAt(row, 6)),
+      phone: cellTextAt(row, 7),
+      email: cellTextAt(row, 8),
+      unit: cellTextAt(row, 9)
+    };
+  });
+}
+
+function parseScheduleSheet(worksheet) {
+  if (!worksheet) return [];
+  return parseRows(worksheet, 4, (row) => {
+    const sprint = cellTextAt(row, 1);
+    if (!sprint) return null;
+    return {
+      id: importId("schedule", sprint),
+      sprint,
+      handoffDate: toImportDate(cellValueAt(row, 2)),
+      startDate: toImportDate(cellValueAt(row, 3)),
+      endDate: toImportDate(cellValueAt(row, 4)),
+      note: cellTextAt(row, 5)
+    };
+  });
+}
+
+function parseHandoffSheet(worksheet) {
+  if (!worksheet) return [];
+  return parseRows(worksheet, 6, (row) => {
+    const jiraCode = cellTextAt(row, 1);
+    const name = cellTextAt(row, 4);
+    if (!jiraCode || !name) return null;
+    return {
+      id: importId("handoffs", jiraCode),
+      jiraCode,
+      code: cellTextAt(row, 2),
+      storyCode: cellTextAt(row, 3),
+      name,
+      sprint: cellTextAt(row, 5),
+      defaultHandoffDate: toImportDate(cellValueAt(row, 6)),
+      uatHandoff: toImportDate(cellValueAt(row, 7)),
+      uatStart: toImportDate(cellValueAt(row, 8)),
+      uatEnd: toImportDate(cellValueAt(row, 9)),
+      handoffStatus: cellTextAt(row, 10),
+      note: cellTextAt(row, 11)
+    };
+  });
+}
+
+function parsePlanSheet(worksheet) {
+  if (!worksheet) return [];
+  return parseRows(worksheet, 4, (row) => {
+    const sprint = cellTextAt(row, 1) || cellTextAt(row, 7);
+    const jiraCode = cellTextAt(row, 4);
+    const feature = cellTextAt(row, 6);
+    if (!jiraCode || !feature) return null;
+    const executedCases = toImportNumber(cellValueAt(row, 16));
+    const totalCases = toImportNumber(cellValueAt(row, 15));
+    return {
+      id: importId("plans", sprint, jiraCode),
+      sprint,
+      uatHandoff: toImportDate(cellValueAt(row, 2)),
+      code: cellTextAt(row, 3),
+      jiraCode,
+      group: cellTextAt(row, 5),
+      feature,
+      featureSprint: cellTextAt(row, 7),
+      owner: normalizeImportedOwner(cellValueAt(row, 8)),
+      t1: cellTextAt(row, 9),
+      t2: cellTextAt(row, 10),
+      t3: cellTextAt(row, 11),
+      t4: cellTextAt(row, 12),
+      t5: cellTextAt(row, 13),
+      t6: cellTextAt(row, 14),
+      totalCases,
+      executedCases,
+      progress: toImportPercent(cellValueAt(row, 17)) || percent(executedCases, totalCases),
+      uatStatus: cellTextAt(row, 18),
+      rotationWarning: cellTextAt(row, 19),
+      note: cellTextAt(row, 20)
+    };
+  });
+}
+
+function parseDailySheet(worksheet) {
+  if (!worksheet) return [];
+  return parseRows(worksheet, 4, (row) => {
+    const date = toImportDate(cellValueAt(row, 1));
+    const jiraCode = cellTextAt(row, 4);
+    const tester = cellTextAt(row, 6);
+    const totalCases = toImportNumber(cellValueAt(row, 7));
+    const executedCases = toImportNumber(cellValueAt(row, 8));
+    const blocker = cellTextAt(row, 13);
+    if (!date && !jiraCode && !tester && !totalCases && !executedCases && !blocker) return null;
+    return {
+      id: importId("daily", date, jiraCode, tester, row.number),
+      date,
+      sprint: cellTextAt(row, 2),
+      code: cellTextAt(row, 3),
+      jiraCode,
+      feature: cellTextAt(row, 5),
+      tester,
+      totalCases,
+      executedCases,
+      passedCases: toImportNumber(cellValueAt(row, 9)),
+      failedCases: toImportNumber(cellValueAt(row, 10)),
+      bugStatus: cellTextAt(row, 11),
+      maxBugSeverity: cellTextAt(row, 12),
+      criticalBugs: normalizeSeverityCount(cellTextAt(row, 12), "Nghiêm trọng", cellTextAt(row, 11)),
+      highBugs: normalizeSeverityCount(cellTextAt(row, 12), "Cao", cellTextAt(row, 11)),
+      blocker,
+      handler: cellTextAt(row, 14),
+      dueDate: toImportDate(cellValueAt(row, 15))
+    };
+  });
+}
+
+function parseWeeklySheet(worksheet) {
+  if (!worksheet) return [];
+  return parseRows(worksheet, 4, (row) => {
+    const week = cellTextAt(row, 1);
+    if (!week) return null;
+    return {
+      id: importId("weekly", week, cellTextAt(row, 2), cellTextAt(row, 3)),
+      week,
+      sprint: cellTextAt(row, 2),
+      group: cellTextAt(row, 3),
+      totalStories: toImportNumber(cellValueAt(row, 4)),
+      totalCases: toImportNumber(cellValueAt(row, 5)),
+      executedCases: toImportNumber(cellValueAt(row, 6)),
+      coverageRate: toImportPercent(cellValueAt(row, 7)),
+      passedCases: toImportNumber(cellValueAt(row, 8)),
+      successRate: toImportPercent(cellValueAt(row, 9)),
+      criticalBugs: toImportNumber(cellValueAt(row, 10)),
+      highBugs: toImportNumber(cellValueAt(row, 11)),
+      gateResult: cellTextAt(row, 12),
+      assessment: cellTextAt(row, 12),
+      note: cellTextAt(row, 13)
+    };
+  });
+}
+
+function parseReadinessSheet(worksheet) {
+  if (!worksheet) return [];
+  return parseRows(worksheet, 4, (row) => {
+    const sprint = cellTextAt(row, 1);
+    if (!sprint) return null;
+    return {
+      id: importId("readiness", sprint),
+      sprint,
+      handoffDate: toImportDate(cellValueAt(row, 2)),
+      totalStories: toImportNumber(cellValueAt(row, 3)),
+      totalCases: toImportNumber(cellValueAt(row, 4)),
+      executedCases: toImportNumber(cellValueAt(row, 5)),
+      coverageRate: toImportPercent(cellValueAt(row, 6)),
+      passedCases: toImportNumber(cellValueAt(row, 7)),
+      successRate: toImportPercent(cellValueAt(row, 8)),
+      openCriticalBugs: toImportNumber(cellValueAt(row, 9)),
+      openHighBugs: toImportNumber(cellValueAt(row, 10)),
+      readinessLevel: cellTextAt(row, 11),
+      decision: cellTextAt(row, 12),
+      note: cellTextAt(row, 13)
+    };
+  });
+}
+
+function parseMatrixSheet(worksheet) {
+  if (!worksheet) return [];
+  return parseRows(worksheet, 4, (row) => {
+    const group = cellTextAt(row, 1);
+    if (!group || group.toLocaleLowerCase("vi").includes("tỷ lệ")) return null;
+    return {
+      id: importId("matrix", group),
+      group,
+      t1: toImportNumber(cellValueAt(row, 2)),
+      t2: toImportNumber(cellValueAt(row, 3)),
+      t3: toImportNumber(cellValueAt(row, 4)),
+      t4: toImportNumber(cellValueAt(row, 5)),
+      t5: toImportNumber(cellValueAt(row, 6)),
+      t6: toImportNumber(cellValueAt(row, 7)),
+      totalParticipation: toImportNumber(cellValueAt(row, 8)),
+      target: toImportNumber(cellValueAt(row, 9)),
+      warning: cellTextAt(row, 10)
+    };
+  });
+}
+
+function parseGuideSheet(worksheet) {
+  if (!worksheet) return [];
+  const records = [];
+  let category = "Hướng dẫn";
+  for (let rowNumber = 4; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber);
+    const a = cellTextAt(row, 1);
+    const b = cellTextAt(row, 2);
+    const c = cellTextAt(row, 3);
+    if (!a && !b && !c) continue;
+    if (a && !b && !c) {
+      category = a;
+      continue;
+    }
+    if (["STT", "Mức độ", "Trạng thái"].includes(a) || b === "Ý nghĩa") continue;
+    const numericIndex = Number(a);
+    const isNumbered = Number.isFinite(numericIndex);
+    const topic = isNumbered ? b : (c ? b : a);
+    const content = isNumbered ? c : (c || b);
+    const rowCategory = isNumbered ? category : (c ? a : category);
+    if (!topic || !content) continue;
+    records.push({
+      id: importId("guide", rowCategory, topic),
+      category: rowCategory,
+      index: isNumbered ? numericIndex : records.length + 1,
+      topic,
+      content
+    });
+  }
+  return records;
+}
+
+function assignSortOrder(state) {
+  for (const collection of collections) {
+    (state[collection] || []).forEach((record, index) => {
+      record.sortOrder = index + 1;
+    });
+  }
+}
+
+function parseRows(worksheet, startRow, mapper) {
+  const records = [];
+  for (let rowNumber = startRow; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    const record = mapper(worksheet.getRow(rowNumber), rowNumber);
+    if (record) records.push(record);
+  }
+  return records;
+}
+
+function cellValueAt(row, column) {
+  return unwrapExcelCellValue(row.getCell(column).value);
+}
+
+function cellTextAt(row, column) {
+  return normalizeImportedText(cellValueAt(row, column));
+}
+
+function toImportDate(value) {
+  return normalizeImportedDate(value);
+}
+
+function toImportNumber(value) {
+  const number = normalizeImportedNumber(value);
+  return Number.isFinite(Number(number)) ? Number(number) : "";
+}
+
+function toImportPercent(value) {
+  const number = toImportNumber(value);
+  if (number === "") return "";
+  return number > 0 && number <= 1 ? round(number * 100) : round(number);
+}
+
+function normalizeSeverityCount(severity, target, status) {
+  if (!severity || status === "Đã đóng") return 0;
+  return normalizeImportHeader(severity) === normalizeImportHeader(target) ? 1 : 0;
+}
+
+function importId(collection, ...parts) {
+  return crypto
+    .createHash("sha1")
+    .update([collection, ...parts].map((part) => String(part || "")).join("|"))
+    .digest("hex");
+}
+
+function stateRecordTotal(state) {
+  return collections.reduce((total, collection) => total + (Array.isArray(state?.[collection]) ? state[collection].length : 0), 0);
+}
+
+function summarizeImportState(state) {
+  return collections.reduce((summary, collection) => {
+    summary[collection] = Array.isArray(state?.[collection]) ? state[collection].length : 0;
+    return summary;
+  }, {});
+}
+
 function buildExcelWorkbook(state) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Squad 2 UAT Dashboard";
@@ -1102,10 +1487,27 @@ async function readState(db, viewer = null) {
       state[row.collection].push(viewer ? decorateRecord(row, viewer) : row.data);
     }
   }
+  sortStateCollections(state);
 
   const metaUpdatedAt = metaResult.rows[0]?.value?.updatedAt;
   state.updatedAt = typeof metaUpdatedAt === "string" ? metaUpdatedAt : latestUpdatedAt(recordResult.rows);
   return state;
+}
+
+function sortStateCollections(state) {
+  for (const collection of collections) {
+    state[collection].sort(compareStateRecords);
+  }
+}
+
+function compareStateRecords(a, b) {
+  const numericA = Number(a?.sortOrder ?? a?.stt ?? a?.index);
+  const numericB = Number(b?.sortOrder ?? b?.stt ?? b?.index);
+  if (Number.isFinite(numericA) && Number.isFinite(numericB) && numericA !== numericB) {
+    return numericA - numericB;
+  }
+  return String(a?.sprint || a?.code || a?.jiraCode || a?.name || a?.topic || "")
+    .localeCompare(String(b?.sprint || b?.code || b?.jiraCode || b?.name || b?.topic || ""), "vi", { numeric: true });
 }
 
 async function createRecord(client, collection, record, actor) {
@@ -1200,11 +1602,15 @@ async function touchMeta(client) {
 function emptyState() {
   return {
     features: [],
+    personnel: [],
+    schedule: [],
+    handoffs: [],
     plans: [],
-    matrix: [],
     daily: [],
     weekly: [],
     readiness: [],
+    matrix: [],
+    guide: [],
     updatedAt: null
   };
 }

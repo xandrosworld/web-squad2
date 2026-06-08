@@ -191,10 +191,14 @@ function featureRecord(prefix) {
 function emptyState() {
   return {
     features: [],
+    personnel: [],
+    schedule: [],
+    handoffs: [],
     plans: [],
-    matrix: [],
     daily: [],
     weekly: [],
-    readiness: []
+    readiness: [],
+    matrix: [],
+    guide: []
   };
 }
