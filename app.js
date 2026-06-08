@@ -1,7 +1,7 @@
 const STORAGE_KEY = "squad2_uat_command_center_v1";
 const MIGRATION_FLAG_KEY = `${STORAGE_KEY}_remote_migration_checked`;
 const LEGACY_BACKUP_KEY = `${STORAGE_KEY}_legacy_backup`;
-const COLUMN_WIDTHS_KEY = `${STORAGE_KEY}_column_widths`;
+const COLUMN_WIDTHS_KEY = `${STORAGE_KEY}_column_widths_v2`;
 const API_BASE = "/api";
 const SYNC_INTERVAL_MS = 30000;
 const GROUP_CHAT_POLL_INTERVAL_MS = 15000;
@@ -14,7 +14,8 @@ const COLUMN_RESIZE_MIN_WIDTH = 48;
 const COLUMN_DEFAULT_SAMPLE_SIZE = 80;
 const TABLE_TARGET_MIN_WIDTH = 980;
 const TABLE_VIEWPORT_GUTTER = 104;
-const COLUMN_HEADER_CONTROL_WIDTH = 90;
+const COLUMN_HEADER_CONTROL_WIDTH = 58;
+const COLUMN_HEADER_FIT_BUFFER = 8;
 
 const e = (value) => String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -1882,7 +1883,11 @@ function renderTable(mod, rows) {
         .filter(Boolean)
         .join(" ");
     return `
-        <div class="table-wrap">
+        <div class="table-shell" data-table-scroll-shell>
+            <div class="table-top-scroll" data-table-scrollbar="top" aria-label="Cuộn ngang bảng">
+                <div data-table-scroll-spacer style="width:${e(`${layout.totalWidth}px`)}"></div>
+            </div>
+            <div class="table-wrap" data-table-scrollbar="main">
             <table class="${e(tableClass)}" data-resizable-table="${e(mod.collection)}" style="width:${e(`${layout.totalWidth}px`)}; min-width:${e(`${layout.totalWidth}px`)}">
                 <colgroup>${colgroup}</colgroup>
                 <thead>
@@ -1904,6 +1909,7 @@ function renderTable(mod, rows) {
                     `}
                 </tbody>
             </table>
+            </div>
         </div>
     `;
 }
@@ -2705,6 +2711,8 @@ function bindEvents() {
     });
 
     bindColumnResizeEvents();
+    fitTableHeadersToLabels();
+    bindTableScrollbars();
 
     bindComboFields();
 
@@ -2729,6 +2737,50 @@ function bindColumnResizeEvents() {
         handle.addEventListener("pointerdown", startColumnResize);
         handle.addEventListener("dblclick", resetColumnWidth);
         handle.addEventListener("keydown", handleColumnResizeKeydown);
+    });
+}
+
+function fitTableHeadersToLabels() {
+    document.querySelectorAll("[data-resizable-table]").forEach((table) => {
+        let resized = false;
+        table.querySelectorAll("thead th[data-column-key]").forEach((header) => {
+            const label = header.querySelector(".th-label");
+            const columnKey = header.dataset.columnKey;
+            const col = getTableColumnElement(table, columnKey);
+            if (!label || !col) return;
+            const deficit = label.scrollWidth - label.clientWidth;
+            if (deficit <= 1) return;
+            col.style.width = `${Math.ceil(getTableColumnWidth(col) + deficit + COLUMN_HEADER_FIT_BUFFER)}px`;
+            resized = true;
+        });
+        if (!resized) return;
+        syncTableWidth(table);
+        syncStickyColumnOffsets(table);
+    });
+}
+
+function bindTableScrollbars() {
+    document.querySelectorAll("[data-table-scroll-shell]").forEach((shell) => {
+        const top = shell.querySelector('[data-table-scrollbar="top"]');
+        const main = shell.querySelector('[data-table-scrollbar="main"]');
+        const table = shell.querySelector("[data-resizable-table]");
+        const spacer = shell.querySelector("[data-table-scroll-spacer]");
+        if (!top || !main || !table || !spacer) return;
+
+        spacer.style.width = `${getTableRenderedWidth(table)}px`;
+        top.scrollLeft = main.scrollLeft;
+        let syncing = false;
+        const syncScroll = (source, target) => {
+            if (syncing) return;
+            syncing = true;
+            target.scrollLeft = source.scrollLeft;
+            requestAnimationFrame(() => {
+                syncing = false;
+            });
+        };
+
+        top.addEventListener("scroll", () => syncScroll(top, main));
+        main.addEventListener("scroll", () => syncScroll(main, top));
     });
 }
 
@@ -2821,6 +2873,8 @@ function syncTableWidth(table) {
         .reduce((total, col) => total + getTableColumnWidth(col), 0);
     table.style.width = `${totalWidth}px`;
     table.style.minWidth = `${totalWidth}px`;
+    const spacer = table.closest("[data-table-scroll-shell]")?.querySelector("[data-table-scroll-spacer]");
+    if (spacer) spacer.style.width = `${totalWidth}px`;
 }
 
 function syncStickyColumnOffsets(table) {
@@ -2847,6 +2901,13 @@ function getTableColumnWidth(col) {
     const styleWidth = Number.parseFloat(col.style.width);
     if (Number.isFinite(styleWidth) && styleWidth > 0) return styleWidth;
     const rectWidth = col.getBoundingClientRect?.().width;
+    return Number.isFinite(rectWidth) && rectWidth > 0 ? rectWidth : 0;
+}
+
+function getTableRenderedWidth(table) {
+    const styleWidth = Number.parseFloat(table?.style?.width);
+    if (Number.isFinite(styleWidth) && styleWidth > 0) return styleWidth;
+    const rectWidth = table?.getBoundingClientRect?.().width;
     return Number.isFinite(rectWidth) && rectWidth > 0 ? rectWidth : 0;
 }
 
