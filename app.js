@@ -474,15 +474,15 @@ const modules = {
         ]
     },
     guide: {
-        label: "Hướng dẫn UAT",
-        shortLabel: "Hướng dẫn",
+        label: "HD_UAT",
+        shortLabel: "HD_UAT",
         icon: "fa-book-open",
         collection: "guide",
         sectionKey: "category",
         sectionColumnKey: "topic",
-        description: "Các hướng dẫn sử dụng, quy ước priority/status và ghi chú vận hành từ workbook.",
+        description: "Hướng dẫn sử dụng bộ công cụ UAT Squad 2.",
         emptyIcon: "fa-book",
-        emptyTitle: "Chưa có hướng dẫn",
+        emptyTitle: "Chưa có dữ liệu HD_UAT",
         emptyText: "Nội dung từ sheet HD_UAT sẽ hiển thị tại đây sau khi nhập Excel.",
         fields: [
             { key: "category", label: "Nhóm nội dung", type: "text" },
@@ -502,17 +502,17 @@ const modules = {
 };
 
 const tabs = [
-    { id: "dashboard", label: "Dashboard", icon: "fa-gauge-high" },
-    { id: "features", label: "Danh mục", icon: modules.features.icon },
-    { id: "personnel", label: "Nhân sự", icon: modules.personnel.icon },
-    { id: "schedule", label: "Lịch", icon: modules.schedule.icon },
-    { id: "handoffs", label: "Bàn giao", icon: modules.handoffs.icon },
-    { id: "plans", label: "Phân công", icon: modules.plans.icon },
-    { id: "daily", label: "Daily", icon: modules.daily.icon },
-    { id: "weekly", label: "Chất lượng", icon: modules.weekly.icon },
-    { id: "readiness", label: "Kết thúc", icon: modules.readiness.icon },
-    { id: "matrix", label: "Ma trận", icon: modules.matrix.icon },
-    { id: "guide", label: "Hướng dẫn", icon: modules.guide.icon }
+    { id: "dashboard", label: "Dashboard_UAT", icon: "fa-gauge-high" },
+    { id: "personnel", label: "NhanSu_UAT", icon: modules.personnel.icon },
+    { id: "guide", label: "HD_UAT", icon: modules.guide.icon },
+    { id: "schedule", label: "Lich_UAT", icon: modules.schedule.icon },
+    { id: "handoffs", label: "Lich_BG_US", icon: modules.handoffs.icon },
+    { id: "features", label: "DM_ChucNang", icon: modules.features.icon },
+    { id: "plans", label: "PhanCong_UAT", icon: modules.plans.icon },
+    { id: "daily", label: "DieuHanh_Ngay", icon: modules.daily.icon },
+    { id: "weekly", label: "ChatLuong_Tuan", icon: modules.weekly.icon },
+    { id: "readiness", label: "TongKet_Sprint", icon: modules.readiness.icon },
+    { id: "matrix", label: "MaTran_NangLuc", icon: modules.matrix.icon }
 ];
 
 function getInitialTab() {
@@ -915,8 +915,8 @@ function renderTopbar() {
 
 function renderCommandBand() {
     const activeModule = modules[ui.activeTab];
-    const title = activeModule ? activeModule.label : "Dashboard tổng hợp";
-    const subtitle = activeModule ? activeModule.description : "Theo dõi tiến độ UAT, bao phủ kiểm thử, tỷ lệ thành công, lỗi tồn đọng và readiness.";
+    const title = activeModule ? activeModule.label : "Dashboard_UAT";
+    const subtitle = activeModule ? activeModule.description : "Bảng điều hành UAT Squad 2 - Agile Tester Pool.";
     const totalRecords = Object.keys(modules).reduce((sum, id) => sum + appState[modules[id].collection].length, 0);
     return `
         <div class="command-band">
@@ -935,32 +935,7 @@ function renderCommandBand() {
 }
 
 function renderKpis() {
-    if (ui.activeTab === "dashboard") return "";
-    const metrics = calculateMetrics();
-    const cards = [
-        { label: "Tiến độ UAT toàn Squad", value: `${metrics.squadProgress}%`, foot: "Theo trạng thái danh mục", icon: "fa-chart-simple" },
-        { label: "Tỷ lệ bao phủ kiểm thử", value: `${metrics.coverage}%`, foot: "Theo testcase đã thực hiện", icon: "fa-layer-group" },
-        { label: "Tỷ lệ thành công", value: `${metrics.successRate}%`, foot: "Theo chất lượng tuần", icon: "fa-circle-check" },
-        { label: "Lỗi nghiêm trọng tồn đọng", value: metrics.criticalBugs, foot: "Theo daily và kết thúc Sprint", icon: "fa-triangle-exclamation" },
-        { label: "Mức độ sẵn sàng đào tạo", value: `${metrics.trainingReadiness}%`, foot: "Theo đánh giá readiness", icon: "fa-graduation-cap" },
-        { label: "Mức độ sẵn sàng Pilot/Go-live", value: `${metrics.pilotReadiness}%`, foot: "Theo đánh giá readiness", icon: "fa-rocket" }
-    ];
-    return `
-        <div class="kpi-grid">
-            ${cards.map((card) => `
-                <article class="kpi-card">
-                    <div class="kpi-head">
-                        <div class="kpi-label">${e(card.label)}</div>
-                        <div class="kpi-icon"><i class="fa-solid ${card.icon}"></i></div>
-                    </div>
-                    <div>
-                        <div class="kpi-value">${e(card.value)}</div>
-                        <div class="kpi-foot">${e(card.foot)}</div>
-                    </div>
-                </article>
-            `).join("")}
-        </div>
-    `;
+    return "";
 }
 
 function renderTabs() {
