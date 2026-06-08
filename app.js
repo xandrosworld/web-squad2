@@ -14,6 +14,7 @@ const COLUMN_RESIZE_MIN_WIDTH = 48;
 const COLUMN_DEFAULT_SAMPLE_SIZE = 80;
 const TABLE_TARGET_MIN_WIDTH = 980;
 const TABLE_VIEWPORT_GUTTER = 104;
+const COLUMN_HEADER_CONTROL_WIDTH = 90;
 
 const e = (value) => String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -2160,10 +2161,14 @@ function getStoredColumnWidth(mod, columnKey) {
 
 function getDefaultColumnWidth(mod, col, rows) {
     const minWidth = getColumnDefaultMinWidth(col);
-    const maxWidth = getColumnDefaultMaxWidth(mod, col);
-    const headerWidth = estimateTableTextWidth(col.label) + 52;
+    const headerWidth = getColumnHeaderWidth(col);
+    const maxWidth = Math.max(getColumnDefaultMaxWidth(mod, col), headerWidth);
     const sampleWidth = getColumnSampleWidth(col, rows);
     return clampColumnWidth(Math.ceil(Math.max(minWidth, headerWidth, sampleWidth)), minWidth, maxWidth);
+}
+
+function getColumnHeaderWidth(col) {
+    return Math.ceil(estimateTableTextWidth(col.label) + COLUMN_HEADER_CONTROL_WIDTH);
 }
 
 function getColumnSampleWidth(col, rows) {
