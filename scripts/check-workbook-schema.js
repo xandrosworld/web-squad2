@@ -19,6 +19,18 @@ const sheetConfig = {
   matrix: ["MaTran_NangLuc", 3]
 };
 
+const formulaColumnConfig = {
+  Dashboard_UAT: ["B", "C", "D", "E", "F"],
+  Lich_UAT: ["B"],
+  Lich_BG_US: ["F", "H", "I"],
+  DM_ChucNang: ["P", "Q", "R", "U", "V", "W", "X"],
+  PhanCong_UAT: ["B", "G", "Q", "S"],
+  DieuHanh_Ngay: ["B", "E"],
+  ChatLuong_Tuan: ["E", "F", "G", "H", "I", "J", "K", "L"],
+  TongKet_Sprint: ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"],
+  MaTran_NangLuc: ["B", "C", "D", "E", "F", "G", "H", "J"]
+};
+
 main().catch((error) => {
   console.error(error.message || error);
   process.exit(1);
@@ -39,6 +51,12 @@ async function main() {
     const expected = readHeader(worksheet, headerRow);
     const actual = modules[moduleId].columns.map((column) => column.label);
     assertSameList(`${moduleId}/${sheetName}`, expected, actual);
+  }
+
+  for (const [sheetName, expectedColumns] of Object.entries(formulaColumnConfig)) {
+    const worksheet = workbook.getWorksheet(sheetName);
+    if (!worksheet) throw new Error(`Missing sheet ${sheetName}`);
+    assertSameList(`formulas/${sheetName}`, expectedColumns, readFormulaColumns(worksheet));
   }
 
   const state = await parseWorkbookImportState(fs.readFileSync(workbookPath));
@@ -127,6 +145,26 @@ function readHeader(worksheet, rowNumber) {
     if (text) headers.push(text);
   }
   return headers;
+}
+
+function readFormulaColumns(worksheet) {
+  const columns = new Set();
+  worksheet.eachRow((row) => {
+    row.eachCell({ includeEmpty: true }, (cell) => {
+      const value = cell.value;
+      if (!value || typeof value !== "object" || (!value.formula && !value.sharedFormula)) return;
+      columns.add(cell.address.replace(/\d+/g, ""));
+    });
+  });
+  return [...columns].sort(compareExcelColumns);
+}
+
+function compareExcelColumns(left, right) {
+  return columnNumber(left) - columnNumber(right);
+}
+
+function columnNumber(column) {
+  return column.split("").reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0);
 }
 
 function assertSameList(label, expected, actual) {

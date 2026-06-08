@@ -1102,8 +1102,8 @@ function getDashboardSummaryRows() {
     const totalCases = sum(appState.plans, "totalCases");
     const executedCases = sum(appState.plans, "executedCases");
     const coverageRate = percent(executedCases, totalCases);
-    const criticalBugs = sum(appState.daily, "criticalBugs") || sum(appState.readiness, "openCriticalBugs");
-    const highBugs = sum(appState.daily, "highBugs") || sum(appState.readiness, "openHighBugs");
+    const criticalBugs = countDailyOpenSeverity("Nghiêm trọng");
+    const highBugs = countDailyOpenSeverity("Cao");
     const trainingReadiness = calculateTrainingReadiness();
     return [
         { key: "totalStories", label: "Tổng Story", value: totalStories, numericValue: totalStories, tone: "teal" },
@@ -1172,12 +1172,12 @@ function getDashboardSprintRows() {
 
 function calculateTrainingReadiness() {
     if (!appState.matrix.length) return 0;
-    const rates = appState.matrix.map((row) => {
-        const total = Number(row.totalParticipation || 0);
-        const target = Number(row.target || 0);
-        return target ? Math.min(100, (total / target) * 100) : 0;
-    }).filter((value) => Number.isFinite(value) && value > 0);
-    return round(average(rates));
+    const matrixRows = appState.matrix.filter((row) => isFilled(row.group));
+    if (!matrixRows.length) return 0;
+    const rates = ["t1", "t2", "t3", "t4", "t5", "t6"].map((testerKey) => (
+        percent(matrixRows.filter((row) => Number(row[testerKey] || 0) > 0).length, matrixRows.length)
+    ));
+    return round(averageAll(rates));
 }
 
 function renderExcelEmptyRow(colspan) {
@@ -2916,7 +2916,11 @@ async function handleSubmit(event) {
                 updatedAt: now
             };
             const result = await updateRemoteRecord(mod.collection, ui.modal.id, record);
-            appState[mod.collection] = appState[mod.collection].map((row) => row.id === ui.modal.id ? result.record : row);
+            if (result.state) {
+                appState = normalizeState(result.state);
+            } else {
+                appState[mod.collection] = appState[mod.collection].map((row) => row.id === ui.modal.id ? result.record : row);
+            }
             appState.updatedAt = result.updatedAt || now;
             showToast("Đã cập nhật bản ghi vào Railway DB.");
         } else {
@@ -2927,7 +2931,11 @@ async function handleSubmit(event) {
                 updatedAt: now
             };
             const result = await createRemoteRecord(mod.collection, record);
-            appState[mod.collection].unshift(result.record);
+            if (result.state) {
+                appState = normalizeState(result.state);
+            } else {
+                appState[mod.collection].unshift(result.record);
+            }
             appState.updatedAt = result.updatedAt || now;
             showToast("Đã thêm bản ghi vào Railway DB.");
         }
@@ -2957,7 +2965,11 @@ async function deleteRow(id) {
     ui.saving = true;
     try {
         const result = await deleteRemoteRecord(mod.collection, id);
-        appState[mod.collection] = appState[mod.collection].filter((item) => item.id !== id);
+        if (result.state) {
+            appState = normalizeState(result.state);
+        } else {
+            appState[mod.collection] = appState[mod.collection].filter((item) => item.id !== id);
+        }
         appState.updatedAt = result.updatedAt || new Date().toISOString();
         setDataStatus("online", "Railway Postgres đang hoạt động");
         localStorage.setItem(MIGRATION_FLAG_KEY, "active");
@@ -3224,18 +3236,15 @@ function calculateMetrics() {
     const features = appState.features.length;
     const completedFeatures = appState.features.filter((row) => isCompletedFeatureStatus(row.status)).length;
     const statusDrivenProgress = features ? percent(completedFeatures, features) : 0;
-    const dailyTotal = sum(appState.daily, "totalCases");
-    const dailyDone = sum(appState.daily, "executedCases");
-    const weeklyCoverage = average(appState.weekly.map((row) => resolveRate(row.coverageRate, row.executedCases, row.totalCases)));
-    const readinessCoverage = average(appState.readiness.map((row) => row.coverageRate));
-    const coverage = dailyTotal ? percent(dailyDone, dailyTotal) : round(weeklyCoverage || readinessCoverage || 0);
+    const totalCases = sum(appState.plans, "totalCases");
+    const executedCases = sum(appState.plans, "executedCases");
+    const coverage = percent(executedCases, totalCases);
     const successRate = round(average([
         ...appState.weekly.map((row) => row.successRate),
         ...appState.readiness.map((row) => row.successRate)
     ]));
     const latestReadiness = getLatest(appState.readiness);
-    const readinessCritical = sum(appState.readiness, "openCriticalBugs");
-    const dailyCritical = sum(appState.daily, "criticalBugs");
+    const dailyCritical = countDailyOpenSeverity("Nghiêm trọng");
     const readinessFallback = round(latestReadiness?.readinessLevel || average([coverage, successRate]));
     return {
         features,
@@ -3243,8 +3252,8 @@ function calculateMetrics() {
         totalRecords: Object.keys(modules).reduce((total, id) => total + appState[modules[id].collection].length, 0),
         coverage,
         successRate,
-        criticalBugs: readinessCritical || dailyCritical,
-        trainingReadiness: round(latestReadiness?.trainingReadiness || readinessFallback || 0),
+        criticalBugs: dailyCritical,
+        trainingReadiness: calculateTrainingReadiness(),
         pilotReadiness: round(latestReadiness?.pilotReadiness || readinessFallback || 0)
     };
 }
@@ -3255,6 +3264,24 @@ function isCompletedFeatureStatus(status) {
 
 function normalizeLookupKey(value) {
     return String(value || "").trim().toLocaleLowerCase("vi");
+}
+
+function normalizeWorkbookFormulaText(value) {
+    return String(value || "")
+        .trim()
+        .toLocaleLowerCase("vi")
+        .replace(/[đĐ]/g, "d")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+}
+
+function countDailyOpenSeverity(severity) {
+    const target = normalizeWorkbookFormulaText(severity);
+    const closed = normalizeWorkbookFormulaText("Đã đóng");
+    return appState.daily.filter((row) => (
+        normalizeWorkbookFormulaText(row.maxBugSeverity) === target
+        && normalizeWorkbookFormulaText(row.bugStatus) !== closed
+    )).length;
 }
 
 function isFilled(value) {
@@ -3468,6 +3495,12 @@ function sum(rows, key) {
 
 function average(values) {
     const clean = values.map(Number).filter((value) => Number.isFinite(value) && value > 0);
+    if (!clean.length) return 0;
+    return clean.reduce((total, value) => total + value, 0) / clean.length;
+}
+
+function averageAll(values) {
+    const clean = values.map(Number).filter((value) => Number.isFinite(value));
     if (!clean.length) return 0;
     return clean.reduce((total, value) => total + value, 0) / clean.length;
 }

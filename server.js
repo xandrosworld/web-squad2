@@ -531,9 +531,10 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
     await applyRecordDefaults(client, collection, record);
     validateRecordForCollection(collection, record);
     const saved = await createRecord(client, collection, record, req.user);
-    const updatedAt = await touchMeta(client);
+    const { state, updatedAt } = await recomputeAndPersistWorkbookRules(client, req.user.id, req.user);
+    const savedRecord = state[collection].find((item) => item.id === saved.data?.id) || decorateRecord(saved, req.user);
     await client.query("commit");
-    res.status(201).json({ record: decorateRecord(saved, req.user), updatedAt });
+    res.status(201).json({ record: savedRecord, state, updatedAt });
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -555,9 +556,10 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     record.createdAt = current.data?.createdAt || current.created_at?.toISOString?.() || record.createdAt;
     record.updatedAt = new Date().toISOString();
     const saved = await updateRecord(client, collection, record, req.user.id, current);
-    const updatedAt = await touchMeta(client);
+    const { state, updatedAt } = await recomputeAndPersistWorkbookRules(client, req.user.id, req.user);
+    const savedRecord = state[collection].find((item) => item.id === saved.data?.id) || decorateRecord(saved, req.user);
     await client.query("commit");
-    res.json({ record: decorateRecord(saved, req.user), updatedAt });
+    res.json({ record: savedRecord, state, updatedAt });
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -575,9 +577,9 @@ app.delete("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     const current = await getRecordForUpdate(client, collection, req.params.id);
     assertCanModifyRecord(req.user, current);
     await client.query("delete from uat_records where collection = $1 and id = $2", [collection, req.params.id]);
-    const updatedAt = await touchMeta(client);
+    const { state, updatedAt } = await recomputeAndPersistWorkbookRules(client, req.user.id, req.user);
     await client.query("commit");
-    res.json({ ok: true, updatedAt });
+    res.json({ ok: true, state, updatedAt });
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -641,6 +643,7 @@ if (require.main === module) {
 module.exports = {
   app,
   parseWorkbookImportState,
+  applyWorkbookRules,
   buildExcelWorkbook,
   excelSheets
 };
@@ -952,6 +955,7 @@ async function parseWorkbookImportState(buffer) {
   state.readiness = parseReadinessSheet(workbook.getWorksheet("TongKet_Sprint"));
   state.matrix = parseMatrixSheet(workbook.getWorksheet("MaTran_NangLuc"));
   state.guide = parseGuideSheet(workbook.getWorksheet("HD_UAT"));
+  applyWorkbookRules(state);
   assignSortOrder(state);
   state.updatedAt = new Date().toISOString();
   return state;
@@ -1274,6 +1278,179 @@ function normalizeSeverityCount(severity, target, status) {
   return normalizeImportHeader(severity) === normalizeImportHeader(target) ? 1 : 0;
 }
 
+function applyWorkbookRules(state) {
+  const schedule = collectionRows(state, "schedule");
+  const handoffs = collectionRows(state, "handoffs");
+  const features = collectionRows(state, "features");
+  const plans = collectionRows(state, "plans");
+  const daily = collectionRows(state, "daily");
+  const weekly = collectionRows(state, "weekly");
+  const readiness = collectionRows(state, "readiness");
+  const matrix = collectionRows(state, "matrix");
+
+  // Lich_UAT!B4:B7 = Lich_BG_US!G6:G9.
+  schedule.slice(0, 4).forEach((row, index) => {
+    row.handoffDate = handoffs[index]?.uatHandoff || "";
+  });
+
+  const scheduleBySprint = lookupBy(schedule, "sprint");
+
+  // Lich_BG_US!F/H/I are formulas. G/J/K remain manual inputs.
+  handoffs.forEach((row) => {
+    const scheduleRow = scheduleBySprint.get(lookupKey(row.sprint));
+    row.defaultHandoffDate = scheduleRow?.handoffDate || "";
+    row.uatStart = row.uatHandoff || "";
+    row.uatEnd = row.uatHandoff ? addDays(row.uatHandoff, 4) : "";
+  });
+
+  const featureByJira = lookupBy(features, "jiraCode");
+  const handoffByJira = lookupBy(handoffs, "jiraCode");
+
+  // PhanCong_UAT!B/G/Q/S are formulas.
+  plans.forEach((row) => {
+    const scheduleRow = scheduleBySprint.get(lookupKey(row.sprint));
+    const feature = featureByJira.get(lookupKey(row.jiraCode));
+    row.uatHandoff = scheduleRow?.handoffDate || "";
+    row.featureSprint = feature?.sprintBA || "";
+    row.progress = percent(row.executedCases, row.totalCases);
+    row.rotationWarning = rotationWarning(row);
+  });
+
+  // DieuHanh_Ngay!B/E are formulas. E intentionally follows the workbook
+  // VLOOKUP(D:F,2), which returns the function group.
+  daily.forEach((row) => {
+    const feature = featureByJira.get(lookupKey(row.jiraCode));
+    row.sprint = feature?.businessSprint || "";
+    row.feature = feature?.group || "";
+    row.criticalBugs = isSeverity(row.maxBugSeverity, "Nghiêm trọng") && isOpenBugStatus(row.bugStatus) ? 1 : 0;
+    row.highBugs = isSeverity(row.maxBugSeverity, "Cao") && isOpenBugStatus(row.bugStatus) ? 1 : 0;
+  });
+
+  // DM_ChucNang!P/Q/R/U/V/W/X are formulas.
+  features.forEach((row) => {
+    const handoff = handoffByJira.get(lookupKey(row.jiraCode));
+    row.uatHandoff = handoff?.uatHandoff || "";
+    row.uatStart = handoff?.uatStart || "";
+    row.uatEnd = handoff?.uatEnd || "";
+    row.handoffStatus = handoff?.handoffStatus || "";
+    const numerator = sumWhere(plans, (plan) => sameLookup(plan.jiraCode, row.jiraCode), "t6", true);
+    const denominator = sumWhere(plans, (plan) => sameLookup(plan.jiraCode, row.jiraCode), "t5", true);
+    row.completionRate = denominator ? round((numerator / denominator) * 100) : 0;
+    row.openBugs = daily.filter((item) => sameLookup(item.jiraCode, row.jiraCode) && isOpenBugStatus(item.bugStatus)).length;
+    row.uatWarning = row.openBugs > 0 ? "Có lỗi mở" : (Number(row.completionRate || 0) < 100 ? "Chưa hoàn thành TC" : "Đạt");
+  });
+
+  // ChatLuong_Tuan!E:L are formulas.
+  weekly.forEach((row) => {
+    row.totalCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, row.sprint), "totalCases");
+    row.executedCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, row.sprint), "executedCases");
+    row.coverageRate = percent(row.executedCases, row.totalCases);
+    row.passedCases = sumWhere(daily, (item) => sameLookup(item.sprint, row.sprint), "passedCases");
+    row.successRate = percent(row.passedCases, row.executedCases);
+    row.criticalBugs = daily.filter((item) => sameLookup(item.sprint, row.sprint) && isSeverity(item.maxBugSeverity, "Nghiêm trọng") && isOpenBugStatus(item.bugStatus)).length;
+    row.highBugs = daily.filter((item) => sameLookup(item.sprint, row.sprint) && isSeverity(item.maxBugSeverity, "Cao") && isOpenBugStatus(item.bugStatus)).length;
+    row.gateResult = row.criticalBugs > 0 ? "Chưa đạt" : (Number(row.coverageRate || 0) < 90 ? "Đạt có điều kiện" : "Đạt");
+    row.assessment = row.gateResult;
+  });
+
+  // TongKet_Sprint!B:L are formulas.
+  readiness.forEach((row) => {
+    const scheduleRow = scheduleBySprint.get(lookupKey(row.sprint));
+    row.handoffDate = scheduleRow?.handoffDate || "";
+    row.totalStories = plans.filter((plan) => sameLookup(plan.sprint, row.sprint)).length;
+    row.totalCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, row.sprint), "totalCases");
+    row.executedCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, row.sprint), "executedCases");
+    row.coverageRate = percent(row.executedCases, row.totalCases);
+    row.passedCases = sumWhere(daily, (item) => sameLookup(item.sprint, row.sprint), "passedCases");
+    row.successRate = percent(row.passedCases, row.executedCases);
+    row.openCriticalBugs = daily.filter((item) => sameLookup(item.sprint, row.sprint) && isSeverity(item.maxBugSeverity, "Nghiêm trọng") && isOpenBugStatus(item.bugStatus)).length;
+    row.openHighBugs = daily.filter((item) => sameLookup(item.sprint, row.sprint) && isSeverity(item.maxBugSeverity, "Cao") && isOpenBugStatus(item.bugStatus)).length;
+    row.readinessLevel = row.openCriticalBugs > 0 ? "Đỏ" : (Number(row.coverageRate || 0) < 90 ? "Vàng" : "Xanh");
+    row.decision = row.openCriticalBugs > 0
+      ? "NO GO"
+      : (Number(row.coverageRate || 0) >= 95 && Number(row.successRate || 0) >= 90 && Number(row.openHighBugs || 0) <= 3 ? "GO" : "CONDITIONAL GO");
+  });
+
+  // MaTran_NangLuc!B:H/J are formulas. I is the manual target.
+  matrix.forEach((row) => {
+    testerKeys.forEach((testerKey) => {
+      row[testerKey] = plans.filter((plan) => sameLookup(plan.group, row.group) && isCheckmark(plan[testerKey])).length;
+    });
+    row.totalParticipation = testerKeys.reduce((total, testerKey) => total + Number(row[testerKey] || 0), 0);
+    row.warning = Number(row.totalParticipation || 0) < Number(row.target || 0) ? "Chưa đủ luân chuyển" : "Đạt";
+  });
+
+  return state;
+}
+
+const testerKeys = ["t1", "t2", "t3", "t4", "t5", "t6"];
+
+function collectionRows(state, collection) {
+  if (!state || typeof state !== "object") return [];
+  if (!Array.isArray(state[collection])) state[collection] = [];
+  return state[collection];
+}
+
+function lookupBy(rows, key) {
+  const map = new Map();
+  rows.forEach((row) => {
+    const keyValue = lookupKey(row?.[key]);
+    if (keyValue && !map.has(keyValue)) map.set(keyValue, row);
+  });
+  return map;
+}
+
+function lookupKey(value) {
+  return normalizeImportedText(value).toLocaleLowerCase("vi");
+}
+
+function sameLookup(left, right) {
+  return lookupKey(left) === lookupKey(right);
+}
+
+function sumWhere(rows, predicate, key, excelNumericMode = false) {
+  return rows.reduce((total, row) => {
+    if (!predicate(row)) return total;
+    return total + (excelNumericMode ? excelNumeric(row?.[key]) : Number(row?.[key] || 0));
+  }, 0);
+}
+
+function excelNumeric(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return 0;
+  const text = value.trim();
+  if (!text) return 0;
+  const number = Number(text.replace(",", "."));
+  return Number.isFinite(number) ? number : 0;
+}
+
+function isCheckmark(value) {
+  return normalizeImportedText(value) === "✓";
+}
+
+function rotationWarning(row) {
+  const assigned = testerKeys.filter((key) => isCheckmark(row?.[key])).length;
+  if (assigned < 2) return "Thiếu tester";
+  if (assigned > 3) return "Quá nhiều tester";
+  return "Đạt";
+}
+
+function isSeverity(value, target) {
+  return normalizeImportHeader(value) === normalizeImportHeader(target);
+}
+
+function isOpenBugStatus(status) {
+  return normalizeImportHeader(status) !== normalizeImportHeader("Đã đóng");
+}
+
+function addDays(value, days) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return "";
+  date.setUTCDate(date.getUTCDate() + days);
+  return formatDateForInput(date);
+}
+
 function importId(collection, ...parts) {
   return crypto
     .createHash("sha1")
@@ -1439,28 +1616,27 @@ function calculateWorkbookMetrics(state) {
   const daily = Array.isArray(state.daily) ? state.daily : [];
   const weekly = Array.isArray(state.weekly) ? state.weekly : [];
   const readiness = Array.isArray(state.readiness) ? state.readiness : [];
+  const plans = Array.isArray(state.plans) ? state.plans : [];
+  const matrix = Array.isArray(state.matrix) ? state.matrix : [];
   const completedFeatures = features.filter((row) => isCompletedFeatureStatus(row.status)).length;
   const statusDrivenProgress = features.length ? percent(completedFeatures, features.length) : 0;
-  const dailyTotal = sumBy(daily, "totalCases");
-  const dailyDone = sumBy(daily, "executedCases");
-  const weeklyCoverage = average(weekly.map((row) => resolveRate(row.coverageRate, row.executedCases, row.totalCases)));
-  const readinessCoverage = average(readiness.map((row) => row.coverageRate));
-  const coverage = dailyTotal ? percent(dailyDone, dailyTotal) : round(weeklyCoverage || readinessCoverage || 0);
+  const totalCases = sumBy(plans, "totalCases");
+  const executedCases = sumBy(plans, "executedCases");
+  const coverage = percent(executedCases, totalCases);
   const successRate = round(average([
     ...weekly.map((row) => row.successRate),
     ...readiness.map((row) => row.successRate)
   ]) || 0);
   const latestReadiness = getLatestRecord(readiness);
-  const readinessCritical = sumBy(readiness, "openCriticalBugs");
-  const dailyCritical = sumBy(daily, "criticalBugs");
+  const dailyCritical = daily.filter((row) => isSeverity(row.maxBugSeverity, "Nghiêm trọng") && isOpenBugStatus(row.bugStatus)).length;
   const readinessFallback = round(latestReadiness?.readinessLevel || average([coverage, successRate]));
 
   return {
     squadProgress: statusDrivenProgress || coverage,
     coverage,
     successRate,
-    criticalBugs: readinessCritical || dailyCritical,
-    trainingReadiness: round(latestReadiness?.trainingReadiness || readinessFallback || 0),
+    criticalBugs: dailyCritical,
+    trainingReadiness: calculateDashboardTrainingReadiness(matrix),
     pilotReadiness: round(latestReadiness?.pilotReadiness || readinessFallback || 0)
   };
 }
@@ -1477,6 +1653,19 @@ function average(values) {
   const numeric = values.map(Number).filter((value) => Number.isFinite(value) && value > 0);
   if (!numeric.length) return 0;
   return numeric.reduce((total, value) => total + value, 0) / numeric.length;
+}
+
+function averageAll(values) {
+  const numeric = values.map(Number).filter((value) => Number.isFinite(value));
+  if (!numeric.length) return 0;
+  return numeric.reduce((total, value) => total + value, 0) / numeric.length;
+}
+
+function calculateDashboardTrainingReadiness(matrix) {
+  const rows = (Array.isArray(matrix) ? matrix : []).filter((row) => normalizeImportedText(row.group));
+  if (!rows.length) return 0;
+  const rates = testerKeys.map((testerKey) => percent(rows.filter((row) => Number(row[testerKey] || 0) > 0).length, rows.length));
+  return round(averageAll(rates));
 }
 
 function percent(done, total) {
@@ -1637,6 +1826,46 @@ async function touchMeta(client) {
   return updatedAt;
 }
 
+async function recomputeAndPersistWorkbookRules(client, actorId, viewer = null) {
+  const state = await readState(client);
+  const before = new Map();
+  for (const collection of collections) {
+    for (const record of state[collection] || []) {
+      before.set(recordKey(collection, record.id), JSON.stringify(record));
+    }
+  }
+
+  applyWorkbookRules(state);
+  assignSortOrder(state);
+
+  const now = new Date();
+  const updatedAt = now.toISOString();
+  for (const collection of collections) {
+    for (const record of state[collection] || []) {
+      const key = recordKey(collection, record.id);
+      if (JSON.stringify(record) === before.get(key)) continue;
+      record.updatedAt = updatedAt;
+      await client.query(`
+        update uat_records
+        set data = $1::jsonb,
+            updated_by = $2,
+            updated_at = $3
+        where collection = $4 and id = $5
+      `, [JSON.stringify(record), actorId, now, collection, record.id]);
+    }
+  }
+
+  const metaUpdatedAt = await touchMeta(client);
+  return {
+    state: await readState(client, viewer),
+    updatedAt: metaUpdatedAt
+  };
+}
+
+function recordKey(collection, id) {
+  return `${collection}:${id}`;
+}
+
 function emptyState() {
   return {
     features: [],
@@ -1661,6 +1890,8 @@ function normalizeState(input) {
       ? source[collection].map((record) => normalizeRecord(record))
       : [];
   }
+  applyWorkbookRules(state);
+  assignSortOrder(state);
   state.updatedAt = typeof source.updatedAt === "string" ? source.updatedAt : new Date().toISOString();
   return state;
 }
