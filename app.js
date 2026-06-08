@@ -12,6 +12,8 @@ const ACTION_COLUMN_KEY = "__actions";
 const ACTION_COLUMN_DEFAULT_WIDTH = 104;
 const COLUMN_RESIZE_MIN_WIDTH = 48;
 const COLUMN_DEFAULT_SAMPLE_SIZE = 80;
+const TABLE_TARGET_MIN_WIDTH = 980;
+const TABLE_VIEWPORT_GUTTER = 104;
 
 const e = (value) => String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -1998,9 +2000,10 @@ function renderSectionRow(mod, section) {
 function tableColumnLayout(mod, rows) {
     const columns = mod.columns.map((col) => ({
         col,
-        width: getResolvedColumnWidth(mod, col, rows)
+        ...getResolvedColumnWidth(mod, col, rows)
     }));
     const actionWidth = getStoredColumnWidth(mod, ACTION_COLUMN_KEY) || ACTION_COLUMN_DEFAULT_WIDTH;
+    distributeTableFillWidth(mod, columns, actionWidth);
     const totalWidth = columns.reduce((total, item) => total + item.width, actionWidth);
     return {
         columns,
@@ -2043,7 +2046,110 @@ function parseColumnWidth(width) {
 }
 
 function getResolvedColumnWidth(mod, col, rows) {
-    return getStoredColumnWidth(mod, col.key) || getDefaultColumnWidth(mod, col, rows);
+    const storedWidth = getStoredColumnWidth(mod, col.key);
+    return {
+        width: storedWidth || getDefaultColumnWidth(mod, col, rows),
+        userSized: Boolean(storedWidth)
+    };
+}
+
+function distributeTableFillWidth(mod, columns, actionWidth) {
+    const targetWidth = getDefaultTableTargetWidth();
+    let currentWidth = columns.reduce((total, item) => total + item.width, actionWidth);
+    let remaining = Math.max(0, targetWidth - currentWidth);
+    if (remaining <= 0) return;
+
+    const candidates = columns
+        .filter((item) => !item.userSized)
+        .map((item) => ({
+            item,
+            weight: getColumnFillWeight(item.col),
+            maxWidth: getColumnFillMaxWidth(mod, item.col, item.width)
+        }))
+        .filter((candidate) => candidate.weight > 0 && candidate.maxWidth > candidate.item.width);
+
+    while (remaining > 0.5 && candidates.some((candidate) => candidate.maxWidth > candidate.item.width)) {
+        const active = candidates.filter((candidate) => candidate.maxWidth > candidate.item.width);
+        const weightTotal = active.reduce((total, candidate) => total + candidate.weight, 0);
+        let consumed = 0;
+        active.forEach((candidate) => {
+            const share = remaining * (candidate.weight / weightTotal);
+            const growth = Math.min(candidate.maxWidth - candidate.item.width, share);
+            candidate.item.width += growth;
+            consumed += growth;
+        });
+        if (consumed <= 0.5) break;
+        remaining -= consumed;
+    }
+
+    currentWidth = columns.reduce((total, item) => total + item.width, actionWidth);
+    remaining = Math.max(0, targetWidth - currentWidth);
+    if (remaining > 0.5) {
+        const elastic = columns.filter((item) => !item.userSized && isElasticFillColumn(item.col));
+        const fallback = elastic.length ? elastic : columns.filter((item) => !item.userSized);
+        if (fallback.length) {
+            const extra = remaining / fallback.length;
+            fallback.forEach((item) => {
+                item.width += extra;
+            });
+        }
+    }
+
+    columns.forEach((item) => {
+        item.width = Math.round(item.width);
+    });
+}
+
+function getDefaultTableTargetWidth() {
+    if (typeof document !== "undefined") {
+        const panelBody = document.querySelector(".content-grid-single .panel-body");
+        const width = panelBody?.clientWidth;
+        if (Number.isFinite(width) && width > 0) return Math.max(TABLE_TARGET_MIN_WIDTH, Math.floor(width));
+    }
+    if (typeof window !== "undefined") {
+        return Math.max(TABLE_TARGET_MIN_WIDTH, Math.floor(window.innerWidth - TABLE_VIEWPORT_GUTTER));
+    }
+    return TABLE_TARGET_MIN_WIDTH;
+}
+
+function getColumnFillWeight(col) {
+    const key = String(col.key || "").toLowerCase();
+    if (key === "stt" || /^t[1-6]$/.test(key)) return 0.2;
+    if (key.includes("link")) return 0.35;
+    if (key.includes("date") || key.includes("handoff") || key.includes("start") || key.includes("end") || key.includes("done") || key.includes("signed")) return 0.65;
+    if (key.includes("sprint")) return 0.7;
+    if (key.includes("status") || key.includes("decision") || key.includes("warning") || key.includes("level")) return 0.9;
+    if (key.includes("code") || key.includes("jira") || key.includes("story") || key.includes("email")) return 1;
+    if (isElasticFillColumn(col)) return 3;
+    return 1.1;
+}
+
+function getColumnFillMaxWidth(mod, col, currentWidth) {
+    const key = String(col.key || "").toLowerCase();
+    const declared = parseColumnWidth(col.width);
+    const field = getFieldForColumn(mod, col);
+    if (key === "stt" || /^t[1-6]$/.test(key)) return Math.max(currentWidth, 78);
+    if (key.includes("link")) return Math.max(currentWidth, 150);
+    if (key.includes("date") || key.includes("handoff") || key.includes("start") || key.includes("end") || key.includes("done") || key.includes("signed")) return Math.max(currentWidth, 190);
+    if (key.includes("sprint")) return Math.max(currentWidth, 170);
+    if (key.includes("status") || key.includes("decision") || key.includes("warning") || key.includes("level")) return Math.max(currentWidth, 210);
+    if (key.includes("code") || key.includes("jira") || key.includes("story") || key.includes("email")) return Math.max(currentWidth, 230);
+    if (isElasticFillColumn(col) || field?.type === "textarea" || field?.full) {
+        return Math.max(currentWidth, Math.max(360, declared + 120));
+    }
+    return Math.max(currentWidth, 240);
+}
+
+function isElasticFillColumn(col) {
+    const key = String(col.key || "").toLowerCase();
+    return key.includes("name")
+        || key.includes("feature")
+        || key.includes("group")
+        || key.includes("topic")
+        || key.includes("content")
+        || key.includes("scope")
+        || key.includes("note")
+        || key.includes("blocker");
 }
 
 function getStoredColumnWidth(mod, columnKey) {
