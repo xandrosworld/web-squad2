@@ -2048,8 +2048,9 @@ function parseColumnWidth(width) {
 
 function getResolvedColumnWidth(mod, col, rows) {
     const storedWidth = getStoredColumnWidth(mod, col.key);
+    const minWidth = getColumnResizeMinWidth(col.key, mod);
     return {
-        width: storedWidth || getDefaultColumnWidth(mod, col, rows),
+        width: Math.max(minWidth, storedWidth || getDefaultColumnWidth(mod, col, rows)),
         userSized: Boolean(storedWidth)
     };
 }
@@ -2156,7 +2157,7 @@ function isElasticFillColumn(col) {
 function getStoredColumnWidth(mod, columnKey) {
     const value = Number(ui.columnWidths?.[columnWidthStorageKey(mod, columnKey)]);
     if (!Number.isFinite(value) || value <= 0) return null;
-    return Math.max(getColumnResizeMinWidth(columnKey), Math.round(value));
+    return Math.max(getColumnResizeMinWidth(columnKey, mod), Math.round(value));
 }
 
 function getDefaultColumnWidth(mod, col, rows) {
@@ -2255,8 +2256,11 @@ function getColumnDefaultMaxWidth(mod, col) {
     return Math.max(130, Math.min(220, declared));
 }
 
-function getColumnResizeMinWidth(columnKey) {
-    return columnKey === ACTION_COLUMN_KEY ? 76 : COLUMN_RESIZE_MIN_WIDTH;
+function getColumnResizeMinWidth(columnKey, mod = modules[ui.activeTab]) {
+    if (columnKey === ACTION_COLUMN_KEY) return ACTION_COLUMN_DEFAULT_WIDTH;
+    const col = mod?.columns?.find((item) => item.key === columnKey);
+    const headerWidth = col ? getColumnHeaderWidth(col) : 0;
+    return Math.max(COLUMN_RESIZE_MIN_WIDTH, headerWidth);
 }
 
 function clampColumnWidth(value, minWidth, maxWidth) {
@@ -2742,7 +2746,7 @@ function startColumnResize(event) {
 
     const startX = event.clientX;
     const startWidth = getTableColumnWidth(col);
-    const minWidth = getColumnResizeMinWidth(columnKey);
+    const minWidth = getColumnResizeMinWidth(columnKey, mod);
     let nextWidth = startWidth;
 
     table.classList.add("is-resizing-column");
@@ -2787,7 +2791,7 @@ function handleColumnResizeKeydown(event) {
     event.preventDefault();
     const direction = event.key === "ArrowRight" ? 1 : -1;
     const step = event.shiftKey ? 24 : 8;
-    const nextWidth = Math.max(getColumnResizeMinWidth(columnKey), getTableColumnWidth(col) + (direction * step));
+    const nextWidth = Math.max(getColumnResizeMinWidth(columnKey, mod), getTableColumnWidth(col) + (direction * step));
     applyTableColumnWidth(table, columnKey, nextWidth);
     ui.columnWidths[columnWidthStorageKey(mod, columnKey)] = nextWidth;
     saveColumnWidths();
