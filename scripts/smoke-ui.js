@@ -170,7 +170,7 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   }
 
   await page.locator(".tabbar button[data-tab=\"dashboard\"]").click();
-  await page.waitForSelector(".kpi-grid", { timeout: 5000 });
+  await page.waitForSelector(".dashboard-shell .uat-dashboard, .dashboard-shell .dashboard-empty-panel", { timeout: 5000 });
 
   if (errors.length) {
     throw new Error(`Browser errors detected:\n${errors.join("\n")}`);
