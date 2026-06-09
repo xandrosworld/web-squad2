@@ -26,10 +26,16 @@ const maxAvatarFileSizeMb = Number(process.env.MAX_AVATAR_FILE_SIZE_MB || 6);
 const maxAvatarDataLength = Number(process.env.MAX_AVATAR_DATA_LENGTH || Math.ceil(maxAvatarFileSizeMb * 1024 * 1024 * 4 / 3) + 512);
 const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "10mb";
 const defaultUsers = [
-  { username: "yenuth@bidv.com.vn", email: "yenuth@bidv.com.vn", name: "yenuth", password: "123456" },
-  { username: "thanhmt@bidv.com.vn", email: "thanhmt@bidv.com.vn", name: "thanhmt", password: "123456" },
-  { username: "tuanpa13@bidv.com.vn", email: "tuanpa13@bidv.com.vn", name: "tuanpa13", password: "123456" },
-  { username: "giangnc2@bidv.com.vn", email: "giangnc2@bidv.com.vn", name: "giangnc2", password: "123456" }
+  { username: "yenuth@bidv.com.vn", email: "yenuth@bidv.com.vn", name: "Uông Thị Hải Yến", password: "123456" },
+  { username: "phuongbtm@bidv.com.vn", email: "phuongbtm@bidv.com.vn", name: "Bùi Thị Mai Phương", password: "123456" },
+  { username: "giangnc2@bidv.com.vn", email: "giangnc2@bidv.com.vn", name: "Nguyễn Châu Giang", password: "123456" },
+  { username: "tuanpa13@bidv.com.vn", email: "tuanpa13@bidv.com.vn", name: "Phạm Anh Tuấn", password: "123456" },
+  { username: "thanhmt@bidv.com.vn", email: "thanhmt@bidv.com.vn", name: "Mai Tấn Thành", password: "123456" },
+  { username: "tantc@bidv.com.vn", email: "tantc@bidv.com.vn", name: "Lê Trần Sơn", password: "123456" },
+  { username: "sinhhc@bidv.com.vn", email: "sinhhc@bidv.com.vn", name: "Huỳnh Công Sinh", password: "123456" },
+  { username: "triht@bidv.com.vn", email: "triht@bidv.com.vn", name: "Hoàng Thành Trí", password: "123456" },
+  { username: "huyng@bidv.com.vn", email: "huyng@bidv.com.vn", name: "Nguyễn Gia Huy", password: "123456" },
+  { username: "tuantd3@bidv.com.vn", email: "tuantd3@bidv.com.vn", name: "Trần Đình Tuấn", password: "123456" }
 ];
 const adminIdentities = ["yenuth@bidv.com.vn", "thanhmt@bidv.com.vn"];
 
@@ -92,7 +98,7 @@ const collectionRules = {
   },
   plans: {
     required: ["sprint", "feature"],
-    numbers: ["totalCases", "executedCases"],
+    numbers: ["nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "executedCases"],
     percents: ["progress"],
     enums: {}
   },
@@ -1085,13 +1091,13 @@ function parsePlanSheet(worksheet) {
       featureSprint: cellTextAt(row, 5),
       uatHandoff: toImportDate(cellValueAt(row, 6)),
       owner: normalizeImportedOwner(cellValueAt(row, 7)),
-      nv: cellTextAt(row, 8),
-      t1: cellTextAt(row, 9),
-      t2: cellTextAt(row, 10),
-      t3: cellTextAt(row, 11),
-      t4: cellTextAt(row, 12),
-      t5: cellTextAt(row, 13),
-      t6: cellTextAt(row, 14),
+      nv: toImportNumber(cellValueAt(row, 8)),
+      t1: toImportNumber(cellValueAt(row, 9)),
+      t2: toImportNumber(cellValueAt(row, 10)),
+      t3: toImportNumber(cellValueAt(row, 11)),
+      t4: toImportNumber(cellValueAt(row, 12)),
+      t5: toImportNumber(cellValueAt(row, 13)),
+      t6: toImportNumber(cellValueAt(row, 14)),
       totalCases,
       executedCases,
       progress: toImportPercent(cellValueAt(row, 17)) || percent(executedCases, totalCases),
