@@ -206,6 +206,14 @@ async function assertTableScrollPersistsAfterRefresh(page) {
   if (before <= 0) {
     throw new Error("Plans table is not horizontally scrollable for persistence smoke.");
   }
+  await page.waitForFunction((expected) => {
+    try {
+      const stored = JSON.parse(sessionStorage.getItem("squad2_uat_command_center_v1_table_scroll_lefts_v1") || "{}");
+      return Math.abs(Number(stored.plans || 0) - expected) <= 2;
+    } catch {
+      return false;
+    }
+  }, before, { timeout: 5000 });
 
   await Promise.all([
     page.waitForResponse((response) => response.url().endsWith("/api/state") && response.request().method() === "GET", { timeout: 15000 }),
