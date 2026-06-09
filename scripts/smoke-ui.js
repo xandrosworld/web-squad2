@@ -132,6 +132,18 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   await page.locator("[data-auth-action=\"close-profile\"]").click();
   await page.waitForSelector("#profileForm", { state: "detached", timeout: 5000 });
 
+  if (await page.locator("[data-ai-action=\"open\"]").count() !== 1) {
+    throw new Error("AI assistant floating button is missing.");
+  }
+  await page.locator("[data-ai-action=\"open\"]").click();
+  await page.waitForSelector("#aiChatForm", { timeout: 5000 });
+  assertReadableText(await page.locator(".ai-chat-panel").innerText(), "AI assistant panel");
+  if (await page.locator("#aiChatInput").count() !== 1) {
+    throw new Error("AI assistant input is missing.");
+  }
+  await page.locator("[data-ai-action=\"close\"]").click();
+  await page.waitForSelector("#aiChatForm", { state: "detached", timeout: 5000 });
+
   for (const tab of moduleTabs) {
     await page.locator(`.tabbar button[data-tab="${tab}"]`).click();
     assertReadableText(await page.locator("#app").innerText(), tab);

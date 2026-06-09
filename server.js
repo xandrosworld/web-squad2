@@ -25,6 +25,10 @@ const sessionSecret = process.env.SESSION_SECRET || crypto
 const maxAvatarFileSizeMb = Number(process.env.MAX_AVATAR_FILE_SIZE_MB || 6);
 const maxAvatarDataLength = Number(process.env.MAX_AVATAR_DATA_LENGTH || Math.ceil(maxAvatarFileSizeMb * 1024 * 1024 * 4 / 3) + 512);
 const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "10mb";
+const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "";
+const geminiModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const geminiApiBase = process.env.GEMINI_API_BASE || "https://generativelanguage.googleapis.com/v1beta";
+const geminiTimeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 30000);
 const defaultUsers = [
   { username: "yenuth@bidv.com.vn", email: "yenuth@bidv.com.vn", name: "Uông Thị Hải Yến", password: "123456" },
   { username: "phuongbtm@bidv.com.vn", email: "phuongbtm@bidv.com.vn", name: "Bùi Thị Mai Phương", password: "123456" },
@@ -510,6 +514,19 @@ app.post("/api/chat/group", asyncHandler(async (req, res) => {
     left join app_users users on users.id = inserted.created_by
   `, [id, body, req.user.id]);
   res.status(201).json({ message: toGroupChatMessage(result.rows[0]) });
+}));
+
+app.post("/api/ai/chat", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  if (!geminiApiKey) {
+    throw httpError(503, "Chưa cấu hình GEMINI_API_KEY trong .env hoặc Railway Variables.");
+  }
+  const message = normalizeAiMessage(req.body.message || req.body.body);
+  const history = normalizeAiHistory(req.body.history);
+  const state = await readState(getPool(), req.user);
+  const context = buildAiDataContext(state);
+  const answer = await askGeminiUatAssistant({ message, history, context, user: req.user });
+  res.json({ answer });
 }));
 
 app.put("/api/state", requireAdmin, asyncHandler(async (req, res) => {
@@ -2201,6 +2218,265 @@ function normalizeChatMessage(value) {
   if (!body) throw httpError(400, "Tin nhắn không được để trống.");
   if (body.length > 1000) throw httpError(400, "Tin nhắn tối đa 1000 ký tự.");
   return body;
+}
+
+function normalizeAiMessage(value) {
+  const body = String(value || "").trim();
+  if (!body) throw httpError(400, "Câu hỏi AI không được để trống.");
+  if (body.length > 2000) throw httpError(400, "Câu hỏi AI tối đa 2000 ký tự.");
+  return body;
+}
+
+function normalizeAiHistory(history) {
+  if (!Array.isArray(history)) return [];
+  return history
+    .slice(-12)
+    .map((item) => ({
+      role: item?.role === "assistant" ? "assistant" : "user",
+      body: String(item?.body || item?.message || "").trim().slice(0, 4000)
+    }))
+    .filter((item) => item.body);
+}
+
+function buildAiDataContext(state) {
+  const metrics = calculateWorkbookMetrics(state);
+  const totalCases = sumBy(state.plans || [], "totalCases");
+  const executedCases = sumBy(state.plans || [], "executedCases");
+  const context = {
+    generatedAt: new Date().toISOString(),
+    dataUpdatedAt: state.updatedAt || "",
+    counts: summarizeImportState(state),
+    dashboard: {
+      totalStories: (state.features || []).length,
+      storiesWithUatSchedule: (state.features || []).filter((row) => row.uatHandoff || row.handoffDate).length,
+      totalCases,
+      executedCases,
+      coverageRate: percent(executedCases, totalCases),
+      blockerBugs: metrics.blockerBugs,
+      criticalBugs: metrics.criticalBugs,
+      trainingReadiness: metrics.trainingReadiness,
+      pilotReadiness: metrics.pilotReadiness,
+      squadProgress: metrics.squadProgress,
+      successRate: metrics.successRate
+    },
+    ownerSummary: summarizeAiOwners(state),
+    sprintSummary: summarizeAiSprints(state),
+    fieldLegend: aiFieldLegend(),
+    modules: Object.fromEntries(collections.map((collection) => [
+      aiCollectionName(collection),
+      {
+        collection,
+        rowCount: Array.isArray(state[collection]) ? state[collection].length : 0,
+        rows: (Array.isArray(state[collection]) ? state[collection] : []).map((row) => compactAiRecord(collection, row))
+      }
+    ]))
+  };
+  return limitAiContext(JSON.stringify(context, null, 2));
+}
+
+function summarizeAiOwners(state) {
+  const buckets = new Map();
+  (state.plans || []).forEach((row) => {
+    const owner = String(row.owner || "Chưa gán").trim();
+    if (!buckets.has(owner)) buckets.set(owner, { owner, storyCount: 0, totalCases: 0, executedCases: 0 });
+    const bucket = buckets.get(owner);
+    bucket.storyCount += 1;
+    bucket.totalCases += Number(row.totalCases || 0);
+    bucket.executedCases += Number(row.executedCases || 0);
+  });
+  return [...buckets.values()]
+    .map((row) => ({ ...row, coverageRate: percent(row.executedCases, row.totalCases) }))
+    .sort((a, b) => b.storyCount - a.storyCount || a.owner.localeCompare(b.owner, "vi"));
+}
+
+function summarizeAiSprints(state) {
+  const buckets = new Map();
+  const ensure = (sprint) => {
+    const key = String(sprint || "Chưa gán Sprint").trim();
+    if (!buckets.has(key)) {
+      buckets.set(key, { sprint: key, storyCount: 0, totalCases: 0, executedCases: 0, decision: "" });
+    }
+    return buckets.get(key);
+  };
+  (state.plans || []).forEach((row) => {
+    const bucket = ensure(row.sprint);
+    bucket.storyCount += 1;
+    bucket.totalCases += Number(row.totalCases || 0);
+    bucket.executedCases += Number(row.executedCases || 0);
+  });
+  (state.readiness || []).forEach((row) => {
+    const bucket = ensure(row.sprint);
+    bucket.storyCount = Number(row.totalStories || bucket.storyCount);
+    bucket.totalCases = Number(row.totalCases || bucket.totalCases);
+    bucket.executedCases = Number(row.executedCases || bucket.executedCases);
+    bucket.decision = row.decision || bucket.decision;
+  });
+  return [...buckets.values()]
+    .map((row) => ({
+      ...row,
+      coverageRate: percent(row.executedCases, row.totalCases),
+      decision: row.decision || "Chưa quyết định"
+    }))
+    .sort((a, b) => a.sprint.localeCompare(b.sprint, "vi", { numeric: true }));
+}
+
+function compactAiRecord(collection, row) {
+  const fieldOrder = aiFieldOrder(collection);
+  const omitted = new Set(["id", "sortOrder", "createdAt", "updatedAt", "_ownership"]);
+  const keys = [
+    ...fieldOrder,
+    ...Object.keys(row || {}).filter((key) => !fieldOrder.includes(key))
+  ];
+  return keys.reduce((record, key) => {
+    if (omitted.has(key) || key.startsWith("_")) return record;
+    const value = row?.[key];
+    if (value === "" || value == null) return record;
+    if (typeof value === "object") return record;
+    record[key] = typeof value === "string" && value.length > 500 ? `${value.slice(0, 500)}...` : value;
+    return record;
+  }, {});
+}
+
+function aiCollectionName(collection) {
+  return {
+    features: "DM_ChucNang",
+    personnel: "NhanSu_UAT",
+    schedule: "Lich_UAT",
+    handoffs: "Lich_BG_US",
+    plans: "PhanCong_UAT",
+    daily: "DieuHanh_Ngay",
+    weekly: "ChatLuong_Tuan",
+    readiness: "TongKet_Sprint",
+    matrix: "MaTran_NangLuc",
+    guide: "HD_UAT"
+  }[collection] || collection;
+}
+
+function aiFieldOrder(collection) {
+  return {
+    features: ["stt", "code", "storyCode", "jiraCode", "group", "name", "jiraName", "jiraLink", "rsdLink", "sprintBA", "sprintDev", "sprintQC", "businessSprint", "status", "owner", "uatHandoff", "uatStart", "uatEnd", "uatDone", "uatSigned", "handoffStatus", "completionRate", "openBugs", "uatWarning"],
+    personnel: ["staffCode", "name", "role", "scope", "status", "birthYear", "phone", "email", "unit"],
+    schedule: ["sprint", "devStart", "devEnd", "handoffDate", "startDate", "endDate", "note"],
+    handoffs: ["jiraCode", "code", "storyCode", "name", "sprint", "defaultHandoffDate", "uatHandoff", "uatStart", "uatEnd", "handoffStatus", "note"],
+    plans: ["code", "jiraCode", "group", "feature", "sprint", "uatHandoff", "owner", "nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "executedCases", "progress", "uatStatus", "rotationWarning", "note"],
+    daily: ["date", "sprint", "code", "jiraCode", "feature", "tester", "totalCases", "executedCases", "passedCases", "failedCases", "bugStatus", "maxBugSeverity", "blocker", "handler", "deadline"],
+    weekly: ["week", "sprint", "group", "totalStories", "totalCases", "executedCases", "coverageRate", "passedCases", "successRate", "blockerBugs", "criticalBugs", "majorBugs", "totalOpenBugs", "gateResult", "note"],
+    readiness: ["sprint", "handoffDate", "totalStories", "totalCases", "executedCases", "coverageRate", "passedCases", "successRate", "openCriticalBugs", "openHighBugs", "readinessLevel", "decision", "note"],
+    matrix: ["group", "t1", "t2", "t3", "t4", "t5", "t6", "totalParticipation", "target", "warning"],
+    guide: ["category", "index", "topic", "content"]
+  }[collection] || [];
+}
+
+function aiFieldLegend() {
+  return {
+    code: "Mã chức năng",
+    storyCode: "Mã story",
+    jiraCode: "Mã Jira",
+    group: "Nhóm chức năng",
+    name: "Tên chức năng",
+    owner: "Đầu mối nghiệp vụ/chủ quản",
+    uatHandoff: "Ngày bàn giao UAT",
+    handoffStatus: "Trạng thái bàn giao",
+    note: "Ghi chú",
+    totalCases: "Tổng testcase",
+    executedCases: "Testcase đã thực hiện",
+    progress: "% hoàn thành",
+    uatStatus: "Trạng thái UAT",
+    rotationWarning: "Cảnh báo luân chuyển tester",
+    t1: "Tester Sơn T1",
+    t2: "Tester Sinh T2",
+    t3: "Tester Trí T3",
+    t4: "Tester Huy T4",
+    t5: "Tester Tuấn T5",
+    t6: "Tester Thành T6"
+  };
+}
+
+function limitAiContext(text) {
+  const maxLength = Number(process.env.AI_CONTEXT_MAX_CHARS || 140000);
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}\n... Context bị rút gọn do quá dài. Hãy nói rõ nếu câu hỏi cần phần dữ liệu có thể đã bị cắt.`;
+}
+
+async function askGeminiUatAssistant({ message, history, context, user }) {
+  const url = `${geminiApiBase.replace(/\/$/, "")}/models/${geminiModel.replace(/^models\//, "")}:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+  const contents = [
+    {
+      role: "user",
+      parts: [{ text: `DỮ LIỆU HIỆN TẠI CỦA SQUAD 2 UAT DASHBOARD (JSON):\n${context}` }]
+    },
+    {
+      role: "model",
+      parts: [{ text: "Đã hiểu. Tôi sẽ trả lời dựa trên JSON hiện tại và nêu rõ nếu dữ liệu không đủ." }]
+    },
+    ...history.map((item) => ({
+      role: item.role === "assistant" ? "model" : "user",
+      parts: [{ text: item.body }]
+    })),
+    {
+      role: "user",
+      parts: [{ text: message }]
+    }
+  ];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), geminiTimeoutMs);
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{
+            text: [
+              "Bạn là trợ lý AI cho web Squad 2 UAT Dashboard.",
+              "Luôn trả lời bằng tiếng Việt, ngắn gọn, rõ số liệu.",
+              "Chỉ dùng dữ liệu JSON được cung cấp. Nếu dữ liệu không có, nói rõ là chưa có dữ liệu thay vì suy đoán.",
+              "Khi người dùng hỏi nghiệp vụ, hãy liên hệ đúng sheet/module như DM_ChucNang, Lich_BG_US, PhanCong_UAT, DieuHanh_Ngay, ChatLuong_Tuan, TongKet_Sprint, MaTran_NangLuc.",
+              `Người đang hỏi: ${user?.name || user?.email || user?.username || "người dùng"}.`
+            ].join("\n")
+          }]
+        },
+        contents,
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 2048
+        }
+      })
+    });
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw httpError(504, "Gemini phản hồi quá lâu. Vui lòng thử lại sau.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+  const data = await safeJson(response);
+  if (!response.ok) {
+    const detail = data?.error?.message || data?.error || response.statusText || "không rõ lỗi";
+    throw httpError(response.status === 401 || response.status === 403 ? 502 : response.status, `Gemini API lỗi: ${detail}`);
+  }
+  const answer = (data?.candidates?.[0]?.content?.parts || [])
+    .map((part) => part.text || "")
+    .join("")
+    .trim();
+  if (!answer) {
+    const reason = data?.candidates?.[0]?.finishReason || data?.promptFeedback?.blockReason || "không có nội dung trả lời";
+    throw httpError(502, `Gemini không trả về câu trả lời: ${reason}.`);
+  }
+  return answer;
+}
+
+async function safeJson(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text };
+  }
 }
 
 function validateNewUser({ username, email, name, password }) {

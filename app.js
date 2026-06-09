@@ -7,6 +7,7 @@ const API_BASE = "/api";
 const SYNC_INTERVAL_MS = 30000;
 const GROUP_CHAT_POLL_INTERVAL_MS = 15000;
 const GROUP_CHAT_LIMIT = 50;
+const AI_CHAT_HISTORY_LIMIT = 12;
 const MAX_AVATAR_FILE_SIZE_MB = 6;
 const MAX_AVATAR_FILE_SIZE_BYTES = MAX_AVATAR_FILE_SIZE_MB * 1024 * 1024;
 const ACTION_COLUMN_KEY = "__actions";
@@ -521,6 +522,10 @@ const tabs = [
     { id: "matrix", label: "MaTran_NangLuc", icon: modules.matrix.icon }
 ];
 
+function getDataModuleCount() {
+    return tabs.filter((tab) => tab.id !== "dashboard").length;
+}
+
 function getInitialTab() {
     const id = (window.location.hash || "").replace("#", "");
     return tabs.some((tab) => tab.id === id) ? id : "dashboard";
@@ -556,6 +561,8 @@ let ui = {
     openColumnFilter: null,
     modal: null,
     profileOpen: false,
+    aiChatOpen: false,
+    aiChatDraft: "",
     groupChatOpen: false,
     groupChatDraft: "",
     profileAvatarDraft: null,
@@ -575,6 +582,11 @@ let groupChatState = {
     sending: false,
     error: null,
     lastFetchedAt: null
+};
+let aiChatState = {
+    messages: [],
+    sending: false,
+    error: null
 };
 
 function normalizeState(raw) {
@@ -713,8 +725,11 @@ async function requestJson(path, options = {}) {
         if (response.status === 401 && !skipAuthRedirect && authState.status === "authenticated") {
             authState = { status: "guest", user: null, error: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." };
             appState = emptyState();
+            ui.aiChatOpen = false;
+            ui.aiChatDraft = "";
             ui.groupChatOpen = false;
             ui.groupChatDraft = "";
+            resetAiChatState();
             resetGroupChatState();
             localStorage.removeItem(STORAGE_KEY);
             render();
@@ -866,7 +881,7 @@ function renderLoginPage() {
                         <p>Theo dõi danh mục UAT, phân công Sprint, tiến độ kiểm thử, chất lượng tuần và readiness trước Pilot/Go-live.</p>
 
                         <div class="login-stats">
-                            <div><strong>6</strong><span>Phân hệ UAT</span></div>
+                            <div><strong>${e(getDataModuleCount())}</strong><span>Phân hệ dữ liệu</span></div>
                             <div><strong>24/7</strong><span>Dữ liệu tập trung</span></div>
                             <div><strong>DB</strong><span>Railway Postgres</span></div>
                         </div>
@@ -2506,9 +2521,19 @@ function renderProfileModal() {
 
 function renderFloatingGroupChat() {
     const unreadClass = groupChatState.error ? "warn" : "";
+    if (ui.aiChatOpen) {
+        return `
+            <div class="floating-hub ai-open">
+                ${renderAiChatPanel()}
+            </div>
+        `;
+    }
     if (!ui.groupChatOpen) {
         return `
             <div class="floating-hub">
+                <button class="ai-fab" type="button" data-ai-action="open" title="Trợ lý AI dữ liệu UAT" aria-label="Trợ lý AI dữ liệu UAT">
+                    ${renderAiSparkSvg()}
+                </button>
                 <button class="chat-fab ${unreadClass}" type="button" data-chat-action="open" title="Chat nhóm" aria-label="Chat nhóm">
                     <i class="fa-solid fa-comments"></i>
                 </button>
@@ -2544,6 +2569,85 @@ function renderFloatingGroupChat() {
                 </form>
             </section>
         </div>
+    `;
+}
+
+function renderAiChatPanel() {
+    return `
+        <section class="group-chat-panel ai-chat-panel" aria-label="Trợ lý AI dữ liệu UAT">
+            <div class="group-chat-head ai-chat-head">
+                <div>
+                    <h2><span class="ai-head-icon">${renderAiSparkSvg()}</span> Trợ lý AI UAT</h2>
+                    <span>${aiChatState.error ? e(aiChatState.error) : "Hỏi nhanh về dashboard, phân công, daily, chất lượng và toàn bộ dữ liệu."}</span>
+                </div>
+                <div class="group-chat-actions">
+                    <button class="icon-btn" type="button" data-ai-action="clear" title="Xóa hội thoại" aria-label="Xóa hội thoại">
+                        <i class="fa-solid fa-broom"></i>
+                    </button>
+                    <button class="icon-btn" type="button" data-ai-action="close" title="Đóng" aria-label="Đóng">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="group-chat-body ai-chat-body" id="aiChatBody">
+                ${renderAiChatMessages()}
+            </div>
+            <form class="group-chat-compose ai-chat-compose" id="aiChatForm">
+                <textarea id="aiChatInput" class="group-chat-input" name="message" maxlength="2000" rows="2" placeholder="Hỏi AI về dữ liệu UAT..." ${aiChatState.sending ? "disabled" : ""}>${e(ui.aiChatDraft)}</textarea>
+                <button class="primary-btn group-chat-send" type="submit" ${aiChatState.sending ? "disabled" : ""} title="Gửi">
+                    <i class="fa-solid fa-paper-plane"></i><span>${aiChatState.sending ? "Đang hỏi" : "Hỏi AI"}</span>
+                </button>
+            </form>
+        </section>
+    `;
+}
+
+function renderAiChatMessages() {
+    const messages = aiChatState.messages || [];
+    if (!messages.length && !aiChatState.sending) {
+        return `
+            <div class="group-chat-empty ai-chat-empty">
+                <span class="ai-empty-icon">${renderAiSparkSvg()}</span>
+                <span>Hỏi ví dụ: “Sprint nào đang thiếu tester?”, “Tổng testcase hiện tại là bao nhiêu?”, hoặc “CN001 đang bàn giao đến đâu?”.</span>
+            </div>
+        `;
+    }
+    return `
+        ${messages.map((message) => {
+            const isOwn = message.role === "user";
+            return `
+                <article class="group-chat-message ai-chat-message ${isOwn ? "own" : ""}">
+                    <div class="group-chat-avatar ai-chat-avatar ${isOwn ? "user" : ""}">
+                        ${isOwn ? e(userInitials(authState.user)) : renderAiSparkSvg()}
+                    </div>
+                    <div class="group-chat-bubble">
+                        <div class="group-chat-meta">
+                            <strong>${isOwn ? "Bạn" : "AI dữ liệu UAT"}</strong>
+                            <span>${e(formatShortDateTime(message.createdAt))}</span>
+                        </div>
+                        <p>${e(message.body)}</p>
+                    </div>
+                </article>
+            `;
+        }).join("")}
+        ${aiChatState.sending ? `
+            <article class="group-chat-message ai-chat-message">
+                <div class="group-chat-avatar ai-chat-avatar">${renderAiSparkSvg()}</div>
+                <div class="group-chat-bubble ai-typing">
+                    <span></span><span></span><span></span>
+                </div>
+            </article>
+        ` : ""}
+    `;
+}
+
+function renderAiSparkSvg() {
+    return `
+        <svg class="ai-spark-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 2.75l1.85 4.92 4.9 1.87-4.9 1.85L12 16.3l-1.85-4.91-4.9-1.85 4.9-1.87L12 2.75Z"></path>
+            <path d="M18.4 14.2l.84 2.22 2.21.84-2.21.84-.84 2.2-.84-2.2-2.2-.84 2.2-.84.84-2.22Z"></path>
+            <path d="M5.1 15.4l.58 1.54 1.53.58-1.53.58-.58 1.52-.58-1.52-1.52-.58 1.52-.58.58-1.54Z"></path>
+        </svg>
     `;
 }
 
@@ -2711,6 +2815,27 @@ function bindEvents() {
     document.querySelectorAll("[data-chat-action]").forEach((button) => {
         button.addEventListener("click", handleChatAction);
     });
+
+    document.querySelectorAll("[data-ai-action]").forEach((button) => {
+        button.addEventListener("click", handleAiAction);
+    });
+
+    const aiChatForm = document.getElementById("aiChatForm");
+    if (aiChatForm) aiChatForm.addEventListener("submit", handleAiChatSubmit);
+
+    const aiChatInput = document.getElementById("aiChatInput");
+    if (aiChatInput) {
+        aiChatInput.addEventListener("input", (event) => {
+            ui.aiChatDraft = event.target.value;
+        });
+        aiChatInput.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" || event.shiftKey) return;
+            event.preventDefault();
+            aiChatForm?.requestSubmit();
+        });
+    }
+    const aiChatBody = document.getElementById("aiChatBody");
+    if (aiChatBody) aiChatBody.scrollTop = aiChatBody.scrollHeight;
 
     const groupChatForm = document.getElementById("groupChatForm");
     if (groupChatForm) groupChatForm.addEventListener("submit", handleGroupChatSubmit);
@@ -3077,8 +3202,11 @@ async function initAuth() {
     } catch {
         authState = { status: "guest", user: null, error: null };
         appState = emptyState();
+        ui.aiChatOpen = false;
+        ui.aiChatDraft = "";
         ui.groupChatOpen = false;
         ui.groupChatDraft = "";
+        resetAiChatState();
         resetGroupChatState();
         render();
     }
@@ -3109,8 +3237,11 @@ async function handleLogin(event) {
     } catch (error) {
         authState = { status: "guest", user: null, error: error.message || "Không đăng nhập được." };
         appState = emptyState();
+        ui.aiChatOpen = false;
+        ui.aiChatDraft = "";
         ui.groupChatOpen = false;
         ui.groupChatDraft = "";
+        resetAiChatState();
         resetGroupChatState();
         render();
     }
@@ -3148,6 +3279,8 @@ async function handleAuthAction(event) {
     localStorage.removeItem(STORAGE_KEY);
     ui.modal = null;
     ui.profileOpen = false;
+    ui.aiChatOpen = false;
+    ui.aiChatDraft = "";
     ui.groupChatOpen = false;
     ui.groupChatDraft = "";
     ui.profileAvatarDraft = null;
@@ -3155,13 +3288,92 @@ async function handleAuthAction(event) {
     ui.filters = {};
     ui.columnFilters = {};
     ui.openColumnFilter = null;
+    resetAiChatState();
     resetGroupChatState();
     render();
+}
+
+async function handleAiAction(event) {
+    const action = event.currentTarget.dataset.aiAction;
+    if (action === "open") {
+        ui.aiChatOpen = true;
+        ui.groupChatOpen = false;
+        render();
+        return;
+    }
+    if (action === "close") {
+        ui.aiChatOpen = false;
+        render();
+        return;
+    }
+    if (action === "clear") {
+        resetAiChatState();
+        ui.aiChatDraft = "";
+        render();
+    }
+}
+
+async function handleAiChatSubmit(event) {
+    event.preventDefault();
+    if (aiChatState.sending) return;
+    const form = event.currentTarget;
+    const message = (form.elements.message?.value || "").trim();
+    ui.aiChatDraft = message;
+    if (!message) {
+        showToast("Vui lòng nhập câu hỏi cho AI.");
+        return;
+    }
+
+    const history = (aiChatState.messages || [])
+        .slice(-AI_CHAT_HISTORY_LIMIT)
+        .map(({ role, body }) => ({ role, body }));
+    const now = new Date().toISOString();
+    aiChatState.messages = [
+        ...aiChatState.messages,
+        { role: "user", body: message, createdAt: now }
+    ].slice(-AI_CHAT_HISTORY_LIMIT * 2);
+    aiChatState.sending = true;
+    aiChatState.error = null;
+    ui.aiChatDraft = "";
+    render();
+
+    try {
+        const data = await requestJson("/ai/chat", {
+            method: "POST",
+            body: JSON.stringify({ message, history })
+        });
+        const answer = String(data.answer || "").trim() || "AI chưa trả về nội dung.";
+        aiChatState.messages = [
+            ...aiChatState.messages,
+            { role: "assistant", body: answer, createdAt: new Date().toISOString() }
+        ].slice(-AI_CHAT_HISTORY_LIMIT * 2);
+        aiChatState.error = null;
+    } catch (error) {
+        const messageText = error.message || "Không hỏi được AI.";
+        aiChatState.error = messageText;
+        aiChatState.messages = [
+            ...aiChatState.messages,
+            { role: "assistant", body: messageText, createdAt: new Date().toISOString() }
+        ].slice(-AI_CHAT_HISTORY_LIMIT * 2);
+        showToast(messageText);
+    } finally {
+        aiChatState.sending = false;
+        render();
+    }
+}
+
+function resetAiChatState() {
+    aiChatState = {
+        messages: [],
+        sending: false,
+        error: null
+    };
 }
 
 async function handleChatAction(event) {
     const action = event.currentTarget.dataset.chatAction;
     if (action === "open") {
+        ui.aiChatOpen = false;
         ui.groupChatOpen = true;
         render();
         await fetchGroupChat();
@@ -4112,6 +4324,11 @@ function formatLastSyncAt() {
 
 document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
+    if (ui.aiChatOpen) {
+        ui.aiChatOpen = false;
+        render();
+        return;
+    }
     if (ui.groupChatOpen) {
         ui.groupChatOpen = false;
         render();
