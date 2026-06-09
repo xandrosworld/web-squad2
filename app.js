@@ -551,6 +551,7 @@ let authState = {
     user: null,
     error: null
 };
+let lastRenderedTab = null;
 let ui = {
     activeTab: getInitialTab(),
     query: "",
@@ -775,7 +776,9 @@ async function replaceRemoteState(state) {
 }
 
 function render() {
+    const pageScroll = lastRenderedTab === ui.activeTab ? capturePageScroll() : null;
     if (authState.status === "checking") {
+        lastRenderedTab = null;
         document.getElementById("app").innerHTML = `
             ${renderAuthLoading()}
             <div class="toast ${ui.toast ? "show" : ""}">${e(ui.toast || "")}</div>
@@ -784,6 +787,7 @@ function render() {
     }
 
     if (authState.status !== "authenticated") {
+        lastRenderedTab = null;
         document.getElementById("app").innerHTML = `
             ${renderLoginPage()}
             <div class="toast ${ui.toast ? "show" : ""}">${e(ui.toast || "")}</div>
@@ -820,6 +824,7 @@ function render() {
     `;
 
     bindEvents();
+    lastRenderedTab = ui.activeTab;
 
     let restoredFocus = false;
     if (focus?.id) {
@@ -836,6 +841,27 @@ function render() {
         const openedFilter = document.querySelector("[data-column-filter-autofocus]");
         if (openedFilter) requestAnimationFrame(() => openedFilter.focus());
     }
+    restorePageScroll(pageScroll);
+}
+
+function capturePageScroll() {
+    return {
+        tab: ui.activeTab,
+        left: window.scrollX || document.documentElement.scrollLeft || 0,
+        top: window.scrollY || document.documentElement.scrollTop || 0
+    };
+}
+
+function restorePageScroll(snapshot) {
+    if (!snapshot || snapshot.tab !== ui.activeTab) return;
+    requestAnimationFrame(() => {
+        const maxLeft = Math.max(0, document.documentElement.scrollWidth - window.innerWidth);
+        const maxTop = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        window.scrollTo(
+            Math.min(snapshot.left, maxLeft),
+            Math.min(snapshot.top, maxTop)
+        );
+    });
 }
 
 function renderAuthLoading() {
@@ -1986,6 +2012,7 @@ function renderTableRows(mod, rows, columnMeta) {
         const sectionMarkup = section && section !== currentSection ? renderSectionRow(mod, section) : "";
         if (section) currentSection = section;
                         const canEdit = canModifyRecord(row);
+                        const canDelete = canDeleteRecord(row);
                         const owner = recordOwnerLabel(row);
         return `
             ${sectionMarkup}
@@ -1997,14 +2024,17 @@ function renderTableRows(mod, rows, columnMeta) {
                                             <button class="icon-btn" data-action="open-edit" data-id="${e(row.id)}" title="Sửa" aria-label="Sửa">
                                                 <i class="fa-solid fa-pen"></i>
                                             </button>
+                                        ` : ""}
+                                        ${canDelete ? `
                                             <button class="icon-btn" data-action="delete-row" data-id="${e(row.id)}" title="Xóa" aria-label="Xóa">
                                                 <i class="fa-solid fa-trash"></i>
                                             </button>
-                                        ` : `
+                                        ` : ""}
+                                        ${!canEdit && !canDelete ? `
                                             <span class="permission-lock" title="Bản ghi do ${e(owner)} tạo. Chỉ người tạo hoặc admin được sửa.">
                                                 <i class="fa-solid fa-lock"></i>
                                             </span>
-                                        `}
+                                        ` : ""}
                                     </div>
                                 </td>
                             </tr>
@@ -4185,6 +4215,11 @@ function renderDbSyncPill() {
 function canModifyRecord(row) {
     if (authState.user?.role === "admin") return true;
     return row?._ownership?.canEdit === true;
+}
+
+function canDeleteRecord(row) {
+    if (authState.user?.role === "admin") return true;
+    return row?._ownership?.canDelete === true;
 }
 
 function recordOwnerLabel(row) {

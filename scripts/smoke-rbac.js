@@ -6,7 +6,9 @@ const accounts = {
   adminOne: process.env.SMOKE_ADMIN_ONE || "yenuth@bidv.com.vn",
   adminTwo: process.env.SMOKE_ADMIN_TWO || "thanhmt@bidv.com.vn",
   userOne: process.env.SMOKE_USER_ONE || "tuanpa13@bidv.com.vn",
-  userTwo: process.env.SMOKE_USER_TWO || "giangnc2@bidv.com.vn"
+  userTwo: process.env.SMOKE_USER_TWO || "giangnc2@bidv.com.vn",
+  ownerNv1: process.env.SMOKE_OWNER_NV1 || "phuongbtm@bidv.com.vn",
+  ownerNv3: process.env.SMOKE_OWNER_NV3 || "tuantd3@bidv.com.vn"
 };
 
 if (!password) {
@@ -25,11 +27,48 @@ if (!password) {
   assertRole(sessions.adminTwo.user, "admin");
   assertRole(sessions.userOne.user, "user");
   assertRole(sessions.userTwo.user, "user");
+  assertRole(sessions.ownerNv1.user, "user");
+  assertRole(sessions.ownerNv3.user, "user");
 
+  const linkedOwnerRecord = { ...featureRecord("RBAC-NV1"), owner: "NV1 - Bùi Thị Mai Phương" };
   const recordOne = featureRecord("RBAC-OWNER-A");
   const recordTwo = featureRecord("RBAC-OWNER-B");
 
   try {
+    await expectStatus("admin create linked owner record", request("/api/records/features", {
+      method: "POST",
+      cookie: sessions.adminOne.cookie,
+      body: { record: linkedOwnerRecord }
+    }), 201);
+    createdIds.push(linkedOwnerRecord.id);
+
+    await assertOwnership(linkedOwnerRecord.id, sessions.ownerNv1.cookie, { canEdit: true, canDelete: false });
+    await assertOwnership(linkedOwnerRecord.id, sessions.userTwo.cookie, { canEdit: false, canDelete: false });
+    await assertOwnership(linkedOwnerRecord.id, sessions.adminOne.cookie, { canEdit: true, canDelete: true });
+
+    await expectStatus("linked owner update admin-created record", request(`/api/records/features/${linkedOwnerRecord.id}`, {
+      method: "PUT",
+      cookie: sessions.ownerNv1.cookie,
+      body: { record: { ...linkedOwnerRecord, name: "Linked owner updated" } }
+    }), 200);
+
+    await expectStatus("non-linked user update linked owner record", request(`/api/records/features/${linkedOwnerRecord.id}`, {
+      method: "PUT",
+      cookie: sessions.userTwo.cookie,
+      body: { record: { ...linkedOwnerRecord, name: "Unauthorized linked owner update" } }
+    }), 403);
+
+    await expectStatus("linked owner delete admin-created record", request(`/api/records/features/${linkedOwnerRecord.id}`, {
+      method: "DELETE",
+      cookie: sessions.ownerNv1.cookie
+    }), 403);
+
+    await expectStatus("admin delete linked owner record", request(`/api/records/features/${linkedOwnerRecord.id}`, {
+      method: "DELETE",
+      cookie: sessions.adminOne.cookie
+    }), 200);
+    createdIds.splice(createdIds.indexOf(linkedOwnerRecord.id), 1);
+
     await expectStatus("user one create", request("/api/records/features", {
       method: "POST",
       cookie: sessions.userOne.cookie,
@@ -37,10 +76,10 @@ if (!password) {
     }), 201);
     createdIds.push(recordOne.id);
 
-    await assertOwnership(recordOne.id, sessions.userOne.cookie, true);
-    await assertOwnership(recordOne.id, sessions.userTwo.cookie, false);
-    await assertOwnership(recordOne.id, sessions.adminOne.cookie, true);
-    await assertOwnership(recordOne.id, sessions.adminTwo.cookie, true);
+    await assertOwnership(recordOne.id, sessions.userOne.cookie, { canEdit: true, canDelete: true });
+    await assertOwnership(recordOne.id, sessions.userTwo.cookie, { canEdit: false, canDelete: false });
+    await assertOwnership(recordOne.id, sessions.adminOne.cookie, { canEdit: true, canDelete: true });
+    await assertOwnership(recordOne.id, sessions.adminTwo.cookie, { canEdit: true, canDelete: true });
 
     await expectStatus("user one update own record", request(`/api/records/features/${recordOne.id}`, {
       method: "PUT",
@@ -153,12 +192,15 @@ async function expectStatus(label, promise, expectedStatus) {
   return result;
 }
 
-async function assertOwnership(id, cookie, expectedCanEdit) {
+async function assertOwnership(id, cookie, expected) {
   const result = await expectStatus("read ownership", request("/api/state", { cookie }), 200);
   const record = result.data.state.features.find((item) => item.id === id);
   if (!record) throw new Error(`Ownership check could not find record ${id}.`);
-  if (record._ownership?.canEdit !== expectedCanEdit) {
-    throw new Error(`Ownership check for ${id}: expected canEdit=${expectedCanEdit}.`);
+  if (record._ownership?.canEdit !== expected.canEdit) {
+    throw new Error(`Ownership check for ${id}: expected canEdit=${expected.canEdit}.`);
+  }
+  if (record._ownership?.canDelete !== expected.canDelete) {
+    throw new Error(`Ownership check for ${id}: expected canDelete=${expected.canDelete}.`);
   }
 }
 

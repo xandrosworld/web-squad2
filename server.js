@@ -74,6 +74,11 @@ const ownerOptions = [
   "NV3 - Phạm Anh Tuấn",
   "BA"
 ];
+const ownerAccountLinks = [
+  { code: "NV1", label: ownerOptions[0], email: "phuongbtm@bidv.com.vn" },
+  { code: "NV2", label: ownerOptions[1], email: "giangnc2@bidv.com.vn" },
+  { code: "NV3", label: ownerOptions[2], email: "tuantd3@bidv.com.vn" }
+];
 const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
 const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Don UAT"];
 const planStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Hoàn thành", "Tạm dừng/Blocked", "Chờ sửa lỗi", "Đã ký UAT"];
@@ -611,7 +616,7 @@ app.delete("/api/records/:collection/:id", asyncHandler(async (req, res) => {
   try {
     await client.query("begin");
     const current = await getRecordForUpdate(client, collection, req.params.id);
-    assertCanModifyRecord(req.user, current);
+    assertCanDeleteRecord(req.user, current);
     await client.query("delete from uat_records where collection = $1 and id = $2", [collection, req.params.id]);
     const { state, updatedAt } = await recomputeAndPersistWorkbookRules(client, req.user.id, req.user);
     await client.query("commit");
@@ -1908,23 +1913,71 @@ async function getRecordForUpdate(client, collection, id) {
 }
 
 function assertCanModifyRecord(user, record) {
-  if (user?.role === "admin" || (record.created_by && record.created_by === user?.id)) return;
-  throw httpError(403, "Bạn chỉ có thể sửa hoặc xóa bản ghi do chính mình tạo.");
+  if (canEditRecord(user, record)) return;
+  throw httpError(403, "Bạn chỉ có thể sửa bản ghi do chính mình tạo, bản ghi thuộc NV của mình, hoặc dùng tài khoản admin.");
+}
+
+function assertCanDeleteRecord(user, record) {
+  if (canDeleteRecord(user, record)) return;
+  throw httpError(403, "Bạn chỉ có thể xóa bản ghi do chính mình tạo hoặc dùng tài khoản admin.");
+}
+
+function canEditRecord(user, record) {
+  if (!user) return false;
+  return user.role === "admin"
+    || Boolean(record.created_by && record.created_by === user.id)
+    || isLinkedOwnerUser(user, record.data);
+}
+
+function canDeleteRecord(user, record) {
+  if (!user) return false;
+  return user.role === "admin" || Boolean(record.created_by && record.created_by === user.id);
 }
 
 function decorateRecord(row, viewer) {
   const isOwner = Boolean(row.created_by && row.created_by === viewer?.id);
-  const canEdit = Boolean(viewer && (viewer.role === "admin" || isOwner));
+  const linkedOwner = ownerAccountLinkForRecord(row.data);
+  const isLinkedOwner = Boolean(viewer && isOwnerAccountLinkForUser(linkedOwner, viewer));
+  const canEdit = Boolean(viewer && (viewer.role === "admin" || isOwner || isLinkedOwner));
+  const canDelete = Boolean(viewer && (viewer.role === "admin" || isOwner));
   return {
     ...(row.data || {}),
     _ownership: {
       createdByName: row.creator_name || row.creator_username || "Không xác định",
       createdByEmail: row.creator_email || "",
+      linkedOwnerCode: linkedOwner?.code || "",
+      linkedOwnerLabel: linkedOwner?.label || "",
+      linkedOwnerEmail: linkedOwner?.email || "",
       isOwner,
+      isLinkedOwner,
       canEdit,
-      canDelete: canEdit
+      canDelete
     }
   };
+}
+
+function ownerAccountLinkForRecord(record) {
+  const code = ownerCodeFromValue(record?.owner);
+  return ownerAccountLinks.find((link) => link.code === code) || null;
+}
+
+function ownerCodeFromValue(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^NV\s*([1-3])\b/i);
+  return match ? `NV${match[1]}` : "";
+}
+
+function isLinkedOwnerUser(user, record) {
+  return isOwnerAccountLinkForUser(ownerAccountLinkForRecord(record), user);
+}
+
+function isOwnerAccountLinkForUser(link, user) {
+  if (!link || !user) return false;
+  const email = String(link.email || "").toLowerCase();
+  const identities = [user.email, user.username]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+  return identities.includes(email);
 }
 
 async function touchMeta(client) {

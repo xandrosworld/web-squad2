@@ -182,6 +182,7 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   }
 
   if (requireDb) {
+    await assertPageScrollPersistsAfterRefresh(page);
     await assertTableScrollPersistsAfterRefresh(page);
   }
 
@@ -236,5 +237,30 @@ async function assertTableScrollPersistsAfterRefresh(page) {
   const after = await page.locator('[data-table-scrollbar="main"]').first().evaluate((element) => element.scrollLeft);
   if (Math.abs(after - before) > 2) {
     throw new Error(`Plans table horizontal scroll was not preserved after refresh: before ${before}, after ${after}.`);
+  }
+}
+
+async function assertPageScrollPersistsAfterRefresh(page) {
+  await page.locator(".tabbar button[data-tab=\"guide\"]").click();
+  await page.waitForSelector(".guide-page", { timeout: 5000 });
+  const before = await page.evaluate(() => {
+    const maxTop = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    window.scrollTo(0, Math.min(760, maxTop));
+    return window.scrollY;
+  });
+  if (before < 120) {
+    throw new Error("Guide page is not vertically scrollable for focus persistence smoke.");
+  }
+
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/state") && response.request().method() === "GET", { timeout: 15000 }),
+    page.evaluate(() => window.dispatchEvent(new Event("focus")))
+  ]);
+  await page.waitForSelector(".guide-page", { timeout: 5000 });
+  await page.waitForTimeout(100);
+
+  const after = await page.evaluate(() => window.scrollY);
+  if (Math.abs(after - before) > 4) {
+    throw new Error(`Page vertical scroll was not preserved after focus refresh: before ${before}, after ${after}.`);
   }
 }
