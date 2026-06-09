@@ -1471,6 +1471,19 @@ body.is-column-resizing * {
     z-index: 3;
 }
 
+.data-table .section-row.section-level-1 td,
+.data-table .section-row.section-level-1 td.sticky-col {
+    background: #008b86;
+    border-bottom-color: #00736f;
+}
+
+.data-table .section-row.section-level-2 td,
+.data-table .section-row.section-level-2 td.sticky-col {
+    background: #98f5f2;
+    color: #064e4b;
+    border-bottom-color: #70ddd8;
+}
+
 .data-table .section-row .section-title-cell {
     padding-left: 0;
     padding-right: 0;
@@ -1489,6 +1502,10 @@ body.is-column-resizing * {
     overflow: hidden;
     text-overflow: ellipsis;
     animation: section-title-pulse 2.8s ease-in-out infinite;
+}
+
+.data-table .section-row.section-level-2 strong {
+    color: #064e4b;
 }
 
 @keyframes section-title-pulse {
@@ -1526,6 +1543,16 @@ body.is-column-resizing * {
 .data-table tbody tr.section-row:hover td,
 .data-table.has-sticky-columns tbody tr.section-row:hover td.sticky-col {
     background: #12bdb8;
+}
+
+.data-table tbody tr.section-row.section-level-1:hover td,
+.data-table.has-sticky-columns tbody tr.section-row.section-level-1:hover td.sticky-col {
+    background: #008b86;
+}
+
+.data-table tbody tr.section-row.section-level-2:hover td,
+.data-table.has-sticky-columns tbody tr.section-row.section-level-2:hover td.sticky-col {
+    background: #98f5f2;
 }
 
 .data-table tbody tr:last-child td {
@@ -1604,6 +1631,35 @@ body.is-column-resizing * {
 .tag.gray {
     background: #f3f4f6;
     color: #4b5563;
+}
+
+.cell-badge-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 5px;
+}
+
+.cell-badge {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-height: 18px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 14px;
+}
+
+.cell-badge.level-1 {
+    background: #e6fffb;
+    color: #00736f;
+}
+
+.cell-badge.level-2 {
+    background: #eef2ff;
+    color: #475569;
 }
 
 .progress {

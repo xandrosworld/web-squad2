@@ -136,6 +136,8 @@ async function main() {
   if (!firstFeature.businessSprint) throw new Error("DM_ChucNang first row imported blank Sprint Nghiệp vụ.");
   if (!firstFeature.handoffStatus) throw new Error("DM_ChucNang first row imported blank Tình trạng bàn giao.");
 
+  assertHandoffSections(state.handoffs);
+
   console.log(JSON.stringify({
     ok: true,
     workbook: path.basename(workbookPath),
@@ -153,6 +155,23 @@ async function main() {
       guide: state.guide.length
     }
   }, null, 2));
+}
+
+function assertHandoffSections(handoffs) {
+  const first = handoffs[0] || {};
+  if (first.sectionLevel1 !== "Luồng quy trình") {
+    throw new Error(`Lich_BG_US first data row has wrong level 1 section: ${first.sectionLevel1 || "-"}`);
+  }
+  if (first.sectionLevel2 !== "Tính năng gợi ý và lựa chọn cấp trình") {
+    throw new Error(`Lich_BG_US first data row has wrong level 2 section: ${first.sectionLevel2 || "-"}`);
+  }
+  const hasNested = handoffs.some((row) => (
+    row.sectionLevel1 === "Màn hình thẩm định"
+    && row.sectionLevel2 === "Màn hình thẩm định - Khoản cấp tín dụng"
+  ));
+  if (!hasNested) {
+    throw new Error("Lich_BG_US import is missing nested badge mapping for Màn hình thẩm định - Khoản cấp tín dụng.");
+  }
 }
 
 function loadAppModules() {

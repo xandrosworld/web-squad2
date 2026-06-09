@@ -51,6 +51,17 @@ const ownerOptions = [
 ];
 const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
 const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Don UAT"];
+const handoffSectionDefaults = [
+    { level1: "Luồng quy trình", children: ["Tính năng gợi ý và lựa chọn cấp trình"] },
+    { level1: "Tính năng nâng cao", children: [] },
+    { level1: "Màn hình thẩm định", children: ["Màn hình thẩm định - Tab thông tin khách hàng", "Màn hình thẩm định - Khoản cấp tín dụng"] },
+    { level1: "Màn hình phê duyệt", children: ["Màn hình phê duyệt - Tab thông tin khách hàng", "Màn hình phê duyệt - Khoản cấp tín dụng", "Màn hình phê duyệt - Tab Phê duyệt tín dụng"] },
+    { level1: "Màn hình Thư ký Hội đồng", children: [] },
+    { level1: "Logic khi NSD xử lý CAS", children: [] },
+    { level1: "Tích hợp", children: [] },
+    { level1: "Quản trị hệ thống", children: [] },
+    { level1: "Luồng nhận, giải chấp, rút bớt, thay thế TSBĐ", children: [] }
+];
 const planStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Hoàn thành", "Tạm dừng/Blocked", "Chờ sửa lỗi", "Đã ký UAT"];
 const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail"];
 const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
@@ -211,6 +222,7 @@ const modules = {
         shortLabel: "Bàn giao",
         icon: "fa-truck-fast",
         collection: "handoffs",
+        sectionKeys: ["sectionLevel1", "sectionLevel2"],
         description: "Lịch bàn giao UAT chi tiết theo từng User Story.",
         emptyIcon: "fa-calendar-day",
         emptyTitle: "Chưa có lịch bàn giao US",
@@ -219,6 +231,8 @@ const modules = {
             { key: "jiraCode", label: "Mã Jira", type: "text", required: true },
             { key: "code", label: "Mã CN", type: "text" },
             { key: "storyCode", label: "Mã Story", type: "text" },
+            { key: "sectionLevel1", label: "Badge cấp 1", type: "combo", options: () => getHandoffLevel1Options() },
+            { key: "sectionLevel2", label: "Badge cấp 2", type: "combo", options: (row) => getHandoffLevel2Options(row), dependsOn: "sectionLevel1", full: true },
             { key: "name", label: "Tên chức năng", type: "text", required: true, full: true },
             { key: "sprint", label: "Sprint", type: "text" },
             { key: "defaultHandoffDate", label: "Ngày mặc định theo Sprint", type: "date" },
@@ -236,7 +250,7 @@ const modules = {
             { key: "jiraCode", label: "Mã Jira", width: "140px" },
             { key: "code", label: "Mã CN", width: "92px", render: (row) => tag(row.code, "teal") },
             { key: "storyCode", label: "Mã Story", width: "100px", render: (row) => tag(row.storyCode, "gray") },
-            { key: "name", label: "Tên chức năng", width: "280px", render: (row) => strongText(row.name, row.note) },
+            { key: "name", label: "Tên chức năng", width: "280px", render: (row) => renderHandoffFeatureCell(row) },
             { key: "sprint", label: "Sprint", width: "96px" },
             { key: "defaultHandoffDate", label: "Ngày mặc định theo Sprint", width: "220px", render: (row) => formatDate(row.defaultHandoffDate) },
             { key: "uatHandoff", label: "BG UAT theo US", width: "230px", render: (row) => formatDate(row.uatHandoff) },
@@ -2019,9 +2033,22 @@ function renderTable(mod, rows) {
 
 function renderTableRows(mod, rows, columnMeta) {
     let currentSection = null;
+    let currentSections = [];
     return rows.map((row) => {
         const section = mod.sectionKey ? String(row[mod.sectionKey] || "").trim() : "";
-        const sectionMarkup = section && section !== currentSection ? renderSectionRow(mod, section) : "";
+        const sections = Array.isArray(mod.sectionKeys) ? mod.sectionKeys.map((key) => String(row[key] || "").trim()) : [];
+        let sectionMarkup = "";
+        if (sections.length) {
+            let parentChanged = false;
+            sections.forEach((nestedSection, index) => {
+                const changed = nestedSection && (parentChanged || nestedSection !== currentSections[index]);
+                if (changed) sectionMarkup += renderSectionRow(mod, nestedSection, index + 1);
+                if (nestedSection !== currentSections[index]) parentChanged = true;
+            });
+            currentSections = sections;
+        } else {
+            sectionMarkup = section && section !== currentSection ? renderSectionRow(mod, section) : "";
+        }
         if (section) currentSection = section;
                         const canEdit = canModifyRecord(row);
                         const canDelete = canDeleteRecord(row);
@@ -2101,9 +2128,9 @@ function renderColumnFilterPopover(mod, col) {
     `;
 }
 
-function renderSectionRow(mod, section) {
+function renderSectionRow(mod, section, level = 1) {
     return `
-        <tr class="section-row">
+        <tr class="section-row section-level-${e(level)}">
             <td class="section-title-cell" colspan="${e(mod.columns.length + 1)}">
                 <strong>${e(section)}</strong>
             </td>
@@ -2771,6 +2798,12 @@ function roleLabel(role) {
     return labels[role] || labels.user;
 }
 
+function renderComboOptions(options) {
+    return options.map((option) => `
+        <button class="combo-option" type="button" data-combo-option="${e(option)}">${e(option)}</button>
+    `).join("");
+}
+
 function renderField(field, row) {
     const value = row ? row[field.key] ?? "" : getDefaultFieldValue(field);
     const required = field.required ? "required" : "";
@@ -2788,9 +2821,9 @@ function renderField(field, row) {
             </select>
         `;
     } else if (field.type === "combo") {
-        const options = getFieldOptions(field);
+        const options = getFieldOptions(field, row);
         control = `
-            <div class="combo-field" data-combo-field>
+            <div class="combo-field" data-combo-field data-combo-key="${e(field.key)}"${field.dependsOn ? ` data-combo-depends-on="${e(field.dependsOn)}"` : ""}>
                 <div class="combo-control">
                     <input class="field-input combo-input" name="${e(field.key)}" type="text" value="${e(value)}" autocomplete="off" spellcheck="false" data-combo-input ${required}>
                     <button class="combo-toggle" type="button" data-combo-toggle title="Mở danh sách ${label}" aria-label="Mở danh sách ${label}">
@@ -2798,9 +2831,7 @@ function renderField(field, row) {
                     </button>
                 </div>
                 <div class="combo-menu" data-combo-menu>
-                    ${options.map((option) => `
-                        <button class="combo-option" type="button" data-combo-option="${e(option)}">${e(option)}</button>
-                    `).join("")}
+                    ${renderComboOptions(options)}
                     <div class="combo-empty" data-combo-empty>Không có gợi ý. Gõ tên mới rồi lưu để tạo nhóm.</div>
                 </div>
             </div>
@@ -3155,7 +3186,6 @@ function bindComboFields() {
     document.querySelectorAll("[data-combo-field]").forEach((combo) => {
         const input = combo.querySelector("[data-combo-input]");
         const toggle = combo.querySelector("[data-combo-toggle]");
-        const options = [...combo.querySelectorAll("[data-combo-option]")];
 
         const openCombo = () => {
             closeComboFields(combo);
@@ -3176,6 +3206,7 @@ function bindComboFields() {
         input?.addEventListener("input", () => {
             combo.classList.add("open");
             filterComboOptions(combo);
+            handleComboDependencyChange(combo);
         });
         input?.addEventListener("keydown", (event) => {
             if (event.key === "Escape") {
@@ -3184,14 +3215,42 @@ function bindComboFields() {
             }
         });
 
-        options.forEach((option) => {
-            option.addEventListener("click", () => {
-                input.value = option.dataset.comboOption || option.textContent.trim();
-                combo.classList.remove("open");
-                input.focus();
-            });
+        combo.addEventListener("click", (event) => {
+            const option = event.target.closest("[data-combo-option]");
+            if (!option || !combo.contains(option)) return;
+            input.value = option.dataset.comboOption || option.textContent.trim();
+            combo.classList.remove("open");
+            input.focus();
+            handleComboDependencyChange(combo);
         });
     });
+}
+
+function handleComboDependencyChange(combo) {
+    const sourceKey = combo?.dataset?.comboKey;
+    if (!sourceKey) return;
+    document.querySelectorAll("[data-combo-field][data-combo-depends-on]").forEach((dependent) => {
+        if (dependent.dataset.comboDependsOn !== sourceKey) return;
+        const dependentKey = dependent.dataset.comboKey;
+        const input = dependent.querySelector("[data-combo-input]");
+        const options = getDependentComboOptions(dependentKey, sourceKey, combo.querySelector("[data-combo-input]")?.value || "");
+        const menu = dependent.querySelector("[data-combo-menu]");
+        if (menu) {
+            menu.querySelectorAll("[data-combo-option]").forEach((option) => option.remove());
+            menu.insertAdjacentHTML("afterbegin", renderComboOptions(options));
+        }
+        if (!String(input?.value || "").trim() && options.length === 1) {
+            input.value = options[0];
+        }
+        filterComboOptions(dependent);
+    });
+}
+
+function getDependentComboOptions(dependentKey, sourceKey, sourceValue) {
+    if (dependentKey === "sectionLevel2" && sourceKey === "sectionLevel1") {
+        return getHandoffLevel2Options(sourceValue);
+    }
+    return [];
 }
 
 function filterComboOptions(combo) {
@@ -3975,9 +4034,9 @@ function getColumnFilterOptions(mod, col, field) {
     return [];
 }
 
-function getFieldOptions(field) {
+function getFieldOptions(field, row = null) {
     if (!field) return [];
-    if (typeof field.options === "function") return field.options();
+    if (typeof field.options === "function") return field.options(row);
     return Array.isArray(field.options) ? field.options : [];
 }
 
@@ -3998,6 +4057,27 @@ function getNextFeatureStt() {
 function uniqueTextValues(values) {
     return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b, "vi"));
+}
+
+function getHandoffLevel1Options() {
+    return uniqueTextValues([
+        ...handoffSectionDefaults.map((item) => item.level1),
+        ...appState.handoffs.map((row) => row.sectionLevel1)
+    ]);
+}
+
+function getHandoffLevel2Options(rowOrLevel1 = null) {
+    const level1 = typeof rowOrLevel1 === "string"
+        ? rowOrLevel1
+        : rowOrLevel1?.sectionLevel1;
+    const normalizedLevel1 = normalizeLookupKey(level1);
+    const defaults = handoffSectionDefaults
+        .filter((item) => !normalizedLevel1 || normalizeLookupKey(item.level1) === normalizedLevel1)
+        .flatMap((item) => item.children);
+    const fromRows = appState.handoffs
+        .filter((row) => !normalizedLevel1 || normalizeLookupKey(row.sectionLevel1) === normalizedLevel1)
+        .map((row) => row.sectionLevel2);
+    return uniqueTextValues([...defaults, ...fromRows]);
 }
 
 function getColumnRawValue(row, col) {
@@ -4144,6 +4224,23 @@ function strongText(title, sub) {
         <div>
             <strong>${e(title || "-")}</strong>
             ${sub ? `<div style="color:#6b7280;margin-top:3px">${e(sub)}</div>` : ""}
+        </div>
+    `;
+}
+
+function renderHandoffFeatureCell(row) {
+    const badges = [row.sectionLevel1, row.sectionLevel2]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+    return `
+        <div>
+            ${badges.length ? `
+                <div class="cell-badge-list">
+                    ${badges.map((badge, index) => `<span class="cell-badge level-${index + 1}">${e(badge)}</span>`).join("")}
+                </div>
+            ` : ""}
+            <strong>${e(row.name || "-")}</strong>
+            ${row.note ? `<div style="color:#6b7280;margin-top:3px">${e(row.note)}</div>` : ""}
         </div>
     `;
 }

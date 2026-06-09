@@ -1085,15 +1085,31 @@ function parseScheduleSheet(worksheet) {
 
 function parseHandoffSheet(worksheet) {
   if (!worksheet) return [];
-  return parseRows(worksheet, 6, (row) => {
+  const records = [];
+  let sectionLevel1 = "";
+  let sectionLevel2 = "";
+  for (let rowNumber = 6; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber);
     const jiraCode = cellTextAt(row, 1);
     const name = cellTextAt(row, 4);
-    if (!jiraCode || !name) return null;
-    return {
+    if (!jiraCode && name) {
+      const sectionType = handoffSectionRowType(row);
+      if (sectionType === 1) {
+        sectionLevel1 = name;
+        sectionLevel2 = "";
+      } else if (sectionType === 2) {
+        sectionLevel2 = name;
+      }
+      continue;
+    }
+    if (!jiraCode || !name) continue;
+    records.push({
       id: importId("handoffs", jiraCode),
       jiraCode,
       code: cellTextAt(row, 2),
       storyCode: cellTextAt(row, 3),
+      sectionLevel1,
+      sectionLevel2,
       name,
       sprint: cellTextAt(row, 5),
       defaultHandoffDate: toImportDate(cellValueAt(row, 6)),
@@ -1102,8 +1118,16 @@ function parseHandoffSheet(worksheet) {
       uatEnd: toImportDate(cellValueAt(row, 9)),
       handoffStatus: cellTextAt(row, 10),
       note: cellTextAt(row, 11)
-    };
-  });
+    });
+  }
+  return records;
+}
+
+function handoffSectionRowType(row) {
+  const fill = String(row.getCell(4).fill?.fgColor?.argb || row.getCell(1).fill?.fgColor?.argb || "").toUpperCase();
+  if (fill === "FF009999") return 1;
+  if (fill === "FF98F5F2") return 2;
+  return 0;
 }
 
 function parsePlanSheet(worksheet) {
@@ -2410,7 +2434,7 @@ function aiFieldOrder(collection) {
     features: ["stt", "code", "storyCode", "jiraCode", "group", "name", "jiraName", "jiraLink", "rsdLink", "sprintBA", "sprintDev", "sprintQC", "businessSprint", "status", "owner", "uatHandoff", "uatStart", "uatEnd", "uatDone", "uatSigned", "handoffStatus", "completionRate", "openBugs", "uatWarning"],
     personnel: ["staffCode", "name", "role", "scope", "status", "birthYear", "phone", "email", "unit"],
     schedule: ["sprint", "devStart", "devEnd", "handoffDate", "startDate", "endDate", "note"],
-    handoffs: ["jiraCode", "code", "storyCode", "name", "sprint", "defaultHandoffDate", "uatHandoff", "uatStart", "uatEnd", "handoffStatus", "note"],
+    handoffs: ["jiraCode", "code", "storyCode", "sectionLevel1", "sectionLevel2", "name", "sprint", "defaultHandoffDate", "uatHandoff", "uatStart", "uatEnd", "handoffStatus", "note"],
     plans: ["code", "jiraCode", "group", "feature", "sprint", "uatHandoff", "owner", "nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "executedCases", "progress", "uatStatus", "rotationWarning", "note"],
     daily: ["date", "sprint", "code", "jiraCode", "feature", "tester", "totalCases", "executedCases", "passedCases", "failedCases", "bugStatus", "maxBugSeverity", "blocker", "handler", "deadline"],
     weekly: ["week", "sprint", "group", "totalStories", "totalCases", "executedCases", "coverageRate", "passedCases", "successRate", "blockerBugs", "criticalBugs", "majorBugs", "totalOpenBugs", "gateResult", "note"],
@@ -2430,6 +2454,8 @@ function aiFieldLegend() {
     owner: "Đầu mối nghiệp vụ/chủ quản",
     uatHandoff: "Ngày bàn giao UAT",
     handoffStatus: "Trạng thái bàn giao",
+    sectionLevel1: "Badge/tiêu đề cấp 1 của Lich_BG_US",
+    sectionLevel2: "Badge/tiêu đề cấp 2 của Lich_BG_US",
     note: "Ghi chú",
     totalCases: "Tổng testcase",
     executedCases: "Testcase đã thực hiện",
