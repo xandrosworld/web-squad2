@@ -2080,6 +2080,7 @@ async function ensureDefaultUsers() {
       values ($1, $2, $3, $4, $5, $6, true)
       on conflict (username) do update
         set email = excluded.email,
+            name = excluded.name,
             role = excluded.role,
             active = true,
             updated_at = now()
