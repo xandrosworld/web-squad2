@@ -10,6 +10,7 @@
     "check": "node --check server.js && node --check app.js",
     "check:workbook": "node scripts/check-workbook-schema.js",
     "import:workbook:db": "node scripts/import-workbook-to-db.js",
+    "smoke:dashboard": "node scripts/smoke-dashboard.js",
     "smoke:ui": "node scripts/smoke-ui.js",
     "smoke:rbac": "node scripts/smoke-rbac.js"
   },

@@ -1145,8 +1145,8 @@ function parseDailySheet(worksheet) {
       failedCases: toImportNumber(cellValueAt(row, 10)),
       bugStatus: cellTextAt(row, 11),
       maxBugSeverity: cellTextAt(row, 12),
-      criticalBugs: normalizeSeverityCount(cellTextAt(row, 12), "Nghiêm trọng", cellTextAt(row, 11)),
-      highBugs: normalizeSeverityCount(cellTextAt(row, 12), "Cao", cellTextAt(row, 11)),
+      criticalBugs: normalizeSeverityCount(cellTextAt(row, 12), ["Blocker", "Critical", "Nghiêm trọng"], cellTextAt(row, 11)),
+      highBugs: normalizeSeverityCount(cellTextAt(row, 12), ["Major", "Cao"], cellTextAt(row, 11)),
       blocker,
       handler: cellTextAt(row, 14),
       dueDate: toImportDate(cellValueAt(row, 15))
@@ -1302,9 +1302,9 @@ function toImportPercent(value) {
   return number > 0 && number <= 1 ? round(number * 100) : round(number);
 }
 
-function normalizeSeverityCount(severity, target, status) {
-  if (!severity || status === "Đã đóng") return 0;
-  return normalizeImportHeader(severity) === normalizeImportHeader(target) ? 1 : 0;
+function normalizeSeverityCount(severity, targets, status) {
+  if (!severity || !isOpenBugStatus(status)) return 0;
+  return isAnySeverity(severity, Array.isArray(targets) ? targets : [targets]) ? 1 : 0;
 }
 
 function applyWorkbookRules(state) {
@@ -1356,8 +1356,8 @@ function applyWorkbookRules(state) {
     const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.feature));
     row.sprint = feature?.businessSprint || "";
     row.feature = feature?.group || "";
-    row.criticalBugs = isSeverity(row.maxBugSeverity, "Nghiêm trọng") && isOpenBugStatus(row.bugStatus) ? 1 : 0;
-    row.highBugs = isSeverity(row.maxBugSeverity, "Cao") && isOpenBugStatus(row.bugStatus) ? 1 : 0;
+    row.criticalBugs = isBlockingSeverity(row.maxBugSeverity) && isOpenBugStatus(row.bugStatus) ? 1 : 0;
+    row.highBugs = isHighSeverity(row.maxBugSeverity) && isOpenBugStatus(row.bugStatus) ? 1 : 0;
   });
 
   // DM_ChucNang!P/Q/R/U/V/W/X are formulas.
@@ -1418,8 +1418,8 @@ function applyWorkbookRules(state) {
     row.coverageRate = percent(row.executedCases, row.totalCases);
     row.passedCases = sumWhere(daily, (item) => sameLookup(item.sprint, row.sprint), "passedCases");
     row.successRate = percent(row.passedCases, row.executedCases);
-    row.openCriticalBugs = daily.filter((item) => sameLookup(item.sprint, row.sprint) && isSeverity(item.maxBugSeverity, "Nghiêm trọng") && isOpenBugStatus(item.bugStatus)).length;
-    row.openHighBugs = daily.filter((item) => sameLookup(item.sprint, row.sprint) && isSeverity(item.maxBugSeverity, "Cao") && isOpenBugStatus(item.bugStatus)).length;
+    row.openCriticalBugs = daily.filter((item) => sameLookup(item.sprint, row.sprint) && isBlockingSeverity(item.maxBugSeverity) && isOpenBugStatus(item.bugStatus)).length;
+    row.openHighBugs = daily.filter((item) => sameLookup(item.sprint, row.sprint) && isHighSeverity(item.maxBugSeverity) && isOpenBugStatus(item.bugStatus)).length;
     row.readinessLevel = row.openCriticalBugs > 0 ? "Đỏ" : (Number(row.coverageRate || 0) < 90 ? "Vàng" : "Xanh");
     row.decision = row.openCriticalBugs > 0
       ? "NO GO"
@@ -1494,8 +1494,22 @@ function isSeverity(value, target) {
   return normalizeImportHeader(value) === normalizeImportHeader(target);
 }
 
+function isAnySeverity(value, targets) {
+  return targets.some((target) => isSeverity(value, target));
+}
+
+function isBlockingSeverity(value) {
+  return isAnySeverity(value, ["Blocker", "Critical", "Nghiêm trọng"]);
+}
+
+function isHighSeverity(value) {
+  return isAnySeverity(value, ["Major", "Cao"]);
+}
+
 function isOpenBugStatus(status) {
-  return normalizeImportHeader(status) !== normalizeImportHeader("Đã đóng");
+  const normalized = normalizeImportHeader(status);
+  if (!normalized) return false;
+  return !["da dong", "closed", "cancelled", "canceled"].includes(normalized);
 }
 
 function addDays(value, days) {
@@ -1630,7 +1644,8 @@ function addDashboardWorksheet(workbook, state) {
     ["Tiến độ UAT toàn Squad", `${metrics.squadProgress}%`, "Sheet 01_DanhMuc_UAT"],
     ["Tỷ lệ bao phủ kiểm thử", `${metrics.coverage}%`, "Sheet 04-06"],
     ["Tỷ lệ thành công", `${metrics.successRate}%`, "Sheet 05-06"],
-    ["Lỗi nghiêm trọng tồn đọng", metrics.criticalBugs, "Sheet 04-06"],
+    ["Lỗi Blocker", metrics.blockerBugs, "Sheet 04-06"],
+    ["Lỗi Critical", metrics.criticalBugs, "Sheet 04-06"],
     ["Mức độ sẵn sàng đào tạo", `${metrics.trainingReadiness}%`, "Sheet 06_KetThuc_Sprint"],
     ["Mức độ sẵn sàng Pilot/Go-live", `${metrics.pilotReadiness}%`, "Sheet 06_KetThuc_Sprint"]
   ];
@@ -1707,13 +1722,15 @@ function calculateWorkbookMetrics(state) {
     ...readiness.map((row) => row.successRate)
   ]) || 0);
   const latestReadiness = getLatestRecord(readiness);
-  const dailyCritical = daily.filter((row) => isSeverity(row.maxBugSeverity, "Nghiêm trọng") && isOpenBugStatus(row.bugStatus)).length;
+  const blockerBugs = daily.filter((row) => isSeverity(row.maxBugSeverity, "Blocker") && isOpenBugStatus(row.bugStatus)).length;
+  const dailyCritical = daily.filter((row) => isSeverity(row.maxBugSeverity, "Critical") && isOpenBugStatus(row.bugStatus)).length;
   const readinessFallback = round(latestReadiness?.readinessLevel || average([coverage, successRate]));
 
   return {
     squadProgress: statusDrivenProgress || coverage,
     coverage,
     successRate,
+    blockerBugs,
     criticalBugs: dailyCritical,
     trainingReadiness: calculateDashboardTrainingReadiness(matrix),
     pilotReadiness: round(latestReadiness?.pilotReadiness || readinessFallback || 0)

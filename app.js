@@ -1168,8 +1168,8 @@ function getDashboardSummaryRows() {
     const totalCases = sum(appState.plans, "totalCases");
     const executedCases = sum(appState.plans, "executedCases");
     const coverageRate = percent(executedCases, totalCases);
-    const criticalBugs = countDailyOpenSeverity("Nghiêm trọng");
-    const highBugs = countDailyOpenSeverity("Cao");
+    const blockerBugs = countDailyOpenSeverity("Blocker");
+    const criticalBugs = countDailyOpenSeverity("Critical");
     const trainingReadiness = calculateTrainingReadiness();
     return [
         { key: "totalStories", label: "Tổng Story", value: totalStories, numericValue: totalStories, tone: "teal" },
@@ -1177,8 +1177,8 @@ function getDashboardSummaryRows() {
         { key: "totalCases", label: "Tổng Testcase", value: totalCases, numericValue: totalCases, tone: "neutral" },
         { key: "executedCases", label: "TC đã thực hiện", value: executedCases, numericValue: executedCases, tone: "neutral" },
         { key: "coverageRate", label: "Tỷ lệ bao phủ", value: `${coverageRate}%`, numericValue: coverageRate, tone: getProgressTone(coverageRate) },
-        { key: "criticalBugs", label: "Lỗi nghiêm trọng mở", value: criticalBugs, numericValue: criticalBugs, tone: criticalBugs ? "red" : "green" },
-        { key: "highBugs", label: "Lỗi mức cao mở", value: highBugs, numericValue: highBugs, tone: highBugs ? "yellow" : "green" },
+        { key: "blockerBugs", label: "Lỗi Blocker", value: blockerBugs, numericValue: blockerBugs, tone: blockerBugs ? "red" : "green" },
+        { key: "criticalBugs", label: "Lỗi Critical", value: criticalBugs, numericValue: criticalBugs, tone: criticalBugs ? "yellow" : "green" },
         { key: "trainingReadiness", label: "Mức độ sẵn sàng đào tạo", value: `${trainingReadiness}%`, numericValue: trainingReadiness, tone: getProgressTone(trainingReadiness) }
     ];
 }
@@ -3786,7 +3786,7 @@ function calculateMetrics() {
         ...appState.readiness.map((row) => row.successRate)
     ]));
     const latestReadiness = getLatest(appState.readiness);
-    const dailyCritical = countDailyOpenSeverity("Nghiêm trọng");
+    const dailyCritical = countDailyOpenSeverity("Blocker") + countDailyOpenSeverity("Critical");
     const readinessFallback = round(latestReadiness?.readinessLevel || average([coverage, successRate]));
     return {
         features,
@@ -3819,11 +3819,16 @@ function normalizeWorkbookFormulaText(value) {
 
 function countDailyOpenSeverity(severity) {
     const target = normalizeWorkbookFormulaText(severity);
-    const closed = normalizeWorkbookFormulaText("Đã đóng");
     return appState.daily.filter((row) => (
         normalizeWorkbookFormulaText(row.maxBugSeverity) === target
-        && normalizeWorkbookFormulaText(row.bugStatus) !== closed
+        && isOpenBugStatus(row.bugStatus)
     )).length;
+}
+
+function isOpenBugStatus(status) {
+    const normalized = normalizeWorkbookFormulaText(status);
+    if (!normalized) return false;
+    return !["da dong", "closed", "cancelled", "canceled"].includes(normalized);
 }
 
 function isFilled(value) {
