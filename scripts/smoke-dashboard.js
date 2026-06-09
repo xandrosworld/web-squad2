@@ -22,6 +22,7 @@ if (!executablePath) {
 
 let cookieHeader = "";
 let createdDailyId = "";
+let createdPlanId = "";
 
 (async () => {
   await login();
@@ -71,6 +72,8 @@ let createdDailyId = "";
       }
     }
   }
+
+  await assertSprintSummaryRecomputes(await apiGet("/api/state"));
 
   console.log(`Dashboard smoke passed: ${baseUrl}`);
 })().catch((error) => {
@@ -140,6 +143,99 @@ async function assertDashboardCard(label, expectedValue) {
   } finally {
     await browser.close();
   }
+}
+
+async function assertSprintSummaryRecomputes(payload) {
+  const state = payload.state || payload;
+  const targetSprint = (state.readiness || []).find((row) => /^sprint\s+\d+/i.test(row.sprint || ""))?.sprint;
+  if (!targetSprint) throw new Error("No readiness sprint found for sprint mapping smoke.");
+  const beforeRow = findReadinessRow(state, targetSprint);
+  const beforeStories = Number(beforeRow?.totalStories || 0);
+  const beforeCases = Number(beforeRow?.totalCases || 0);
+  const testCases = 7;
+  const stamp = Date.now();
+  const planRecord = {
+    id: `dashboard-sprint-smoke-${stamp}`,
+    code: "SMOKE",
+    jiraCode: `SMOKE_DASHBOARD_${stamp}`,
+    group: "Dashboard smoke",
+    feature: `Dashboard sprint mapping smoke ${stamp}`,
+    sprint: targetSprint,
+    uatHandoff: "",
+    owner: "BA",
+    nv: 0,
+    t1: testCases,
+    t2: 0,
+    t3: 0,
+    t4: 0,
+    t5: 0,
+    t6: 0,
+    totalCases: testCases,
+    executedCases: 0,
+    progress: 0,
+    uatStatus: "Chưa bắt đầu",
+    rotationWarning: "",
+    note: "Dashboard smoke auto cleanup"
+  };
+
+  try {
+    const created = await apiJson("/api/records/plans", {
+      method: "POST",
+      body: JSON.stringify({ record: planRecord })
+    });
+    createdPlanId = created.record?.id || planRecord.id;
+    const afterCreate = findReadinessRow(created.state, targetSprint);
+    const expectedStories = beforeStories + 1;
+    const expectedCases = beforeCases + testCases;
+    if (Number(afterCreate?.totalStories || 0) !== expectedStories || Number(afterCreate?.totalCases || 0) !== expectedCases) {
+      throw new Error(`Sprint summary did not recompute from PhanCong_UAT: expected ${expectedStories} story/${expectedCases} TC, got ${afterCreate?.totalStories}/${afterCreate?.totalCases}`);
+    }
+    await assertDashboardSprintRow(targetSprint, expectedStories, expectedCases);
+  } finally {
+    if (createdPlanId) {
+      await apiJson(`/api/records/plans/${encodeURIComponent(createdPlanId)}`, { method: "DELETE" });
+      createdPlanId = "";
+      const afterDelete = await apiGet("/api/state");
+      const restored = findReadinessRow(afterDelete.state, targetSprint);
+      if (Number(restored?.totalStories || 0) !== beforeStories || Number(restored?.totalCases || 0) !== beforeCases) {
+        throw new Error(`Sprint summary cleanup did not restore values: expected ${beforeStories} story/${beforeCases} TC, got ${restored?.totalStories}/${restored?.totalCases}`);
+      }
+    }
+  }
+}
+
+async function assertDashboardSprintRow(sprint, expectedStories, expectedCases) {
+  const browser = await chromium.launch({ executablePath, headless: true });
+  try {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const session = cookieHeader.split("=");
+    await context.addCookies([{
+      name: session[0],
+      value: session.slice(1).join("="),
+      domain: new URL(baseUrl).hostname,
+      path: "/",
+      httpOnly: true,
+      secure: baseUrl.startsWith("https://"),
+      sameSite: "Lax"
+    }]);
+    const page = await context.newPage();
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector(".uat-dashboard", { timeout: 15000 });
+    const row = page.locator(".uat-sprint-table tbody tr", { hasText: sprint }).first();
+    await row.waitFor({ timeout: 10000 });
+    const cells = await row.locator("td").allInnerTexts();
+    const actualStories = Number((cells[1] || "").replace(/\D+/g, ""));
+    const actualCases = Number((cells[2] || "").replace(/\D+/g, ""));
+    if (actualStories !== expectedStories || actualCases !== expectedCases) {
+      throw new Error(`Dashboard sprint row ${sprint} expected ${expectedStories} story/${expectedCases} TC, got ${cells[1]}/${cells[2]}`);
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
+function findReadinessRow(state, sprint) {
+  return (state.readiness || []).find((row) => normalize(row.sprint) === normalize(sprint));
 }
 
 function countOpenSeverity(rows, severity) {
