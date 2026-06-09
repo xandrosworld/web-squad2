@@ -414,11 +414,7 @@ app.get("/api/export/excel", asyncHandler(async (req, res) => {
 }));
 
 app.post("/api/import/excel", requireAdmin, express.raw({
-  type: [
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/vnd.ms-excel.sheet.macroEnabled.12",
-    "application/octet-stream"
-  ],
+  type: () => true,
   limit: requestBodyLimit
 }), asyncHandler(async (req, res) => {
   await ensureSchema();
