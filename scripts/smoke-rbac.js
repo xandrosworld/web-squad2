@@ -219,7 +219,7 @@ function featureRecord(prefix) {
     sprint: "RBAC-SMOKE",
     name: `RBAC smoke ${timestamp}`,
     group: "",
-    owner: "RBAC smoke",
+    owner: "BA",
     handoffDate: "",
     priority: "",
     status: "",
