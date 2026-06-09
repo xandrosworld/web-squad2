@@ -2,6 +2,7 @@ const STORAGE_KEY = "squad2_uat_command_center_v1";
 const MIGRATION_FLAG_KEY = `${STORAGE_KEY}_remote_migration_checked`;
 const LEGACY_BACKUP_KEY = `${STORAGE_KEY}_legacy_backup`;
 const COLUMN_WIDTHS_KEY = `${STORAGE_KEY}_column_widths_v3`;
+const TABLE_SCROLL_LEFTS_KEY = `${STORAGE_KEY}_table_scroll_lefts_v1`;
 const API_BASE = "/api";
 const SYNC_INTERVAL_MS = 30000;
 const GROUP_CHAT_POLL_INTERVAL_MS = 15000;
@@ -551,6 +552,7 @@ let ui = {
     filters: {},
     columnFilters: {},
     columnWidths: loadColumnWidths(),
+    tableScrollLefts: loadTableScrollLefts(),
     openColumnFilter: null,
     modal: null,
     profileOpen: false,
@@ -617,6 +619,31 @@ function loadColumnWidths() {
 
 function saveColumnWidths() {
     localStorage.setItem(COLUMN_WIDTHS_KEY, JSON.stringify(ui.columnWidths || {}));
+}
+
+function loadTableScrollLefts() {
+    try {
+        if (typeof sessionStorage === "undefined") return {};
+        const raw = sessionStorage.getItem(TABLE_SCROLL_LEFTS_KEY);
+        const parsed = raw ? JSON.parse(raw) : {};
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+        return Object.fromEntries(
+            Object.entries(parsed)
+                .map(([key, value]) => [key, Number(value)])
+                .filter(([, value]) => Number.isFinite(value) && value >= 0)
+        );
+    } catch {
+        return {};
+    }
+}
+
+function saveTableScrollLefts() {
+    try {
+        if (typeof sessionStorage === "undefined") return;
+        sessionStorage.setItem(TABLE_SCROLL_LEFTS_KEY, JSON.stringify(ui.tableScrollLefts || {}));
+    } catch {
+        // Scroll memory is a convenience; private browsing/storage limits should not block the app.
+    }
 }
 
 function setDataStatus(mode, message) {
@@ -2788,13 +2815,15 @@ function bindTableScrollbars() {
         const spacer = shell.querySelector("[data-table-scroll-spacer]");
         if (!top || !main || !table || !spacer) return;
 
+        const collection = table.dataset.resizableTable || ui.activeTab;
         spacer.style.width = `${getTableRenderedWidth(table)}px`;
-        top.scrollLeft = main.scrollLeft;
+        restoreTableScrollLeft(collection, top, main);
         let syncing = false;
         const syncScroll = (source, target) => {
             if (syncing) return;
             syncing = true;
             target.scrollLeft = source.scrollLeft;
+            rememberTableScrollLeft(collection, source.scrollLeft);
             requestAnimationFrame(() => {
                 syncing = false;
             });
@@ -2803,6 +2832,29 @@ function bindTableScrollbars() {
         top.addEventListener("scroll", () => syncScroll(top, main));
         main.addEventListener("scroll", () => syncScroll(main, top));
     });
+}
+
+function restoreTableScrollLeft(collection, top, main) {
+    const desired = Number(ui.tableScrollLefts?.[collection] || 0);
+    const maxScrollLeft = Math.max(0, main.scrollWidth - main.clientWidth);
+    const nextScrollLeft = Math.min(Math.max(0, desired), maxScrollLeft);
+    main.scrollLeft = nextScrollLeft;
+    top.scrollLeft = nextScrollLeft;
+    requestAnimationFrame(() => {
+        main.scrollLeft = nextScrollLeft;
+        top.scrollLeft = nextScrollLeft;
+    });
+}
+
+function rememberTableScrollLeft(collection, scrollLeft) {
+    if (!collection) return;
+    const nextScrollLeft = Math.max(0, Math.round(Number(scrollLeft || 0)));
+    if (ui.tableScrollLefts?.[collection] === nextScrollLeft) return;
+    ui.tableScrollLefts = {
+        ...(ui.tableScrollLefts || {}),
+        [collection]: nextScrollLeft
+    };
+    saveTableScrollLefts();
 }
 
 function startColumnResize(event) {

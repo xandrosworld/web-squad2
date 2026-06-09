@@ -169,6 +169,10 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
     await page.waitForSelector("#recordForm", { state: "detached", timeout: 5000 });
   }
 
+  if (requireDb) {
+    await assertTableScrollPersistsAfterRefresh(page);
+  }
+
   await page.locator(".tabbar button[data-tab=\"dashboard\"]").click();
   await page.waitForSelector(".dashboard-shell .uat-dashboard, .dashboard-shell .dashboard-empty-panel", { timeout: 5000 });
 
@@ -187,5 +191,30 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
 function assertReadableText(text, area) {
   if (mojibakePattern.test(text)) {
     throw new Error(`Detected mojibake text in ${area}.`);
+  }
+}
+
+async function assertTableScrollPersistsAfterRefresh(page) {
+  await page.locator(".tabbar button[data-tab=\"plans\"]").click();
+  await page.waitForSelector('[data-resizable-table="plans"]', { timeout: 5000 });
+  const mainScroll = page.locator('[data-table-scrollbar="main"]').first();
+  const before = await mainScroll.evaluate((element) => {
+    element.scrollLeft = Math.min(720, element.scrollWidth - element.clientWidth);
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
+    return element.scrollLeft;
+  });
+  if (before <= 0) {
+    throw new Error("Plans table is not horizontally scrollable for persistence smoke.");
+  }
+
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/api/state") && response.request().method() === "GET", { timeout: 15000 }),
+    page.evaluate(() => window.dispatchEvent(new Event("focus")))
+  ]);
+  await page.waitForSelector('[data-resizable-table="plans"]', { timeout: 5000 });
+
+  const after = await page.locator('[data-table-scrollbar="main"]').first().evaluate((element) => element.scrollLeft);
+  if (Math.abs(after - before) > 2) {
+    throw new Error(`Plans table horizontal scroll was not preserved after refresh: before ${before}, after ${after}.`);
   }
 }
