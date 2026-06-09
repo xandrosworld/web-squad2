@@ -75,7 +75,7 @@ const modules = {
         emptyText: "Danh mục sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "stt", label: "STT", type: "number", defaultValue: getNextFeatureStt },
-            { key: "code", label: "Mã chức năng", type: "text", required: true },
+            { key: "code", label: "Mã CN", type: "text", required: true },
             { key: "storyCode", label: "Mã Story", type: "text" },
             { key: "jiraCode", label: "Mã Jira", type: "text" },
             { key: "group", label: "Nhóm chức năng", type: "text", full: true },
@@ -89,12 +89,11 @@ const modules = {
             { key: "businessSprint", label: "Sprint Nghiệp vụ", type: "text" },
             { key: "sprint", label: "Sprint", type: "text" },
             { key: "status", label: "Trạng thái", type: "select", options: statusOptions },
-            { key: "owner", label: "Nghiệp vụ", type: "text" },
-            { key: "uatStatus", label: "Trạng thái UAT", type: "text" },
-            { key: "uatHandoff", label: "Bàn giao UAT", type: "date" },
-            { key: "uatStart", label: "Bắt đầu UAT", type: "date" },
-            { key: "uatEnd", label: "Kết thúc UAT", type: "date" },
-            { key: "uatDone", label: "Hoàn thành UAT", type: "date" },
+            { key: "owner", label: "Đầu mối nghiệp vụ", type: "text" },
+            { key: "uatHandoff", label: "Ngày bàn giao UAT", type: "date" },
+            { key: "uatStart", label: "Ngày bắt đầu UAT", type: "date" },
+            { key: "uatEnd", label: "Ngày kết thúc UAT", type: "date" },
+            { key: "uatDone", label: "Ngày hoàn thành UAT", type: "date" },
             { key: "uatSigned", label: "Ngày ký UAT", type: "date" },
             { key: "handoffStatus", label: "Tình trạng bàn giao", type: "text" },
             { key: "completionRate", label: "% Hoàn thành TC", type: "percent" },
@@ -108,7 +107,7 @@ const modules = {
         ],
         columns: [
             { key: "stt", label: "STT", width: "56px" },
-            { key: "code", label: "Mã chức năng", width: "104px", render: (row) => tag(row.code, "teal") },
+            { key: "code", label: "Mã CN", width: "104px", render: (row) => tag(row.code, "teal") },
             { key: "storyCode", label: "Mã Story", width: "100px", render: (row) => tag(row.storyCode, "gray") },
             { key: "jiraCode", label: "Mã Jira", width: "132px" },
             { key: "group", label: "Nhóm chức năng", width: "220px" },
@@ -181,9 +180,11 @@ const modules = {
         emptyText: "Lịch từ sheet Lich_UAT sẽ hiển thị tại đây sau khi nhập Excel.",
         fields: [
             { key: "sprint", label: "Sprint", type: "text", required: true },
-            { key: "handoffDate", label: "Ngày bàn giao UAT", type: "date" },
-            { key: "startDate", label: "Ngày bắt đầu UAT", type: "date" },
-            { key: "endDate", label: "Ngày kết thúc UAT", type: "date" },
+            { key: "devStart", label: "Bắt đầu DEV", type: "date" },
+            { key: "devEnd", label: "Kết thúc DEV", type: "date" },
+            { key: "handoffDate", label: "Bàn giao UAT", type: "date" },
+            { key: "startDate", label: "Bắt đầu UAT", type: "date" },
+            { key: "endDate", label: "Kết thúc UAT", type: "date" },
             { key: "note", label: "Ghi chú", type: "textarea", full: true }
         ],
         filters: [
@@ -191,9 +192,11 @@ const modules = {
         ],
         columns: [
             { key: "sprint", label: "Sprint", width: "120px", render: (row) => tag(row.sprint, "teal") },
-            { key: "handoffDate", label: "Ngày bàn giao UAT", width: "180px", render: (row) => formatDate(row.handoffDate) },
-            { key: "startDate", label: "Ngày bắt đầu UAT", width: "180px", render: (row) => formatDate(row.startDate) },
-            { key: "endDate", label: "Ngày kết thúc UAT", width: "180px", render: (row) => formatDate(row.endDate) },
+            { key: "devStart", label: "Bắt đầu DEV", width: "150px", render: (row) => formatDate(row.devStart) },
+            { key: "devEnd", label: "Kết thúc DEV", width: "150px", render: (row) => formatDate(row.devEnd) },
+            { key: "handoffDate", label: "Bàn giao UAT", width: "160px", render: (row) => formatDate(row.handoffDate) },
+            { key: "startDate", label: "Bắt đầu UAT", width: "160px", render: (row) => formatDate(row.startDate) },
+            { key: "endDate", label: "Kết thúc UAT", width: "160px", render: (row) => formatDate(row.endDate) },
             { key: "note", label: "Ghi chú", width: "260px" }
         ]
     },
@@ -213,7 +216,7 @@ const modules = {
             { key: "name", label: "Tên chức năng", type: "text", required: true, full: true },
             { key: "sprint", label: "Sprint", type: "text" },
             { key: "defaultHandoffDate", label: "Ngày mặc định theo Sprint", type: "date" },
-            { key: "uatHandoff", label: "Ngày bàn giao theo US", type: "date" },
+            { key: "uatHandoff", label: "BG UAT theo US", type: "date" },
             { key: "uatStart", label: "Ngày bắt đầu theo US", type: "date" },
             { key: "uatEnd", label: "Ngày kết thúc theo US", type: "date" },
             { key: "handoffStatus", label: "Trạng thái bàn giao", type: "text" },
@@ -230,7 +233,7 @@ const modules = {
             { key: "name", label: "Tên chức năng", width: "280px", render: (row) => strongText(row.name, row.note) },
             { key: "sprint", label: "Sprint", width: "96px" },
             { key: "defaultHandoffDate", label: "Ngày mặc định theo Sprint", width: "220px", render: (row) => formatDate(row.defaultHandoffDate) },
-            { key: "uatHandoff", label: "Ngày bàn giao UAT theo US", width: "230px", render: (row) => formatDate(row.uatHandoff) },
+            { key: "uatHandoff", label: "BG UAT theo US", width: "230px", render: (row) => formatDate(row.uatHandoff) },
             { key: "uatStart", label: "Ngày bắt đầu UAT theo US", width: "230px", render: (row) => formatDate(row.uatStart) },
             { key: "uatEnd", label: "Ngày kết thúc UAT theo US", width: "230px", render: (row) => formatDate(row.uatEnd) },
             { key: "handoffStatus", label: "Trạng thái bàn giao", width: "180px", render: (row) => renderStatus(row.handoffStatus) },
@@ -242,18 +245,19 @@ const modules = {
         shortLabel: "Phân công",
         icon: "fa-calendar-days",
         collection: "plans",
-        description: "Phân công chức năng theo sprint, đầu mối nghiệp vụ, tester T1-T6 và trạng thái testcase.",
+        description: "Phân công chức năng theo sprint, đầu mối nghiệp vụ, NV, tester T1-T6 và trạng thái testcase.",
         emptyIcon: "fa-calendar-plus",
         emptyTitle: "Chưa có phân công Sprint",
         emptyText: "Kế hoạch phân công sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
-            { key: "sprint", label: "Sprint", type: "text", required: true },
-            { key: "uatHandoff", label: "Ngày bàn giao UAT", type: "date" },
-            { key: "code", label: "Mã chức năng", type: "text" },
+            { key: "code", label: "Mã CN", type: "text" },
             { key: "jiraCode", label: "Mã Jira", type: "text" },
             { key: "group", label: "Nhóm chức năng", type: "text", full: true },
-            { key: "feature", label: "Chức năng", type: "text", required: true, full: true },
+            { key: "feature", label: "Tên chức năng", type: "text", required: true, full: true },
+            { key: "sprint", label: "Sprint", type: "text", required: true },
+            { key: "uatHandoff", label: "Bàn giao UAT", type: "date" },
             { key: "owner", label: "Đầu mối nghiệp vụ", type: "text" },
+            { key: "nv", label: "NV", type: "text" },
             { key: "t1", label: "T1", type: "text" },
             { key: "t2", label: "T2", type: "text" },
             { key: "t3", label: "T3", type: "text" },
@@ -272,14 +276,14 @@ const modules = {
             { key: "owner", label: "Chủ quản" }
         ],
         columns: [
-            { key: "sprint", label: "Sprint", width: "110px", render: (row) => tag(row.sprint, "teal") },
-            { key: "uatHandoff", label: "Ngày bàn giao UAT", width: "160px", render: (row) => formatDate(row.uatHandoff) },
-            { key: "code", label: "Mã chức năng", width: "120px", render: (row) => tag(row.code, "teal") },
-            { key: "jiraCode", label: "Mã Jira", width: "132px" },
+            { key: "code", label: "Mã CN", width: "112px", render: (row) => tag(row.code, "teal") },
+            { key: "jiraCode", label: "Mã Jira", width: "140px" },
             { key: "group", label: "Nhóm chức năng", width: "220px" },
-            { key: "feature", label: "Tên chức năng", width: "250px", render: (row) => strongText(row.feature, row.note) },
-            { key: "featureSprint", label: "Sprint", width: "100px" },
+            { key: "feature", label: "Tên chức năng", width: "260px", render: (row) => strongText(row.feature, row.note) },
+            { key: "sprint", label: "Sprint", width: "100px", render: (row) => tag(row.sprint, "teal") },
+            { key: "uatHandoff", label: "Bàn giao UAT", width: "150px", render: (row) => formatDate(row.uatHandoff) },
             { key: "owner", label: "Đầu mối nghiệp vụ", width: "188px" },
+            { key: "nv", label: "NV", width: "68px" },
             { key: "t1", label: "T1", width: "56px", render: (row) => checkTag(row.t1) },
             { key: "t2", label: "T2", width: "56px", render: (row) => checkTag(row.t2) },
             { key: "t3", label: "T3", width: "56px", render: (row) => checkTag(row.t3) },
@@ -352,7 +356,7 @@ const modules = {
             { key: "passedCases", label: "TC đạt", type: "number" },
             { key: "failedCases", label: "TC lỗi", type: "number" },
             { key: "bugStatus", label: "Trạng thái lỗi", type: "text" },
-            { key: "maxBugSeverity", label: "Mức độ lỗi cao nhất", type: "text" },
+            { key: "maxBugSeverity", label: "Mức độ lỗi", type: "text" },
             { key: "blocker", label: "Vướng mắc/Blocker", type: "textarea", full: true },
             { key: "handler", label: "Người xử lý", type: "text" },
             { key: "dueDate", label: "Thời hạn xử lý", type: "date" }
@@ -373,7 +377,7 @@ const modules = {
             { key: "passedCases", label: "TC đạt", width: "90px", render: (row) => numberText(row.passedCases) },
             { key: "failedCases", label: "TC lỗi", width: "90px", render: (row) => numberText(row.failedCases) },
             { key: "bugStatus", label: "Trạng thái lỗi", width: "150px", render: (row) => renderStatus(row.bugStatus) },
-            { key: "maxBugSeverity", label: "Mức độ lỗi cao nhất", width: "180px", render: (row) => renderStatus(row.maxBugSeverity) },
+            { key: "maxBugSeverity", label: "Mức độ lỗi", width: "180px", render: (row) => renderStatus(row.maxBugSeverity) },
             { key: "blocker", label: "Vướng mắc/Blocker", width: "240px" },
             { key: "handler", label: "Người xử lý", width: "150px" },
             { key: "dueDate", label: "Thời hạn xử lý", width: "150px", render: (row) => formatDate(row.dueDate) }
@@ -398,9 +402,10 @@ const modules = {
             { key: "coverageRate", label: "Tỷ lệ bao phủ", type: "percent" },
             { key: "passedCases", label: "TC đạt", type: "number" },
             { key: "successRate", label: "Tỷ lệ thành công", type: "percent" },
-            { key: "criticalBugs", label: "Lỗi nghiêm trọng mở", type: "number" },
-            { key: "highBugs", label: "Lỗi mức cao mở", type: "number" },
-            { key: "gateResult", label: "Kết quả Gate", type: "text" },
+            { key: "blockerBugs", label: "Lỗi Blocker", type: "number" },
+            { key: "criticalBugs", label: "Lỗi Critical", type: "number" },
+            { key: "majorBugs", label: "Lỗi Major", type: "number" },
+            { key: "gateResult", label: "Kết quả", type: "text" },
             { key: "note", label: "Ghi chú", type: "textarea", full: true }
         ],
         filters: [
@@ -418,9 +423,10 @@ const modules = {
             { key: "coverageRate", label: "Tỷ lệ bao phủ", width: "150px", render: (row) => progressCell(resolveRate(row.coverageRate, row.executedCases, row.totalCases)) },
             { key: "passedCases", label: "TC đạt", width: "90px", render: (row) => numberText(row.passedCases) },
             { key: "successRate", label: "Tỷ lệ thành công", width: "160px", render: (row) => progressCell(row.successRate) },
-            { key: "criticalBugs", label: "Lỗi nghiêm trọng mở", width: "170px", render: (row) => bugTag(row.criticalBugs) },
-            { key: "highBugs", label: "Lỗi mức cao mở", width: "150px", render: (row) => bugTag(row.highBugs, "yellow") },
-            { key: "gateResult", label: "Kết quả Gate", width: "150px", render: (row) => renderStatus(row.gateResult || row.assessment) },
+            { key: "blockerBugs", label: "Lỗi Blocker", width: "120px", render: (row) => bugTag(row.blockerBugs) },
+            { key: "criticalBugs", label: "Lỗi Critical", width: "120px", render: (row) => bugTag(row.criticalBugs, "orange") },
+            { key: "majorBugs", label: "Lỗi Major", width: "110px", render: (row) => bugTag(row.majorBugs, "yellow") },
+            { key: "gateResult", label: "Kết quả", width: "150px", render: (row) => renderStatus(row.gateResult || row.assessment) },
             { key: "note", label: "Ghi chú", width: "180px" }
         ]
     },
@@ -442,7 +448,7 @@ const modules = {
             { key: "coverageRate", label: "Tỷ lệ bao phủ", type: "percent" },
             { key: "passedCases", label: "TC đạt", type: "number" },
             { key: "successRate", label: "Tỷ lệ thành công", type: "percent" },
-            { key: "openCriticalBugs", label: "Lỗi nghiêm trọng tồn đọng", type: "number" },
+            { key: "openCriticalBugs", label: "Lỗi nghiêm trọng mở", type: "number" },
             { key: "openHighBugs", label: "Lỗi cao mở", type: "number" },
             { key: "readinessLevel", label: "Mức độ sẵn sàng", type: "text" },
             { key: "decision", label: "Quyết định", type: "text" },
@@ -1178,7 +1184,7 @@ function getDashboardSprintRows() {
         return buckets.get(key);
     };
     appState.plans.forEach((row) => {
-        const bucket = ensure(row.sprint || row.featureSprint);
+        const bucket = ensure(row.sprint);
         bucket.storyCount += 1;
         bucket.totalCases += Number(row.totalCases || 0);
         bucket.executedCases += Number(row.executedCases || 0);

@@ -104,7 +104,7 @@ const collectionRules = {
   },
   weekly: {
     required: ["week"],
-    numbers: ["totalStories", "totalCases", "executedCases", "passedCases", "criticalBugs", "highBugs", "reopenedBugs"],
+    numbers: ["totalStories", "totalCases", "executedCases", "passedCases", "blockerBugs", "criticalBugs", "majorBugs", "highBugs", "totalOpenBugs", "reopenedBugs"],
     percents: ["coverageRate", "successRate"],
     enums: {}
   },
@@ -134,7 +134,7 @@ const excelSheets = [
     freezeColumns: 4,
     columns: [
       ["stt", "STT", 8, "number"],
-      ["code", "Mã chức năng", 18],
+      ["code", "Mã CN", 18],
       ["storyCode", "Mã Story", 18],
       ["jiraCode", "Mã Jira", 20],
       ["group", "Nhóm chức năng", 28],
@@ -1028,14 +1028,16 @@ function parseScheduleSheet(worksheet) {
   if (!worksheet) return [];
   return parseRows(worksheet, 4, (row) => {
     const sprint = cellTextAt(row, 1);
-    if (!sprint) return null;
+    if (!isSprintLabel(sprint)) return null;
     return {
       id: importId("schedule", sprint),
       sprint,
-      handoffDate: toImportDate(cellValueAt(row, 2)),
-      startDate: toImportDate(cellValueAt(row, 3)),
-      endDate: toImportDate(cellValueAt(row, 4)),
-      note: cellTextAt(row, 5)
+      devStart: toImportDate(cellValueAt(row, 2)),
+      devEnd: toImportDate(cellValueAt(row, 3)),
+      handoffDate: toImportDate(cellValueAt(row, 4)),
+      startDate: toImportDate(cellValueAt(row, 5)),
+      endDate: toImportDate(cellValueAt(row, 6)),
+      note: cellTextAt(row, 7)
     };
   });
 }
@@ -1066,22 +1068,24 @@ function parseHandoffSheet(worksheet) {
 function parsePlanSheet(worksheet) {
   if (!worksheet) return [];
   return parseRows(worksheet, 4, (row) => {
-    const sprint = cellTextAt(row, 1) || cellTextAt(row, 7);
-    const jiraCode = cellTextAt(row, 4);
-    const feature = cellTextAt(row, 6);
+    const code = cellTextAt(row, 1);
+    const jiraCode = cellTextAt(row, 2);
+    const group = cellTextAt(row, 3);
+    const feature = cellTextAt(row, 4);
     if (!jiraCode || !feature) return null;
-    const executedCases = toImportNumber(cellValueAt(row, 16));
     const totalCases = toImportNumber(cellValueAt(row, 15));
+    const executedCases = toImportNumber(cellValueAt(row, 16));
     return {
-      id: importId("plans", sprint, jiraCode),
-      sprint,
-      uatHandoff: toImportDate(cellValueAt(row, 2)),
-      code: cellTextAt(row, 3),
+      id: importId("plans", cellTextAt(row, 5), jiraCode),
+      code,
       jiraCode,
-      group: cellTextAt(row, 5),
+      group,
       feature,
-      featureSprint: cellTextAt(row, 7),
-      owner: normalizeImportedOwner(cellValueAt(row, 8)),
+      sprint: cellTextAt(row, 5),
+      featureSprint: cellTextAt(row, 5),
+      uatHandoff: toImportDate(cellValueAt(row, 6)),
+      owner: normalizeImportedOwner(cellValueAt(row, 7)),
+      nv: cellTextAt(row, 8),
       t1: cellTextAt(row, 9),
       t2: cellTextAt(row, 10),
       t3: cellTextAt(row, 11),
@@ -1136,6 +1140,9 @@ function parseWeeklySheet(worksheet) {
   return parseRows(worksheet, 4, (row) => {
     const week = cellTextAt(row, 1);
     if (!week) return null;
+    const blockerBugs = toImportNumber(cellValueAt(row, 10));
+    const criticalBugs = toImportNumber(cellValueAt(row, 11));
+    const majorBugs = toImportNumber(cellValueAt(row, 12));
     return {
       id: importId("weekly", week, cellTextAt(row, 2), cellTextAt(row, 3)),
       week,
@@ -1147,11 +1154,14 @@ function parseWeeklySheet(worksheet) {
       coverageRate: toImportPercent(cellValueAt(row, 7)),
       passedCases: toImportNumber(cellValueAt(row, 8)),
       successRate: toImportPercent(cellValueAt(row, 9)),
-      criticalBugs: toImportNumber(cellValueAt(row, 10)),
-      highBugs: toImportNumber(cellValueAt(row, 11)),
-      gateResult: cellTextAt(row, 12),
-      assessment: cellTextAt(row, 12),
-      note: cellTextAt(row, 13)
+      blockerBugs,
+      criticalBugs,
+      majorBugs,
+      highBugs: majorBugs,
+      totalOpenBugs: toImportNumber(cellValueAt(row, 13)),
+      gateResult: cellTextAt(row, 14),
+      assessment: cellTextAt(row, 14),
+      note: cellTextAt(row, 15)
     };
   });
 }
@@ -1288,14 +1298,10 @@ function applyWorkbookRules(state) {
   const readiness = collectionRows(state, "readiness");
   const matrix = collectionRows(state, "matrix");
 
-  // Lich_UAT!B4:B7 = Lich_BG_US!G6:G9.
-  schedule.slice(0, 4).forEach((row, index) => {
-    row.handoffDate = handoffs[index]?.uatHandoff || "";
-  });
-
-  const scheduleBySprint = lookupBy(schedule, "sprint");
+  applyScheduleRules(schedule);
 
   // Lich_BG_US!F/H/I are formulas. G/J/K remain manual inputs.
+  const scheduleBySprint = lookupBy(schedule, "sprint");
   handoffs.forEach((row) => {
     const scheduleRow = scheduleBySprint.get(lookupKey(row.sprint));
     row.defaultHandoffDate = scheduleRow?.handoffDate || "";
@@ -1304,14 +1310,22 @@ function applyWorkbookRules(state) {
   });
 
   const featureByJira = lookupBy(features, "jiraCode");
+  const featureByName = lookupBy(features, "name");
   const handoffByJira = lookupBy(handoffs, "jiraCode");
+  const handoffByFeatureName = lookupBy(handoffs, "name");
 
-  // PhanCong_UAT!B/G/Q/S are formulas.
+  // PhanCong_UAT!E/F/O/Q/S are formulas.
   plans.forEach((row) => {
-    const scheduleRow = scheduleBySprint.get(lookupKey(row.sprint));
-    const feature = featureByJira.get(lookupKey(row.jiraCode));
-    row.uatHandoff = scheduleRow?.handoffDate || "";
-    row.featureSprint = feature?.sprintBA || "";
+    const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.feature));
+    const handoff = handoffByJira.get(lookupKey(row.jiraCode)) || handoffByFeatureName.get(lookupKey(row.feature));
+    row.feature = feature?.name || row.feature || "";
+    row.group = feature?.group || row.group || "";
+    row.sprint = feature?.businessSprint || row.sprint || feature?.sprintQC || "";
+    row.featureSprint = row.sprint;
+    row.uatHandoff = handoff?.uatHandoff || row.uatHandoff || "";
+    row.owner = row.owner || feature?.owner || "";
+    row.totalCases = sumPlanAssignments(row);
+    row.executedCases = Number(row.executedCases || 0);
     row.progress = percent(row.executedCases, row.totalCases);
     row.rotationWarning = rotationWarning(row);
   });
@@ -1319,7 +1333,7 @@ function applyWorkbookRules(state) {
   // DieuHanh_Ngay!B/E are formulas. E intentionally follows the workbook
   // VLOOKUP(D:F,2), which returns the function group.
   daily.forEach((row) => {
-    const feature = featureByJira.get(lookupKey(row.jiraCode));
+    const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.feature));
     row.sprint = feature?.businessSprint || "";
     row.feature = feature?.group || "";
     row.criticalBugs = isSeverity(row.maxBugSeverity, "Nghiêm trọng") && isOpenBugStatus(row.bugStatus) ? 1 : 0;
@@ -1342,14 +1356,35 @@ function applyWorkbookRules(state) {
 
   // ChatLuong_Tuan!E:L are formulas.
   weekly.forEach((row) => {
-    row.totalCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, row.sprint), "totalCases");
-    row.executedCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, row.sprint), "executedCases");
+    const sprintKey = row.sprint || (isSprintLabel(row.week) ? row.week : "");
+    if (!sprintKey) {
+      row.totalStories = 0;
+      row.totalCases = 0;
+      row.executedCases = 0;
+      row.coverageRate = 0;
+      row.passedCases = 0;
+      row.successRate = 0;
+      row.blockerBugs = 0;
+      row.criticalBugs = 0;
+      row.majorBugs = 0;
+      row.highBugs = 0;
+      row.totalOpenBugs = 0;
+      row.gateResult = "Đạt có điều kiện";
+      row.assessment = row.gateResult;
+      return;
+    }
+    row.totalStories = plans.filter((plan) => sameLookup(plan.sprint, sprintKey)).length;
+    row.totalCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, sprintKey), "totalCases");
+    row.executedCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, sprintKey), "executedCases");
     row.coverageRate = percent(row.executedCases, row.totalCases);
-    row.passedCases = sumWhere(daily, (item) => sameLookup(item.sprint, row.sprint), "passedCases");
+    row.passedCases = sumWhere(daily, (item) => sameLookup(item.sprint, sprintKey), "passedCases");
     row.successRate = percent(row.passedCases, row.executedCases);
-    row.criticalBugs = daily.filter((item) => sameLookup(item.sprint, row.sprint) && isSeverity(item.maxBugSeverity, "Nghiêm trọng") && isOpenBugStatus(item.bugStatus)).length;
-    row.highBugs = daily.filter((item) => sameLookup(item.sprint, row.sprint) && isSeverity(item.maxBugSeverity, "Cao") && isOpenBugStatus(item.bugStatus)).length;
-    row.gateResult = row.criticalBugs > 0 ? "Chưa đạt" : (Number(row.coverageRate || 0) < 90 ? "Đạt có điều kiện" : "Đạt");
+    row.blockerBugs = daily.filter((item) => sameLookup(item.sprint, sprintKey) && isSeverity(item.maxBugSeverity, "Blocker") && isOpenBugStatus(item.bugStatus)).length;
+    row.criticalBugs = daily.filter((item) => sameLookup(item.sprint, sprintKey) && isSeverity(item.maxBugSeverity, "Critical") && isOpenBugStatus(item.bugStatus)).length;
+    row.majorBugs = daily.filter((item) => sameLookup(item.sprint, sprintKey) && isSeverity(item.maxBugSeverity, "Major") && isOpenBugStatus(item.bugStatus)).length;
+    row.highBugs = row.majorBugs;
+    row.totalOpenBugs = row.blockerBugs + row.criticalBugs + row.majorBugs;
+    row.gateResult = row.totalOpenBugs > 0 ? "Chưa đạt" : (Number(row.coverageRate || 0) < 90 ? "Đạt có điều kiện" : "Đạt");
     row.assessment = row.gateResult;
   });
 
@@ -1449,6 +1484,30 @@ function addDays(value, days) {
   if (Number.isNaN(date.getTime())) return "";
   date.setUTCDate(date.getUTCDate() + days);
   return formatDateForInput(date);
+}
+
+function applyScheduleRules(schedule) {
+  const sprintDays = 14;
+  let previousDevStart = "";
+  schedule.forEach((row) => {
+    if (!isSprintLabel(row.sprint)) return;
+    const devStart = row.devStart || previousDevStart;
+    if (!devStart) return;
+    row.devStart = devStart;
+    row.devEnd = addDays(devStart, sprintDays - 1);
+    row.handoffDate = row.devEnd;
+    row.startDate = addDays(row.handoffDate, 1);
+    row.endDate = row.startDate ? addDays(row.startDate, sprintDays - 1) : "";
+    previousDevStart = devStart;
+  });
+}
+
+function sumPlanAssignments(row) {
+  return ["nv", ...testerKeys].reduce((total, key) => total + excelNumeric(row?.[key]), 0);
+}
+
+function isSprintLabel(value) {
+  return /^sprint\s*\d+/i.test(normalizeImportedText(value));
 }
 
 function importId(collection, ...parts) {

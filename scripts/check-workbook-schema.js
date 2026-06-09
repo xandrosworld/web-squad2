@@ -21,12 +21,12 @@ const sheetConfig = {
 
 const formulaColumnConfig = {
   Dashboard_UAT: ["B", "C", "D", "E", "F"],
-  Lich_UAT: ["B"],
+  Lich_UAT: ["B", "C", "D", "E", "F"],
   Lich_BG_US: ["F", "H", "I"],
-  DM_ChucNang: ["P", "Q", "R", "U", "V", "W", "X"],
-  PhanCong_UAT: ["B", "G", "Q", "S"],
+  DM_ChucNang: ["M", "P", "Q", "R", "U", "V", "W", "X"],
+  PhanCong_UAT: ["E", "F", "O", "Q", "S"],
   DieuHanh_Ngay: ["B", "E"],
-  ChatLuong_Tuan: ["E", "F", "G", "H", "I", "J", "K", "L"],
+  ChatLuong_Tuan: ["E", "F", "G", "H", "I", "J", "K", "L", "M", "N"],
   TongKet_Sprint: ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"],
   MaTran_NangLuc: ["B", "C", "D", "E", "F", "G", "H", "J"]
 };
