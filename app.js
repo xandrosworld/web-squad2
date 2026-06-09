@@ -845,16 +845,28 @@ function render() {
 }
 
 function capturePageScroll() {
+    const workspace = document.querySelector(".workspace");
     return {
         tab: ui.activeTab,
         left: window.scrollX || document.documentElement.scrollLeft || 0,
-        top: window.scrollY || document.documentElement.scrollTop || 0
+        top: window.scrollY || document.documentElement.scrollTop || 0,
+        workspaceLeft: workspace?.scrollLeft || 0,
+        workspaceTop: workspace?.scrollTop || 0
     };
 }
 
 function restorePageScroll(snapshot) {
     if (!snapshot || snapshot.tab !== ui.activeTab) return;
     requestAnimationFrame(() => {
+        const workspace = document.querySelector(".workspace");
+        if (workspace) {
+            const maxWorkspaceLeft = Math.max(0, workspace.scrollWidth - workspace.clientWidth);
+            const maxWorkspaceTop = Math.max(0, workspace.scrollHeight - workspace.clientHeight);
+            workspace.scrollTo(
+                Math.min(snapshot.workspaceLeft || 0, maxWorkspaceLeft),
+                Math.min(snapshot.workspaceTop || 0, maxWorkspaceTop)
+            );
+        }
         const maxLeft = Math.max(0, document.documentElement.scrollWidth - window.innerWidth);
         const maxTop = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
         window.scrollTo(

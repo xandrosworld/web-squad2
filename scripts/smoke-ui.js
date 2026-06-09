@@ -244,25 +244,27 @@ async function assertPageScrollPersistsAfterRefresh(page) {
   const originalViewport = page.viewportSize() || { width: 1440, height: 900 };
   await page.setViewportSize({ width: originalViewport.width, height: Math.min(originalViewport.height, 620) });
   try {
-    await page.locator(".tabbar button[data-tab=\"guide\"]").click();
-    await page.waitForSelector(".guide-page", { timeout: 5000 });
+    await page.locator(".tabbar button[data-tab=\"plans\"]").click();
+    await page.waitForSelector('[data-resizable-table="plans"]', { timeout: 5000 });
     const before = await page.evaluate(() => {
-      const maxTop = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-      window.scrollTo(0, Math.min(760, maxTop));
-      return window.scrollY;
+      const workspace = document.querySelector(".workspace");
+      if (!workspace) return 0;
+      const maxTop = Math.max(0, workspace.scrollHeight - workspace.clientHeight);
+      workspace.scrollTop = Math.min(760, maxTop);
+      return workspace.scrollTop;
     });
     if (before < 40) {
-      throw new Error("Guide page is not vertically scrollable for focus persistence smoke.");
+      throw new Error("Plans page is not vertically scrollable for focus persistence smoke.");
     }
 
     await Promise.all([
       page.waitForResponse((response) => response.url().endsWith("/api/state") && response.request().method() === "GET", { timeout: 15000 }),
       page.evaluate(() => window.dispatchEvent(new Event("focus")))
     ]);
-    await page.waitForSelector(".guide-page", { timeout: 5000 });
+    await page.waitForSelector('[data-resizable-table="plans"]', { timeout: 5000 });
     await page.waitForTimeout(100);
 
-    const after = await page.evaluate(() => window.scrollY);
+    const after = await page.evaluate(() => document.querySelector(".workspace")?.scrollTop || 0);
     if (Math.abs(after - before) > 4) {
       throw new Error(`Page vertical scroll was not preserved after focus refresh: before ${before}, after ${after}.`);
     }
