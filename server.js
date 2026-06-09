@@ -97,7 +97,7 @@ const collectionRules = {
     enums: {}
   },
   plans: {
-    required: ["sprint", "feature"],
+    required: ["feature"],
     numbers: ["nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "executedCases"],
     percents: ["progress"],
     enums: {}
@@ -1316,13 +1316,14 @@ function applyWorkbookRules(state) {
   const handoffByJira = lookupBy(handoffs, "jiraCode");
   const handoffByFeatureName = lookupBy(handoffs, "name");
 
-  // PhanCong_UAT!E/F/O/Q/S are formulas.
+  // PhanCong_UAT!E/F/O/Q/S are formulas. Column E follows the workbook
+  // VLOOKUP from DM_ChucNang and resolves to Sprint QC, not Sprint Nghiệp vụ.
   plans.forEach((row) => {
     const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.feature));
     const handoff = handoffByJira.get(lookupKey(row.jiraCode)) || handoffByFeatureName.get(lookupKey(row.feature));
     row.feature = feature?.name || row.feature || "";
     row.group = feature?.group || row.group || "";
-    row.sprint = feature?.businessSprint || row.sprint || feature?.sprintQC || "";
+    row.sprint = feature?.sprintQC || row.sprint || feature?.businessSprint || "";
     row.featureSprint = row.sprint;
     row.uatHandoff = handoff?.uatHandoff || row.uatHandoff || "";
     row.owner = row.owner || feature?.owner || "";

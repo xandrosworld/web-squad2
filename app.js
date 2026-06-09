@@ -254,7 +254,7 @@ const modules = {
             { key: "jiraCode", label: "Mã Jira", type: "text" },
             { key: "group", label: "Nhóm chức năng", type: "text", full: true },
             { key: "feature", label: "Tên chức năng", type: "text", required: true, full: true },
-            { key: "sprint", label: "Sprint", type: "text", required: true },
+            { key: "sprint", label: "Sprint", type: "text" },
             { key: "uatHandoff", label: "Bàn giao UAT", type: "date" },
             { key: "owner", label: "Đầu mối nghiệp vụ", type: "text" },
             { key: "nv", label: "NV", type: "number" },
