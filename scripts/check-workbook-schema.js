@@ -31,6 +31,18 @@ const formulaColumnConfig = {
   MaTran_NangLuc: ["B", "C", "D", "E", "F", "G", "H", "J"]
 };
 
+const dropdownConfig = [
+  ["features", "status", "DM_ChucNang", "N"],
+  ["features", "owner", "DM_ChucNang", "O"],
+  ["features", "handoffStatus", "Lich_BG_US", "J"],
+  ["handoffs", "handoffStatus", "Lich_BG_US", "J"],
+  ["handoffs", "note", "Lich_BG_US", "K"],
+  ["plans", "owner", "PhanCong_UAT", "G"],
+  ["plans", "uatStatus", "PhanCong_UAT", "R"],
+  ["daily", "bugStatus", "DieuHanh_Ngay", "K"],
+  ["daily", "maxBugSeverity", "DieuHanh_Ngay", "L"]
+];
+
 main().catch((error) => {
   console.error(error.message || error);
   process.exit(1);
@@ -48,7 +60,9 @@ async function main() {
   for (const [moduleId, [sheetName, headerRow]] of Object.entries(sheetConfig)) {
     const worksheet = workbook.getWorksheet(sheetName);
     if (!worksheet) throw new Error(`Missing sheet ${sheetName}`);
-    const expected = readHeader(worksheet, headerRow);
+    const expected = moduleId === "plans"
+      ? readPlanHeader(worksheet, headerRow)
+      : readHeader(worksheet, headerRow);
     const actual = modules[moduleId].columns.map((column) => column.label);
     assertSameList(`${moduleId}/${sheetName}`, expected, actual);
   }
@@ -58,6 +72,24 @@ async function main() {
     if (!worksheet) throw new Error(`Missing sheet ${sheetName}`);
     assertSameList(`formulas/${sheetName}`, expectedColumns, readFormulaColumns(worksheet));
   }
+
+  for (const [moduleId, fieldKey, sheetName, columnLetter] of dropdownConfig) {
+    const worksheet = workbook.getWorksheet(sheetName);
+    if (!worksheet) throw new Error(`Missing sheet ${sheetName}`);
+    const expectedOptions = readListValidationOptions(worksheet, columnLetter);
+    if (!expectedOptions.length) {
+      throw new Error(`${sheetName}!${columnLetter} does not have workbook list validation.`);
+    }
+    assertFieldOptions(modules, moduleId, fieldKey, expectedOptions);
+  }
+
+  assertSameList(
+    "PhanCong_UAT tester headers",
+    readPlanTesterLabels(workbook.getWorksheet("PhanCong_UAT")),
+    modules.plans.columns
+      .filter((column) => ["nv", "t1", "t2", "t3", "t4", "t5", "t6"].includes(column.key))
+      .map((column) => column.label)
+  );
 
   const state = await parseWorkbookImportState(fs.readFileSync(workbookPath));
   const exportedWorkbook = buildExcelWorkbook(state);
@@ -147,6 +179,29 @@ function readHeader(worksheet, rowNumber) {
   return headers;
 }
 
+function readPlanHeader(worksheet, rowNumber) {
+  const headers = readHeader(worksheet, rowNumber);
+  const testerLabels = readPlanTesterLabels(worksheet);
+  const startIndex = headers.indexOf("NV");
+  if (startIndex >= 0 && testerLabels.length) {
+    headers.splice(startIndex, testerLabels.length, ...testerLabels);
+  }
+  return headers;
+}
+
+function readPlanTesterLabels(worksheet) {
+  const peopleRow = worksheet.getRow(2);
+  const codeRow = worksheet.getRow(3);
+  const labels = [];
+  for (let column = 8; column <= 14; column += 1) {
+    const person = cellText(peopleRow.getCell(column).value || peopleRow.getCell(column).text);
+    const code = cellText(codeRow.getCell(column).value || codeRow.getCell(column).text);
+    if (!code) continue;
+    labels.push(person && person !== code ? `${person} ${code}` : code);
+  }
+  return labels;
+}
+
 function readFormulaColumns(worksheet) {
   const columns = new Set();
   worksheet.eachRow((row) => {
@@ -157,6 +212,22 @@ function readFormulaColumns(worksheet) {
     });
   });
   return [...columns].sort(compareExcelColumns);
+}
+
+function readListValidationOptions(worksheet, columnLetter) {
+  const model = worksheet.dataValidations?.model || {};
+  for (const [address, rule] of Object.entries(model)) {
+    if (!address.replace(/\d+/g, "").split(":")[0].startsWith(columnLetter)) continue;
+    if (rule?.type !== "list" || !rule.formulae?.length) continue;
+    return parseListFormula(rule.formulae[0]);
+  }
+  return [];
+}
+
+function parseListFormula(formula) {
+  const text = String(formula || "").trim().replace(/^"|"$/g, "");
+  if (!text || text.includes("!")) return [];
+  return text.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 function compareExcelColumns(left, right) {
@@ -180,6 +251,15 @@ function assertSameList(label, expected, actual) {
       `Extra:    ${extra.join(" | ") || "-"}`
     ].join("\n"));
   }
+}
+
+function assertFieldOptions(modules, moduleId, fieldKey, expectedOptions) {
+  const field = modules[moduleId]?.fields?.find((item) => item.key === fieldKey);
+  if (!field) throw new Error(`${moduleId}.${fieldKey} field is missing from app.js`);
+  if (field.type !== "select") {
+    throw new Error(`${moduleId}.${fieldKey} must be a select field because the workbook has a dropdown.`);
+  }
+  assertSameList(`${moduleId}.${fieldKey} dropdown`, expectedOptions, field.options || []);
 }
 
 function cellText(value) {

@@ -45,9 +45,13 @@ const ownerOptions = [
     "NV1 - Bùi Thị Mai Phương",
     "NV2 - Nguyễn Châu Giang",
     "NV3 - Phạm Anh Tuấn",
-    "ALL",
     "BA"
 ];
+const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
+const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Don UAT"];
+const planStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Hoàn thành", "Tạm dừng/Blocked", "Chờ sửa lỗi", "Đã ký UAT"];
+const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail"];
+const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 const legacyStatusOptions = [
     "Chưa bắt đầu",
     "Đang kiểm thử",
@@ -89,13 +93,13 @@ const modules = {
             { key: "businessSprint", label: "Sprint Nghiệp vụ", type: "text" },
             { key: "sprint", label: "Sprint", type: "text" },
             { key: "status", label: "Trạng thái", type: "select", options: statusOptions },
-            { key: "owner", label: "Đầu mối nghiệp vụ", type: "text" },
+            { key: "owner", label: "Đầu mối nghiệp vụ", type: "select", options: ownerOptions },
             { key: "uatHandoff", label: "Ngày bàn giao UAT", type: "date" },
             { key: "uatStart", label: "Ngày bắt đầu UAT", type: "date" },
             { key: "uatEnd", label: "Ngày kết thúc UAT", type: "date" },
             { key: "uatDone", label: "Ngày hoàn thành UAT", type: "date" },
             { key: "uatSigned", label: "Ngày ký UAT", type: "date" },
-            { key: "handoffStatus", label: "Tình trạng bàn giao", type: "text" },
+            { key: "handoffStatus", label: "Tình trạng bàn giao", type: "select", options: handoffStatusOptions },
             { key: "completionRate", label: "% Hoàn thành TC", type: "percent" },
             { key: "openBugs", label: "Số lỗi mở", type: "number" },
             { key: "uatWarning", label: "Cảnh báo UAT", type: "text" }
@@ -219,8 +223,8 @@ const modules = {
             { key: "uatHandoff", label: "BG UAT theo US", type: "date" },
             { key: "uatStart", label: "Ngày bắt đầu theo US", type: "date" },
             { key: "uatEnd", label: "Ngày kết thúc theo US", type: "date" },
-            { key: "handoffStatus", label: "Trạng thái bàn giao", type: "text" },
-            { key: "note", label: "Ghi chú", type: "textarea", full: true }
+            { key: "handoffStatus", label: "Trạng thái bàn giao", type: "select", options: handoffStatusOptions },
+            { key: "note", label: "Ghi chú", type: "select", options: handoffNoteOptions }
         ],
         filters: [
             { key: "sprint", label: "Sprint" },
@@ -256,7 +260,7 @@ const modules = {
             { key: "feature", label: "Tên chức năng", type: "text", required: true, full: true },
             { key: "sprint", label: "Sprint", type: "text" },
             { key: "uatHandoff", label: "Bàn giao UAT", type: "date" },
-            { key: "owner", label: "Đầu mối nghiệp vụ", type: "text" },
+            { key: "owner", label: "Đầu mối nghiệp vụ", type: "select", options: ownerOptions },
             { key: "nv", label: "NV", type: "number" },
             { key: "t1", label: "T1", type: "number" },
             { key: "t2", label: "T2", type: "number" },
@@ -267,7 +271,7 @@ const modules = {
             { key: "totalCases", label: "Tổng Testcase", type: "number" },
             { key: "executedCases", label: "Đã thực hiện", type: "number" },
             { key: "progress", label: "% hoàn thành", type: "percent" },
-            { key: "uatStatus", label: "Trạng thái UAT", type: "text" },
+            { key: "uatStatus", label: "Trạng thái UAT", type: "select", options: planStatusOptions },
             { key: "rotationWarning", label: "Cảnh báo luân chuyển", type: "text" },
             { key: "note", label: "Ghi chú", type: "textarea", full: true }
         ],
@@ -284,12 +288,12 @@ const modules = {
             { key: "uatHandoff", label: "Bàn giao UAT", width: "150px", render: (row) => formatDate(row.uatHandoff) },
             { key: "owner", label: "Đầu mối nghiệp vụ", width: "188px" },
             { key: "nv", label: "NV", width: "68px", render: (row) => numberText(row.nv) },
-            { key: "t1", label: "T1", width: "68px", render: (row) => numberText(row.t1) },
-            { key: "t2", label: "T2", width: "68px", render: (row) => numberText(row.t2) },
-            { key: "t3", label: "T3", width: "68px", render: (row) => numberText(row.t3) },
-            { key: "t4", label: "T4", width: "68px", render: (row) => numberText(row.t4) },
-            { key: "t5", label: "T5", width: "68px", render: (row) => numberText(row.t5) },
-            { key: "t6", label: "T6", width: "68px", render: (row) => numberText(row.t6) },
+            { key: "t1", label: "Sơn T1", width: "76px", render: (row) => numberText(row.t1) },
+            { key: "t2", label: "Sinh T2", width: "78px", render: (row) => numberText(row.t2) },
+            { key: "t3", label: "Trí T3", width: "76px", render: (row) => numberText(row.t3) },
+            { key: "t4", label: "Huy T4", width: "76px", render: (row) => numberText(row.t4) },
+            { key: "t5", label: "Tuấn T5", width: "80px", render: (row) => numberText(row.t5) },
+            { key: "t6", label: "Thành T6", width: "84px", render: (row) => numberText(row.t6) },
             { key: "totalCases", label: "Tổng Testcase", width: "130px", render: (row) => numberText(row.totalCases) },
             { key: "executedCases", label: "Đã thực hiện", width: "120px", render: (row) => numberText(row.executedCases) },
             { key: "progress", label: "% hoàn thành", width: "140px", render: (row) => progressCell(resolveRate(row.progress, row.executedCases, row.totalCases)) },
@@ -355,8 +359,8 @@ const modules = {
             { key: "executedCases", label: "TC đã chạy", type: "number" },
             { key: "passedCases", label: "TC đạt", type: "number" },
             { key: "failedCases", label: "TC lỗi", type: "number" },
-            { key: "bugStatus", label: "Trạng thái lỗi", type: "text" },
-            { key: "maxBugSeverity", label: "Mức độ lỗi", type: "text" },
+            { key: "bugStatus", label: "Trạng thái lỗi", type: "select", options: bugStatusOptions },
+            { key: "maxBugSeverity", label: "Mức độ lỗi", type: "select", options: bugSeverityOptions },
             { key: "blocker", label: "Vướng mắc/Blocker", type: "textarea", full: true },
             { key: "handler", label: "Người xử lý", type: "text" },
             { key: "dueDate", label: "Thời hạn xử lý", type: "date" }
@@ -3839,10 +3843,11 @@ function renderPriority(value) {
 }
 
 function renderStatus(value) {
-    const tone = value === "Done UAT" || value === "Hoàn thành" ? "green"
+    const text = String(value || "");
+    const tone = text.includes("Đã bàn giao") || value === "Done UAT" || value === "Hoàn thành" || value === "Đã ký UAT" ? "green"
         : value === "Đạt" || value === "Xanh" ? "green"
-            : value === "Vàng" || value === "Đạt có điều kiện" || value === "Chưa hoàn thành TC" ? "yellow"
-                : value === "Đỏ" || value === "Chưa đạt" || value === "Thiếu tester" ? "red"
+            : text.includes("Chưa bàn giao") || value === "Vàng" || value === "Đạt có điều kiện" || value === "Chưa hoàn thành TC" || value === "Chưa bắt đầu" || value === "Chờ sửa lỗi" ? "yellow"
+                : value === "Đỏ" || value === "Chưa đạt" || value === "Thiếu tester" || value === "Tạm dừng/Blocked" ? "red"
                     : value === "Done SIT" || value === "Retest" ? "purple"
                         : value === "Done DEV" || value === "Đang kiểm thử" ? "blue"
                             : value === "Done RSD" ? "yellow"

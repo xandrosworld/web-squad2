@@ -68,15 +68,23 @@ const ownerOptions = [
   "NV1 - Bùi Thị Mai Phương",
   "NV2 - Nguyễn Châu Giang",
   "NV3 - Phạm Anh Tuấn",
-  "ALL",
   "BA"
 ];
+const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
+const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Don UAT"];
+const planStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Hoàn thành", "Tạm dừng/Blocked", "Chờ sửa lỗi", "Đã ký UAT"];
+const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail"];
+const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 const collectionRules = {
   features: {
     required: ["code", "name"],
     numbers: ["stt", "openBugs"],
     percents: ["completionRate"],
-    enums: {}
+    enums: {
+      status: featureStatusOptions,
+      owner: ownerOptions,
+      handoffStatus: handoffStatusOptions
+    }
   },
   personnel: {
     required: ["staffCode", "name"],
@@ -94,19 +102,28 @@ const collectionRules = {
     required: ["jiraCode", "name"],
     numbers: [],
     percents: [],
-    enums: {}
+    enums: {
+      handoffStatus: handoffStatusOptions,
+      note: handoffNoteOptions
+    }
   },
   plans: {
     required: ["feature"],
     numbers: ["nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "executedCases"],
     percents: ["progress"],
-    enums: {}
+    enums: {
+      owner: ownerOptions,
+      uatStatus: planStatusOptions
+    }
   },
   daily: {
     required: [],
     numbers: ["totalCases", "executedCases", "passedCases", "failedCases", "criticalBugs", "highBugs"],
     percents: [],
-    enums: {}
+    enums: {
+      bugStatus: bugStatusOptions,
+      maxBugSeverity: bugSeverityOptions
+    }
   },
   weekly: {
     required: ["week"],
