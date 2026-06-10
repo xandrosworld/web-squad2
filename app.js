@@ -2630,7 +2630,7 @@ function renderFloatingGroupChat() {
     if (!ui.groupChatOpen) {
         return `
             <div class="floating-hub">
-                <button class="ai-fab" type="button" data-ai-action="open" title="Trợ lý AI dữ liệu UAT" aria-label="Trợ lý AI dữ liệu UAT">
+                <button class="ai-fab" type="button" data-ai-action="open" title="AI Chat dữ liệu UAT" aria-label="AI Chat dữ liệu UAT">
                     ${renderAiSparkSvg()}
                 </button>
                 <button class="chat-fab ${unreadClass}" type="button" data-chat-action="open" title="Chat nhóm" aria-label="Chat nhóm">
@@ -2673,13 +2673,17 @@ function renderFloatingGroupChat() {
 
 function renderAiChatPanel() {
     return `
-        <section class="group-chat-panel ai-chat-panel" aria-label="Trợ lý AI dữ liệu UAT">
+        <section class="group-chat-panel ai-chat-panel" aria-label="AI Chat dữ liệu UAT">
             <div class="group-chat-head ai-chat-head">
-                <div>
-                    <h2><span class="ai-head-icon">${renderAiSparkSvg()}</span> Trợ lý AI UAT</h2>
-                    <span>${aiChatState.error ? e(aiChatState.error) : "Hỏi nhanh về dashboard, phân công, daily, chất lượng và toàn bộ dữ liệu."}</span>
+                <div class="ai-head-main">
+                    <span class="ai-head-icon">${renderAiSparkSvg()}</span>
+                    <div>
+                        <h2>AI Chat UAT</h2>
+                        <span>${aiChatState.error ? e(aiChatState.error) : "Trợ lý hỏi đáp theo dữ liệu Squad 2 đang có trong hệ thống."}</span>
+                    </div>
                 </div>
                 <div class="group-chat-actions">
+                    <span class="ai-model-pill">Gemini 2.5 Flash</span>
                     <button class="icon-btn" type="button" data-ai-action="clear" title="Xóa hội thoại" aria-label="Xóa hội thoại">
                         <i class="fa-solid fa-broom"></i>
                     </button>
@@ -2692,9 +2696,9 @@ function renderAiChatPanel() {
                 ${renderAiChatMessages()}
             </div>
             <form class="group-chat-compose ai-chat-compose" id="aiChatForm">
-                <textarea id="aiChatInput" class="group-chat-input" name="message" maxlength="2000" rows="2" placeholder="Hỏi AI về dữ liệu UAT..." ${aiChatState.sending ? "disabled" : ""}>${e(ui.aiChatDraft)}</textarea>
-                <button class="primary-btn group-chat-send" type="submit" ${aiChatState.sending ? "disabled" : ""} title="Gửi">
-                    <i class="fa-solid fa-paper-plane"></i><span>${aiChatState.sending ? "Đang hỏi" : "Hỏi AI"}</span>
+                <textarea id="aiChatInput" class="group-chat-input" name="message" maxlength="2000" rows="2" placeholder="Hỏi AI về dashboard, sprint, tester, defect..." ${aiChatState.sending ? "disabled" : ""}>${e(ui.aiChatDraft)}</textarea>
+                <button class="primary-btn group-chat-send ai-chat-send" type="submit" ${aiChatState.sending ? "disabled" : ""} title="Gửi">
+                    <i class="fa-solid fa-paper-plane"></i><span>${aiChatState.sending ? "Đang hỏi" : "Gửi"}</span>
                 </button>
             </form>
         </section>
@@ -2707,7 +2711,14 @@ function renderAiChatMessages() {
         return `
             <div class="group-chat-empty ai-chat-empty">
                 <span class="ai-empty-icon">${renderAiSparkSvg()}</span>
-                <span>Hỏi ví dụ: “Sprint nào đang thiếu tester?”, “Tổng testcase hiện tại là bao nhiêu?”, hoặc “CN001 đang bàn giao đến đâu?”.</span>
+                <strong>Hỏi nhanh dữ liệu UAT</strong>
+                <span>AI có thể đọc dashboard, phân công, bàn giao US, defect, chất lượng tuần và tổng kết sprint.</span>
+                <div class="ai-prompt-grid">
+                    ${renderAiPromptChip("Sprint nào đang thiếu tester?")}
+                    ${renderAiPromptChip("Tổng testcase hiện tại là bao nhiêu?")}
+                    ${renderAiPromptChip("CN001 đang bàn giao đến đâu?")}
+                    ${renderAiPromptChip("Những US nào chưa bàn giao?")}
+                </div>
             </div>
         `;
     }
@@ -2742,12 +2753,16 @@ function renderAiChatMessages() {
 
 function renderAiSparkSvg() {
     return `
-        <svg class="ai-spark-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M12 2.75l1.85 4.92 4.9 1.87-4.9 1.85L12 16.3l-1.85-4.91-4.9-1.85 4.9-1.87L12 2.75Z"></path>
-            <path d="M18.4 14.2l.84 2.22 2.21.84-2.21.84-.84 2.2-.84-2.2-2.2-.84 2.2-.84.84-2.22Z"></path>
-            <path d="M5.1 15.4l.58 1.54 1.53.58-1.53.58-.58 1.52-.58-1.52-1.52-.58 1.52-.58.58-1.54Z"></path>
+        <svg class="ai-bot-svg" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <path class="ai-bot-core" d="M16 4.5a2 2 0 0 1 2 2v1.1h2.4a6.6 6.6 0 0 1 6.6 6.6v5.2a6.6 6.6 0 0 1-6.6 6.6h-8.1l-4.9 3.1v-3.4A6.6 6.6 0 0 1 5 19.4v-5.2a6.6 6.6 0 0 1 6.6-6.6H14V6.5a2 2 0 0 1 2-2Z"></path>
+            <path class="ai-bot-face" d="M11.8 16.1a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4Zm8.4 0a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4ZM12.2 20.1c1 .9 2.2 1.3 3.8 1.3s2.8-.4 3.8-1.3"></path>
+            <path class="ai-bot-spark" d="M25.6 5.3l.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8.8-2.1Z"></path>
         </svg>
     `;
+}
+
+function renderAiPromptChip(prompt) {
+    return `<button class="ai-prompt-chip" type="button" data-ai-prompt="${e(prompt)}">${e(prompt)}</button>`;
 }
 
 function renderGroupChatMessages() {
@@ -2921,6 +2936,18 @@ function bindEvents() {
 
     document.querySelectorAll("[data-ai-action]").forEach((button) => {
         button.addEventListener("click", handleAiAction);
+    });
+
+    document.querySelectorAll("[data-ai-prompt]").forEach((button) => {
+        button.addEventListener("click", () => {
+            ui.aiChatDraft = button.dataset.aiPrompt || "";
+            const input = document.getElementById("aiChatInput");
+            if (input) {
+                input.value = ui.aiChatDraft;
+                input.focus();
+                input.setSelectionRange(input.value.length, input.value.length);
+            }
+        });
     });
 
     const aiChatForm = document.getElementById("aiChatForm");
