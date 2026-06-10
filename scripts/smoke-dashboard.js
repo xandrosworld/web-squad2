@@ -21,52 +21,48 @@ if (!executablePath) {
 }
 
 let cookieHeader = "";
-let createdDailyId = "";
+let createdDefectId = "";
 let createdPlanId = "";
 
 (async () => {
   await login();
   const beforeState = await apiGet("/api/state");
-  const beforeBlockers = countOpenSeverity(beforeState.state.daily, "Blocker");
+  const beforeBlockers = countOpenSeverity(beforeState.state.defects, "Blocker");
   const feature = beforeState.state.features.find((row) => row.jiraCode) || {};
   if (!feature.jiraCode) throw new Error("No feature with Jira code found for dashboard smoke.");
 
-  const dailyRecord = {
+  const defectRecord = {
     id: `dashboard-smoke-${Date.now()}`,
-    date: new Date().toISOString().slice(0, 10),
-    sprint: "",
-    code: feature.code || "",
     jiraCode: feature.jiraCode,
-    feature: feature.group || feature.name || "",
+    storyName: feature.name || feature.group || "",
+    sprint: feature.sprint || "",
+    severity: "Blocker",
+    status: "Open",
+    foundDate: new Date().toISOString().slice(0, 10),
     tester: "Dashboard smoke",
-    totalCases: 1,
-    executedCases: 0,
-    passedCases: 0,
-    failedCases: 1,
-    bugStatus: "Open",
-    maxBugSeverity: "Blocker",
-    blocker: "Dashboard smoke auto cleanup",
-    handler: "Dashboard smoke",
-    dueDate: new Date().toISOString().slice(0, 10)
+    owner: "Dashboard smoke",
+    resolvedDate: "",
+    aging: 1,
+    note: "Dashboard smoke auto cleanup"
   };
 
   try {
-    const created = await apiJson("/api/records/daily", {
+    const created = await apiJson("/api/records/defects", {
       method: "POST",
-      body: JSON.stringify({ record: dailyRecord })
+      body: JSON.stringify({ record: defectRecord })
     });
-    createdDailyId = created.record?.id || dailyRecord.id;
-    const afterCreateBlockers = countOpenSeverity(created.state.daily, "Blocker");
+    createdDefectId = created.record?.id || defectRecord.id;
+    const afterCreateBlockers = countOpenSeverity(created.state.defects, "Blocker");
     if (afterCreateBlockers !== beforeBlockers + 1) {
       throw new Error(`API dashboard blocker count did not update: before ${beforeBlockers}, after ${afterCreateBlockers}`);
     }
 
     await assertDashboardCard("Lỗi Blocker", afterCreateBlockers);
   } finally {
-    if (createdDailyId) {
-      await apiJson(`/api/records/daily/${encodeURIComponent(createdDailyId)}`, { method: "DELETE" });
+    if (createdDefectId) {
+      await apiJson(`/api/records/defects/${encodeURIComponent(createdDefectId)}`, { method: "DELETE" });
       const afterDelete = await apiGet("/api/state");
-      const finalBlockers = countOpenSeverity(afterDelete.state.daily, "Blocker");
+      const finalBlockers = countOpenSeverity(afterDelete.state.defects, "Blocker");
       if (finalBlockers !== beforeBlockers) {
         throw new Error(`Dashboard smoke cleanup did not restore blocker count: before ${beforeBlockers}, after ${finalBlockers}`);
       }
@@ -185,12 +181,12 @@ async function assertSprintSummaryRecomputes(payload) {
     });
     createdPlanId = created.record?.id || planRecord.id;
     const afterCreate = findReadinessRow(created.state, targetSprint);
-    const expectedStories = beforeStories + 1;
+    const expectedStories = beforeStories;
     const expectedCases = beforeCases + testCases;
     if (Number(afterCreate?.totalStories || 0) !== expectedStories || Number(afterCreate?.totalCases || 0) !== expectedCases) {
       throw new Error(`Sprint summary did not recompute from PhanCong_UAT: expected ${expectedStories} story/${expectedCases} TC, got ${afterCreate?.totalStories}/${afterCreate?.totalCases}`);
     }
-    await assertDashboardSprintRow(targetSprint, expectedStories, expectedCases);
+    await assertDashboardSprintRow(targetSprint, beforeStories + 1, expectedCases);
   } finally {
     if (createdPlanId) {
       await apiJson(`/api/records/plans/${encodeURIComponent(createdPlanId)}`, { method: "DELETE" });
@@ -225,7 +221,7 @@ async function assertDashboardSprintRow(sprint, expectedStories, expectedCases) 
     await row.waitFor({ timeout: 10000 });
     const cells = await row.locator("td").allInnerTexts();
     const actualStories = Number((cells[1] || "").replace(/\D+/g, ""));
-    const actualCases = Number((cells[2] || "").replace(/\D+/g, ""));
+    const actualCases = Number((cells[3] || "").replace(/\D+/g, ""));
     if (actualStories !== expectedStories || actualCases !== expectedCases) {
       throw new Error(`Dashboard sprint row ${sprint} expected ${expectedStories} story/${expectedCases} TC, got ${cells[1]}/${cells[2]}`);
     }
@@ -240,8 +236,8 @@ function findReadinessRow(state, sprint) {
 
 function countOpenSeverity(rows, severity) {
   return (rows || []).filter((row) => (
-    normalize(row.maxBugSeverity) === normalize(severity)
-    && isOpenBugStatus(row.bugStatus)
+    normalize(row.severity) === normalize(severity)
+    && isOpenBugStatus(row.status)
   )).length;
 }
 

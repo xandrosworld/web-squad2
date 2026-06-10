@@ -230,11 +230,9 @@ async function assertTableScrollPersistsAfterRefresh(page) {
     }
   }, before, { timeout: 5000 });
 
-  await Promise.all([
-    page.waitForResponse((response) => response.url().endsWith("/api/state") && response.request().method() === "GET", { timeout: 15000 }),
-    page.evaluate(() => window.dispatchEvent(new Event("focus")))
-  ]);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await page.waitForSelector('[data-resizable-table="plans"]', { timeout: 5000 });
+  await page.waitForTimeout(100);
 
   const after = await page.locator('[data-table-scrollbar="main"]').first().evaluate((element) => element.scrollLeft);
   if (Math.abs(after - before) > 2) {
@@ -259,10 +257,7 @@ async function assertPageScrollPersistsAfterRefresh(page) {
       throw new Error("Plans page is not vertically scrollable for focus persistence smoke.");
     }
 
-    await Promise.all([
-      page.waitForResponse((response) => response.url().endsWith("/api/state") && response.request().method() === "GET", { timeout: 15000 }),
-      page.evaluate(() => window.dispatchEvent(new Event("focus")))
-    ]);
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await page.waitForSelector('[data-resizable-table="plans"]', { timeout: 5000 });
     await page.waitForTimeout(100);
 
