@@ -1,13 +1,15 @@
 const fs = require("fs");
 const path = require("path");
 
+require("dotenv").config();
+
 const { Pool } = require("pg");
 
 const { parseWorkbookImportState } = require("../server");
 
 const workbookPath = path.resolve(process.argv[2] || "SQ02_UAT_Squad2_QuanLy_HoanChinh_US_Date.xlsm");
 const databaseUrl = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
-const collections = ["features", "personnel", "schedule", "handoffs", "plans", "daily", "weekly", "readiness", "matrix", "guide"];
+const collections = ["features", "personnel", "schedule", "handoffs", "plans", "daily", "defects", "weekly", "readiness", "matrix", "guide"];
 
 main().catch((error) => {
   console.error(error.stack || error.message || error);
@@ -71,9 +73,10 @@ async function main() {
     validateCounts(expectedCounts, dbCounts);
     const sample = await client.query(`
       select data->>'group' as group_name,
-             data->>'businessSprint' as business_sprint,
-             data->>'handoffStatus' as handoff_status,
-             data->>'uatWarning' as warning
+             data->>'sprint' as sprint,
+             data->>'owner' as owner,
+             data->>'totalCases' as total_cases,
+             data->>'status' as status
       from uat_records
       where collection = 'features'
       order by (data->>'stt')::int asc nulls last

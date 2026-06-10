@@ -171,11 +171,11 @@ async function assertSprintSummaryRecomputes(payload) {
     t5: 0,
     t6: 0,
     totalCases: testCases,
-    executedCases: 0,
+    testStatus: "Chưa Test",
     progress: 0,
     uatStatus: "Chưa bắt đầu",
-    rotationWarning: "",
-    note: "Dashboard smoke auto cleanup"
+    devStatus: "Done RSD",
+    priority: 1
   };
 
   try {

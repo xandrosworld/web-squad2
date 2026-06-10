@@ -63,6 +63,7 @@ const handoffSectionDefaults = [
     { level1: "Luồng nhận, giải chấp, rút bớt, thay thế TSBĐ", children: [] }
 ];
 const planStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Hoàn thành", "Tạm dừng/Blocked", "Chờ sửa lỗi", "Đã ký UAT"];
+const testStatusOptions = ["Chưa Test", "Đang Test", "Passed", "Failed"];
 const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail"];
 const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 const legacyStatusOptions = [
@@ -96,25 +97,21 @@ const modules = {
             { key: "storyCode", label: "Mã Story", type: "text" },
             { key: "jiraCode", label: "Mã Jira", type: "text" },
             { key: "group", label: "Nhóm chức năng", type: "text", full: true },
-            { key: "jiraName", label: "Tên Jira", type: "text", full: true },
             { key: "name", label: "Tên chức năng", type: "text", required: true, full: true },
-            { key: "jiraLink", label: "Link Jira", type: "text" },
-            { key: "rsdLink", label: "Link RSD", type: "text" },
-            { key: "sprintBA", label: "Sprint BA", type: "text" },
-            { key: "sprintDev", label: "Sprint DEV", type: "text" },
-            { key: "sprintQC", label: "Sprint QC", type: "text" },
-            { key: "businessSprint", label: "Sprint Nghiệp vụ", type: "text" },
             { key: "sprint", label: "Sprint", type: "text" },
-            { key: "status", label: "Trạng thái", type: "select", options: statusOptions },
             { key: "owner", label: "Đầu mối nghiệp vụ", type: "select", options: ownerOptions },
-            { key: "uatHandoff", label: "Ngày bàn giao UAT", type: "date" },
-            { key: "uatStart", label: "Ngày bắt đầu UAT", type: "date" },
-            { key: "uatEnd", label: "Ngày kết thúc UAT", type: "date" },
-            { key: "uatDone", label: "Ngày hoàn thành UAT", type: "date" },
-            { key: "uatSigned", label: "Ngày ký UAT", type: "date" },
-            { key: "handoffStatus", label: "Tình trạng bàn giao", type: "select", options: handoffStatusOptions },
+            { key: "uatHandoff", label: "Ngày BG UAT", type: "date" },
+            { key: "handoffStatus", label: "Trạng thái BG", type: "select", options: handoffStatusOptions },
+            { key: "totalCases", label: "Tổng TC", type: "number" },
+            { key: "passedCases", label: "Passed", type: "number" },
+            { key: "failedCases", label: "Failed", type: "number" },
+            { key: "blockedCases", label: "Blocked", type: "number" },
+            { key: "defectOpen", label: "Defect Open", type: "number" },
+            { key: "blockerOpen", label: "Blocker Open", type: "number" },
+            { key: "criticalOpen", label: "Critical Open", type: "number" },
+            { key: "uatResult", label: "Kết quả UAT", type: "text" },
+            { key: "status", label: "Trạng thái UAT", type: "select", options: statusOptions },
             { key: "completionRate", label: "% Hoàn thành TC", type: "percent" },
-            { key: "openBugs", label: "Số lỗi mở", type: "number" },
             { key: "uatWarning", label: "Cảnh báo UAT", type: "text" }
         ],
         filters: [
@@ -129,23 +126,20 @@ const modules = {
             { key: "jiraCode", label: "Mã Jira", width: "132px" },
             { key: "group", label: "Nhóm chức năng", width: "220px" },
             { key: "name", label: "Tên chức năng", width: "250px", render: (row) => strongText(row.name) },
-            { key: "jiraName", label: "Tên Jira", width: "220px" },
-            { key: "jiraLink", label: "Link Jira", width: "160px" },
-            { key: "rsdLink", label: "Link RSD", width: "160px" },
-            { key: "sprintBA", label: "Sprint BA", width: "108px" },
-            { key: "sprintDev", label: "Sprint DEV", width: "108px" },
-            { key: "sprintQC", label: "Sprint QC", width: "108px" },
-            { key: "businessSprint", label: "Sprint Nghiệp vụ", width: "150px" },
-            { key: "status", label: "Trạng thái", width: "112px", render: (row) => renderStatus(row.status) },
+            { key: "sprint", label: "Sprint", width: "120px" },
             { key: "owner", label: "Đầu mối nghiệp vụ", width: "188px" },
-            { key: "uatHandoff", label: "Ngày bàn giao UAT", width: "160px", render: (row) => formatDate(row.uatHandoff || row.handoffDate) },
-            { key: "uatStart", label: "Ngày bắt đầu UAT", width: "160px", render: (row) => formatDate(row.uatStart) },
-            { key: "uatEnd", label: "Ngày kết thúc UAT", width: "160px", render: (row) => formatDate(row.uatEnd) },
-            { key: "uatDone", label: "Ngày hoàn thành UAT", width: "176px", render: (row) => formatDate(row.uatDone) },
-            { key: "uatSigned", label: "Ngày ký UAT", width: "140px", render: (row) => formatDate(row.uatSigned) },
-            { key: "handoffStatus", label: "Tình trạng bàn giao", width: "170px", render: (row) => renderStatus(row.handoffStatus) },
+            { key: "uatHandoff", label: "Ngày BG UAT", width: "150px", render: (row) => formatDate(row.uatHandoff || row.handoffDate) },
+            { key: "handoffStatus", label: "Trạng thái BG", width: "150px", render: (row) => renderStatus(row.handoffStatus) },
+            { key: "totalCases", label: "Tổng TC", width: "110px", render: (row) => numberText(row.totalCases) },
+            { key: "passedCases", label: "Passed", width: "90px", render: (row) => numberText(row.passedCases) },
+            { key: "failedCases", label: "Failed", width: "90px", render: (row) => numberText(row.failedCases) },
+            { key: "blockedCases", label: "Blocked", width: "100px", render: (row) => numberText(row.blockedCases) },
+            { key: "defectOpen", label: "Defect Open", width: "120px", render: (row) => bugTag(row.defectOpen) },
+            { key: "blockerOpen", label: "Blocker Open", width: "130px", render: (row) => bugTag(row.blockerOpen) },
+            { key: "criticalOpen", label: "Critical Open", width: "130px", render: (row) => bugTag(row.criticalOpen, "orange") },
+            { key: "uatResult", label: "Kết quả UAT", width: "140px", render: (row) => renderStatus(row.uatResult) },
+            { key: "status", label: "Trạng thái UAT", width: "140px", render: (row) => renderStatus(row.status) },
             { key: "completionRate", label: "% Hoàn thành TC", width: "150px", render: (row) => progressCell(row.completionRate) },
-            { key: "openBugs", label: "Số lỗi mở", width: "110px", render: (row) => bugTag(row.openBugs) },
             { key: "uatWarning", label: "Cảnh báo UAT", width: "150px", render: (row) => renderStatus(row.uatWarning) }
         ]
     },
@@ -235,12 +229,11 @@ const modules = {
             { key: "sectionLevel2", label: "Badge cấp 2", type: "combo", options: (row) => getHandoffLevel2Options(row), dependsOn: "sectionLevel1", full: true },
             { key: "name", label: "Tên chức năng", type: "text", required: true, full: true },
             { key: "sprint", label: "Sprint", type: "text" },
-            { key: "defaultHandoffDate", label: "Ngày mặc định theo Sprint", type: "date" },
-            { key: "uatHandoff", label: "BG UAT theo US", type: "date" },
-            { key: "uatStart", label: "Ngày bắt đầu theo US", type: "date" },
-            { key: "uatEnd", label: "Ngày kết thúc theo US", type: "date" },
-            { key: "handoffStatus", label: "Trạng thái bàn giao", type: "select", options: handoffStatusOptions },
-            { key: "note", label: "Ghi chú", type: "select", options: handoffNoteOptions }
+            { key: "uatHandoff", label: "BG UAT", type: "date" },
+            { key: "uatStart", label: "Bắt đầu UAT", type: "date" },
+            { key: "uatEnd", label: "Kết thúc UAT", type: "date" },
+            { key: "handoffStatus", label: "Trạng thái BG", type: "select", options: handoffStatusOptions },
+            { key: "uatStatus", label: "Trạng thái UAT", type: "select", options: handoffNoteOptions }
         ],
         filters: [
             { key: "sprint", label: "Sprint" },
@@ -250,14 +243,13 @@ const modules = {
             { key: "jiraCode", label: "Mã Jira", width: "140px" },
             { key: "code", label: "Mã CN", width: "92px", render: (row) => tag(row.code, "teal") },
             { key: "storyCode", label: "Mã Story", width: "100px", render: (row) => tag(row.storyCode, "gray") },
-            { key: "name", label: "Tên chức năng", width: "280px", render: (row) => renderHandoffFeatureCell(row) },
+            { key: "name", label: "Tên chức năng", width: "280px", render: (row) => strongText(row.name) },
             { key: "sprint", label: "Sprint", width: "96px" },
-            { key: "defaultHandoffDate", label: "Ngày mặc định theo Sprint", width: "220px", render: (row) => formatDate(row.defaultHandoffDate) },
-            { key: "uatHandoff", label: "BG UAT theo US", width: "230px", render: (row) => formatDate(row.uatHandoff) },
-            { key: "uatStart", label: "Ngày bắt đầu UAT theo US", width: "230px", render: (row) => formatDate(row.uatStart) },
-            { key: "uatEnd", label: "Ngày kết thúc UAT theo US", width: "230px", render: (row) => formatDate(row.uatEnd) },
-            { key: "handoffStatus", label: "Trạng thái bàn giao", width: "180px", render: (row) => renderStatus(row.handoffStatus) },
-            { key: "note", label: "Ghi chú", width: "180px" }
+            { key: "uatHandoff", label: "BG UAT", width: "130px", render: (row) => formatDate(row.uatHandoff) },
+            { key: "uatStart", label: "Bắt đầu UAT", width: "140px", render: (row) => formatDate(row.uatStart) },
+            { key: "uatEnd", label: "Kết thúc UAT", width: "140px", render: (row) => formatDate(row.uatEnd) },
+            { key: "handoffStatus", label: "Trạng thái BG", width: "150px", render: (row) => renderStatus(row.handoffStatus) },
+            { key: "uatStatus", label: "Trạng thái UAT", width: "150px", render: (row) => renderStatus(row.uatStatus) }
         ]
     },
     plans: {
@@ -285,11 +277,11 @@ const modules = {
             { key: "t5", label: "T5", type: "number" },
             { key: "t6", label: "T6", type: "number" },
             { key: "totalCases", label: "Tổng Testcase", type: "number" },
-            { key: "executedCases", label: "Đã thực hiện", type: "number" },
+            { key: "testStatus", label: "Trạng thái kiểm thử", type: "select", options: testStatusOptions },
             { key: "progress", label: "% hoàn thành", type: "percent" },
             { key: "uatStatus", label: "Trạng thái UAT", type: "select", options: planStatusOptions },
-            { key: "rotationWarning", label: "Cảnh báo luân chuyển", type: "text" },
-            { key: "note", label: "Ghi chú", type: "textarea", full: true }
+            { key: "devStatus", label: "Trạng thái DEV", type: "select", options: handoffNoteOptions },
+            { key: "priority", label: "Mức độ ưu tiên", type: "number" }
         ],
         filters: [
             { key: "sprint", label: "Sprint" },
@@ -311,22 +303,22 @@ const modules = {
             { key: "t5", label: "Tuấn T5", width: "80px", render: (row) => numberText(row.t5) },
             { key: "t6", label: "Thành T6", width: "84px", render: (row) => numberText(row.t6) },
             { key: "totalCases", label: "Tổng Testcase", width: "130px", render: (row) => numberText(row.totalCases) },
-            { key: "executedCases", label: "Đã thực hiện", width: "120px", render: (row) => numberText(row.executedCases) },
+            { key: "testStatus", label: "Trạng thái kiểm thử", width: "170px", render: (row) => renderStatus(row.testStatus) },
             { key: "progress", label: "% hoàn thành", width: "140px", render: (row) => progressCell(resolveRate(row.progress, row.executedCases, row.totalCases)) },
             { key: "uatStatus", label: "Trạng thái UAT", width: "150px", render: (row) => renderStatus(row.uatStatus) },
-            { key: "rotationWarning", label: "Cảnh báo luân chuyển", width: "180px", render: (row) => renderStatus(row.rotationWarning) },
-            { key: "note", label: "Ghi chú", width: "180px" }
+            { key: "devStatus", label: "Trạng thái DEV", width: "150px", render: (row) => renderStatus(row.devStatus) },
+            { key: "priority", label: "Mức độ ưu tiên", width: "140px", render: (row) => numberText(row.priority) }
         ]
     },
     matrix: {
-        label: "Ma trận năng lực",
-        shortLabel: "Ma trận",
+        label: "Năng suất Tester",
+        shortLabel: "Năng suất",
         icon: "fa-table-cells-large",
         collection: "matrix",
-        description: "Theo dõi ma trận nhóm chức năng theo các mốc T1-T6.",
+        description: "Theo dõi đào tạo chéo và mức độ tham gia của tester theo nhóm chức năng.",
         emptyIcon: "fa-grip",
-        emptyTitle: "Chưa có ma trận năng lực",
-        emptyText: "Ma trận sẽ hiển thị tại đây sau khi có bản ghi.",
+        emptyTitle: "Chưa có dữ liệu năng suất tester",
+        emptyText: "Dữ liệu từ sheet NangSuat_Tester sẽ hiển thị tại đây sau khi nhập Excel.",
         fields: [
             { key: "group", label: "Nhóm chức năng", type: "text", required: true, full: true },
             { key: "t1", label: "T1", type: "number" },
@@ -366,15 +358,13 @@ const modules = {
         emptyText: "Dữ liệu điều hành sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "date", label: "Ngày", type: "date" },
-            { key: "sprint", label: "Sprint", type: "text" },
-            { key: "code", label: "Mã chức năng", type: "text" },
             { key: "jiraCode", label: "Mã Jira", type: "text" },
             { key: "feature", label: "Tên chức năng", type: "text", full: true },
+            { key: "sprint", label: "Sprint", type: "text" },
             { key: "tester", label: "Tester", type: "text" },
             { key: "totalCases", label: "Tổng TC", type: "number" },
-            { key: "executedCases", label: "TC đã chạy", type: "number" },
-            { key: "passedCases", label: "TC đạt", type: "number" },
-            { key: "failedCases", label: "TC lỗi", type: "number" },
+            { key: "passedCases", label: "TC Passed", type: "number" },
+            { key: "failedCases", label: "TC Failed", type: "number" },
             { key: "bugStatus", label: "Trạng thái lỗi", type: "select", options: bugStatusOptions },
             { key: "maxBugSeverity", label: "Mức độ lỗi", type: "select", options: bugSeverityOptions },
             { key: "blocker", label: "Vướng mắc/Blocker", type: "textarea", full: true },
@@ -387,20 +377,61 @@ const modules = {
         ],
         columns: [
             { key: "date", label: "Ngày", width: "118px", render: (row) => formatDate(row.date) },
-            { key: "sprint", label: "Sprint", width: "100px" },
-            { key: "code", label: "Mã chức năng", width: "120px", render: (row) => tag(row.code, "teal") },
             { key: "jiraCode", label: "Mã Jira", width: "140px" },
             { key: "feature", label: "Tên chức năng", width: "260px", render: (row) => strongText(row.feature) },
+            { key: "sprint", label: "Sprint", width: "100px" },
             { key: "tester", label: "Tester", width: "120px" },
             { key: "totalCases", label: "Tổng TC", width: "100px", render: (row) => numberText(row.totalCases) },
-            { key: "executedCases", label: "TC đã chạy", width: "110px", render: (row) => numberText(row.executedCases) },
-            { key: "passedCases", label: "TC đạt", width: "90px", render: (row) => numberText(row.passedCases) },
-            { key: "failedCases", label: "TC lỗi", width: "90px", render: (row) => numberText(row.failedCases) },
+            { key: "passedCases", label: "TC Passed", width: "110px", render: (row) => numberText(row.passedCases) },
+            { key: "failedCases", label: "TC Failed", width: "110px", render: (row) => numberText(row.failedCases) },
             { key: "bugStatus", label: "Trạng thái lỗi", width: "150px", render: (row) => renderStatus(row.bugStatus) },
             { key: "maxBugSeverity", label: "Mức độ lỗi", width: "180px", render: (row) => renderStatus(row.maxBugSeverity) },
             { key: "blocker", label: "Vướng mắc/Blocker", width: "240px" },
             { key: "handler", label: "Người xử lý", width: "150px" },
             { key: "dueDate", label: "Thời hạn xử lý", width: "150px", render: (row) => formatDate(row.dueDate) }
+        ]
+    },
+    defects: {
+        label: "DEFECT_LOG",
+        shortLabel: "Defect",
+        icon: "fa-bug",
+        collection: "defects",
+        description: "Theo dõi defect UAT theo Jira, Severity, Status, tester, owner và aging.",
+        emptyIcon: "fa-bug-slash",
+        emptyTitle: "Chưa có defect",
+        emptyText: "Dữ liệu từ sheet DEFECT_LOG sẽ hiển thị tại đây sau khi có bản ghi.",
+        fields: [
+            { key: "bugId", label: "Bug ID", type: "text" },
+            { key: "jiraCode", label: "Mã Jira", type: "text" },
+            { key: "storyName", label: "Tên Story", type: "text", full: true },
+            { key: "sprint", label: "Sprint", type: "text" },
+            { key: "severity", label: "Severity", type: "select", options: bugSeverityOptions },
+            { key: "status", label: "Status", type: "select", options: bugStatusOptions },
+            { key: "foundDate", label: "Ngày phát hiện", type: "date" },
+            { key: "tester", label: "Tester", type: "text" },
+            { key: "owner", label: "Owner", type: "select", options: ownerOptions },
+            { key: "resolvedDate", label: "Ngày xử lý", type: "date" },
+            { key: "aging", label: "Aging", type: "number" },
+            { key: "note", label: "Ghi chú", type: "textarea", full: true }
+        ],
+        filters: [
+            { key: "sprint", label: "Sprint" },
+            { key: "severity", label: "Severity" },
+            { key: "status", label: "Status" }
+        ],
+        columns: [
+            { key: "bugId", label: "Bug ID", width: "120px" },
+            { key: "jiraCode", label: "Mã Jira", width: "140px" },
+            { key: "storyName", label: "Tên Story", width: "260px", render: (row) => strongText(row.storyName) },
+            { key: "sprint", label: "Sprint", width: "100px" },
+            { key: "severity", label: "Severity", width: "110px", render: (row) => renderStatus(row.severity) },
+            { key: "status", label: "Status", width: "130px", render: (row) => renderStatus(row.status) },
+            { key: "foundDate", label: "Ngày phát hiện", width: "140px", render: (row) => formatDate(row.foundDate) },
+            { key: "tester", label: "Tester", width: "140px" },
+            { key: "owner", label: "Owner", width: "188px" },
+            { key: "resolvedDate", label: "Ngày xử lý", width: "130px", render: (row) => formatDate(row.resolvedDate) },
+            { key: "aging", label: "Aging", width: "90px", render: (row) => numberText(row.aging) },
+            { key: "note", label: "Ghi chú", width: "220px" }
         ]
     },
     weekly: {
@@ -415,39 +446,31 @@ const modules = {
         fields: [
             { key: "week", label: "Tuần", type: "text", required: true },
             { key: "sprint", label: "Sprint", type: "text" },
-            { key: "group", label: "Nhóm chức năng", type: "text" },
             { key: "totalStories", label: "Tổng Story", type: "number" },
-            { key: "totalCases", label: "Tổng Testcase", type: "number" },
-            { key: "executedCases", label: "TC đã chạy", type: "number" },
-            { key: "coverageRate", label: "Tỷ lệ bao phủ", type: "percent" },
-            { key: "passedCases", label: "TC đạt", type: "number" },
-            { key: "successRate", label: "Tỷ lệ thành công", type: "percent" },
-            { key: "blockerBugs", label: "Lỗi Blocker", type: "number" },
-            { key: "criticalBugs", label: "Lỗi Critical", type: "number" },
-            { key: "majorBugs", label: "Lỗi Major", type: "number" },
-            { key: "gateResult", label: "Kết quả", type: "text" },
-            { key: "note", label: "Ghi chú", type: "textarea", full: true }
+            { key: "storyTested", label: "Story đã test", type: "number" },
+            { key: "coverageRate", label: "Coverage %", type: "percent" },
+            { key: "successRate", label: "Pass Rate %", type: "percent" },
+            { key: "blockerBugs", label: "Blocker Open", type: "number" },
+            { key: "criticalBugs", label: "Critical Open", type: "number" },
+            { key: "reopenRate", label: "Reopen Rate", type: "percent" },
+            { key: "assessment", label: "Đánh giá", type: "text" }
         ],
         filters: [
             { key: "week", label: "Tuần" },
-            { key: "group", label: "Nhóm" },
+            { key: "sprint", label: "Sprint" },
             { key: "assessment", label: "Đánh giá" }
         ],
         columns: [
             { key: "week", label: "Tuần", width: "110px", render: (row) => tag(row.week, "teal") },
             { key: "sprint", label: "Sprint", width: "100px" },
-            { key: "group", label: "Nhóm chức năng", width: "220px" },
             { key: "totalStories", label: "Tổng Story", width: "110px", render: (row) => numberText(row.totalStories) },
-            { key: "totalCases", label: "Tổng Testcase", width: "130px", render: (row) => numberText(row.totalCases) },
-            { key: "executedCases", label: "TC đã chạy", width: "120px", render: (row) => numberText(row.executedCases) },
-            { key: "coverageRate", label: "Tỷ lệ bao phủ", width: "150px", render: (row) => progressCell(resolveRate(row.coverageRate, row.executedCases, row.totalCases)) },
-            { key: "passedCases", label: "TC đạt", width: "90px", render: (row) => numberText(row.passedCases) },
-            { key: "successRate", label: "Tỷ lệ thành công", width: "160px", render: (row) => progressCell(row.successRate) },
-            { key: "blockerBugs", label: "Lỗi Blocker", width: "120px", render: (row) => bugTag(row.blockerBugs) },
-            { key: "criticalBugs", label: "Lỗi Critical", width: "120px", render: (row) => bugTag(row.criticalBugs, "orange") },
-            { key: "majorBugs", label: "Lỗi Major", width: "110px", render: (row) => bugTag(row.majorBugs, "yellow") },
-            { key: "gateResult", label: "Kết quả", width: "150px", render: (row) => renderStatus(row.gateResult || row.assessment) },
-            { key: "note", label: "Ghi chú", width: "180px" }
+            { key: "storyTested", label: "Story đã test", width: "130px", render: (row) => numberText(row.storyTested) },
+            { key: "coverageRate", label: "Coverage %", width: "150px", render: (row) => progressCell(row.coverageRate) },
+            { key: "successRate", label: "Pass Rate %", width: "150px", render: (row) => progressCell(row.successRate) },
+            { key: "blockerBugs", label: "Blocker Open", width: "130px", render: (row) => bugTag(row.blockerBugs) },
+            { key: "criticalBugs", label: "Critical Open", width: "130px", render: (row) => bugTag(row.criticalBugs, "orange") },
+            { key: "reopenRate", label: "Reopen Rate", width: "140px", render: (row) => progressCell(row.reopenRate) },
+            { key: "assessment", label: "Đánh giá", width: "160px", render: (row) => renderStatus(row.assessment || row.gateResult) }
         ]
     },
     readiness: {
@@ -461,18 +484,15 @@ const modules = {
         emptyText: "Dữ liệu kết thúc Sprint sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
             { key: "sprint", label: "Sprint", type: "text", required: true },
-            { key: "handoffDate", label: "Ngày bàn giao UAT", type: "date" },
             { key: "totalStories", label: "Tổng Story", type: "number" },
-            { key: "totalCases", label: "Tổng Testcase", type: "number" },
-            { key: "executedCases", label: "TC đã chạy", type: "number" },
+            { key: "deliveredStories", label: "Story đã bàn giao", type: "number" },
             { key: "coverageRate", label: "Tỷ lệ bao phủ", type: "percent" },
-            { key: "passedCases", label: "TC đạt", type: "number" },
-            { key: "successRate", label: "Tỷ lệ thành công", type: "percent" },
-            { key: "openCriticalBugs", label: "Lỗi nghiêm trọng mở", type: "number" },
-            { key: "openHighBugs", label: "Lỗi cao mở", type: "number" },
-            { key: "readinessLevel", label: "Mức độ sẵn sàng", type: "text" },
-            { key: "decision", label: "Quyết định", type: "text" },
-            { key: "note", label: "Ghi chú", type: "textarea", full: true }
+            { key: "successRate", label: "Pass Rate %", type: "percent" },
+            { key: "openBlockerBugs", label: "Blocker Open", type: "number" },
+            { key: "openCriticalBugs", label: "Critical Open", type: "number" },
+            { key: "openMajorBugs", label: "Major Open", type: "number" },
+            { key: "reopenRate", label: "Reopen Rate", type: "percent" },
+            { key: "decision", label: "Quyết định", type: "text" }
         ],
         filters: [
             { key: "sprint", label: "Sprint" },
@@ -480,18 +500,15 @@ const modules = {
         ],
         columns: [
             { key: "sprint", label: "Sprint", width: "110px", render: (row) => tag(row.sprint, "teal") },
-            { key: "handoffDate", label: "Ngày bàn giao UAT", width: "160px", render: (row) => formatDate(row.handoffDate) },
             { key: "totalStories", label: "Tổng Story", width: "110px", render: (row) => numberText(row.totalStories) },
-            { key: "totalCases", label: "Tổng Testcase", width: "130px", render: (row) => numberText(row.totalCases) },
-            { key: "executedCases", label: "TC đã chạy", width: "120px", render: (row) => numberText(row.executedCases) },
+            { key: "deliveredStories", label: "Story đã bàn giao", width: "160px", render: (row) => numberText(row.deliveredStories) },
             { key: "coverageRate", label: "Tỷ lệ bao phủ", width: "150px", render: (row) => progressCell(row.coverageRate) },
-            { key: "passedCases", label: "TC đạt", width: "86px", render: (row) => numberText(row.passedCases) },
-            { key: "successRate", label: "Tỷ lệ thành công", width: "160px", render: (row) => progressCell(row.successRate) },
-            { key: "openCriticalBugs", label: "Lỗi nghiêm trọng mở", width: "170px", render: (row) => bugTag(row.openCriticalBugs) },
-            { key: "openHighBugs", label: "Lỗi cao mở", width: "120px", render: (row) => bugTag(row.openHighBugs, "yellow") },
-            { key: "readinessLevel", label: "Mức độ sẵn sàng", width: "160px", render: (row) => renderStatus(row.readinessLevel) },
+            { key: "successRate", label: "Pass Rate %", width: "150px", render: (row) => progressCell(row.successRate) },
+            { key: "openBlockerBugs", label: "Blocker Open", width: "130px", render: (row) => bugTag(row.openBlockerBugs) },
+            { key: "openCriticalBugs", label: "Critical Open", width: "130px", render: (row) => bugTag(row.openCriticalBugs, "orange") },
+            { key: "openMajorBugs", label: "Major Open", width: "120px", render: (row) => bugTag(row.openMajorBugs, "yellow") },
+            { key: "reopenRate", label: "Reopen Rate", width: "140px", render: (row) => progressCell(row.reopenRate) },
             { key: "decision", label: "Quyết định", width: "160px", render: (row) => renderDecision(row.decision) },
-            { key: "note", label: "Ghi chú", width: "180px" }
         ]
     },
     guide: {
@@ -531,9 +548,10 @@ const tabs = [
     { id: "features", label: "DM_ChucNang", icon: modules.features.icon },
     { id: "plans", label: "PhanCong_UAT", icon: modules.plans.icon },
     { id: "daily", label: "DieuHanh_Ngay", icon: modules.daily.icon },
+    { id: "defects", label: "DEFECT_LOG", icon: modules.defects.icon },
     { id: "weekly", label: "ChatLuong_Tuan", icon: modules.weekly.icon },
     { id: "readiness", label: "TongKet_Sprint", icon: modules.readiness.icon },
-    { id: "matrix", label: "MaTran_NangLuc", icon: modules.matrix.icon }
+    { id: "matrix", label: "NangSuat_Tester", icon: modules.matrix.icon }
 ];
 
 function getDataModuleCount() {
@@ -552,6 +570,7 @@ const emptyState = () => ({
     handoffs: [],
     plans: [],
     daily: [],
+    defects: [],
     weekly: [],
     readiness: [],
     matrix: [],
@@ -1090,7 +1109,7 @@ function renderExcelDashboard() {
     const ownerRows = getDashboardOwnerRows();
     const sprintRows = getDashboardSprintRows();
     const totalStories = summaryRows.find((row) => row.key === "totalStories")?.value || 0;
-    const coverage = summaryRows.find((row) => row.key === "coverageRate")?.numericValue || 0;
+    const coverage = summaryRows.find((row) => row.key === "handoffRate")?.numericValue || 0;
     const trainingReadiness = summaryRows.find((row) => row.key === "trainingReadiness")?.numericValue || 0;
     return `
         <section class="uat-dashboard">
@@ -1101,7 +1120,7 @@ function renderExcelDashboard() {
                     <p>Agile Tester Pool · Tổng hợp từ danh mục, lịch bàn giao, phân công, daily, chất lượng tuần và tổng kết sprint.</p>
                 </div>
                 <div class="uat-hero-score">
-                    <small>Tỷ lệ bao phủ</small>
+                    <small>Tỷ lệ bàn giao UAT</small>
                     <strong>${e(coverage)}%</strong>
                     <div class="progress progress-${e(getProgressTone(coverage))}"><span style="width:${clamp(coverage)}%"></span></div>
                 </div>
@@ -1156,7 +1175,7 @@ function renderExcelDashboard() {
                             <i class="fa-solid fa-graduation-cap"></i>
                             <div>
                                 <h2>Sẵn sàng đào tạo</h2>
-                                <span>Theo MaTran_NangLuc</span>
+                                <span>Theo NangSuat_Tester</span>
                             </div>
                         </div>
                     </div>
@@ -1195,9 +1214,9 @@ function renderExcelDashboard() {
                                 <thead>
                                     <tr>
                                         <th>Sprint</th>
-                                        <th>Số Story</th>
+                                        <th>Tổng Story</th>
+                                        <th>Story đã bàn giao</th>
                                         <th>Tổng TC</th>
-                                        <th>TC đã chạy</th>
                                         <th>Tỷ lệ bao phủ</th>
                                         <th>Quyết định</th>
                                     </tr>
@@ -1207,8 +1226,8 @@ function renderExcelDashboard() {
                                         <tr>
                                             <td>${tag(row.sprint, "teal")}</td>
                                             <td>${e(row.storyCount)}</td>
+                                            <td>${e(row.deliveredStories)}</td>
                                             <td>${e(row.totalCases)}</td>
-                                            <td>${e(row.executedCases)}</td>
                                             <td>
                                                 <div class="uat-table-progress">
                                                     <div class="progress progress-${e(getProgressTone(row.coverageRate))}">
@@ -1231,21 +1250,29 @@ function renderExcelDashboard() {
 
 function getDashboardSummaryRows() {
     const totalStories = appState.features.length;
-    const scheduledStories = appState.features.filter((row) => isFilled(row.uatHandoff || row.handoffDate)).length;
+    const deliveredStories = appState.handoffs.filter((row) => isFilled(row.uatHandoff)).length;
+    const notDeliveredStories = Math.max(0, totalStories - deliveredStories);
+    const handoffRate = percent(deliveredStories, totalStories);
     const totalCases = sum(appState.plans, "totalCases");
-    const executedCases = sum(appState.plans, "executedCases");
-    const coverageRate = percent(executedCases, totalCases);
-    const blockerBugs = countDailyOpenSeverity("Blocker");
-    const criticalBugs = countDailyOpenSeverity("Critical");
+    const passedCases = sum(appState.daily, "passedCases");
+    const failedCases = sum(appState.daily, "failedCases");
+    const blockedCases = appState.daily.filter((row) => isFilled(row.blocker)).length;
+    const blockerBugs = countOpenDefectSeverity("Blocker");
+    const criticalBugs = countOpenDefectSeverity("Critical");
+    const pilotReadiness = round(handoffRate * 0.5 + percent(passedCases, totalCases) * 0.5);
     const trainingReadiness = calculateTrainingReadiness();
     return [
         { key: "totalStories", label: "Tổng Story", value: totalStories, numericValue: totalStories, tone: "teal" },
-        { key: "scheduledStories", label: "Story đã có lịch UAT", value: scheduledStories, numericValue: scheduledStories, tone: "blue" },
+        { key: "deliveredStories", label: "Đã bàn giao UAT", value: deliveredStories, numericValue: deliveredStories, tone: "blue" },
+        { key: "notDeliveredStories", label: "Chưa bàn giao", value: notDeliveredStories, numericValue: notDeliveredStories, tone: "neutral" },
+        { key: "handoffRate", label: "Tỷ lệ bàn giao UAT", value: `${handoffRate}%`, numericValue: handoffRate, tone: getProgressTone(handoffRate) },
         { key: "totalCases", label: "Tổng Testcase", value: totalCases, numericValue: totalCases, tone: "neutral" },
-        { key: "executedCases", label: "TC đã thực hiện", value: executedCases, numericValue: executedCases, tone: "neutral" },
-        { key: "coverageRate", label: "Tỷ lệ bao phủ", value: `${coverageRate}%`, numericValue: coverageRate, tone: getProgressTone(coverageRate) },
+        { key: "passedCases", label: "Passed", value: passedCases, numericValue: passedCases, tone: passedCases ? "green" : "neutral" },
+        { key: "failedCases", label: "Failed", value: failedCases, numericValue: failedCases, tone: failedCases ? "red" : "neutral" },
+        { key: "blockedCases", label: "Blocked", value: blockedCases, numericValue: blockedCases, tone: blockedCases ? "yellow" : "neutral" },
         { key: "blockerBugs", label: "Lỗi Blocker", value: blockerBugs, numericValue: blockerBugs, tone: blockerBugs ? "red" : "green" },
         { key: "criticalBugs", label: "Lỗi Critical", value: criticalBugs, numericValue: criticalBugs, tone: criticalBugs ? "yellow" : "green" },
+        { key: "pilotReadiness", label: "Pilot Readiness", value: `${pilotReadiness}%`, numericValue: pilotReadiness, tone: getProgressTone(pilotReadiness) },
         { key: "trainingReadiness", label: "Mức độ sẵn sàng đào tạo", value: `${trainingReadiness}%`, numericValue: trainingReadiness, tone: getProgressTone(trainingReadiness) }
     ];
 }
@@ -1290,14 +1317,17 @@ function getDashboardSprintRows() {
     appState.readiness.forEach((row) => {
         const bucket = ensure(row.sprint);
         bucket.storyCount = Number(row.totalStories || bucket.storyCount);
+        bucket.deliveredStories = Number(row.deliveredStories || bucket.deliveredStories || 0);
         bucket.totalCases = Number(row.totalCases || bucket.totalCases);
         bucket.executedCases = Number(row.executedCases || bucket.executedCases);
+        bucket.coverageRate = Number(row.coverageRate || bucket.coverageRate || 0);
         bucket.decision = row.decision || bucket.decision;
     });
     return [...buckets.values()]
         .map((row) => ({
             ...row,
-            coverageRate: percent(row.executedCases, row.totalCases),
+            deliveredStories: Number(row.deliveredStories || 0),
+            coverageRate: Number(row.coverageRate || percent(row.deliveredStories, row.storyCount)),
             decision: row.decision || "Chưa quyết định"
         }))
         .sort((a, b) => a.sprint.localeCompare(b.sprint, "vi", { numeric: true }));
@@ -1960,7 +1990,7 @@ function defaultGuideRows() {
         ["Hướng dẫn", 3, "Theo dõi hằng ngày", "Vào sheet DieuHanh_Ngay để nhập số TC đã chạy, TC đạt, lỗi, blocker và người xử lý."],
         ["Hướng dẫn", 4, "Đánh giá hằng tuần", "Sheet ChatLuong_Tuan tổng hợp Quality Gate theo tuần/Sprint."],
         ["Hướng dẫn", 5, "Kết thúc Sprint", "Sheet TongKet_Sprint tự tính GO / CONDITIONAL GO / NO GO theo coverage, pass rate và lỗi mở."],
-        ["Hướng dẫn", 6, "Đào tạo chéo", "Sheet MaTran_NangLuc theo dõi mức độ mỗi Tester tham gia các nhóm chức năng để hình thành giảng viên nội bộ."],
+        ["Hướng dẫn", 6, "Đào tạo chéo", "Sheet NangSuat_Tester theo dõi mức độ mỗi Tester tham gia các nhóm chức năng để hình thành giảng viên nội bộ."],
         ["Hướng dẫn", 7, "Báo cáo lãnh đạo", "Sheet Dashboard_UAT là bảng điều hành tổng hợp cho Squad Leader."],
         ["Cập nhật mới", 1, "Lịch bàn giao theo User Story", "Sử dụng sheet Lich_BG_US để nhập ngày bàn giao UAT riêng cho từng US; DM_ChucNang tự động lấy ngày từ sheet này."],
         ["Nguyên tắc", 2, "Không dùng lịch Sprint làm ngày bàn giao chính", "Trong cùng Sprint, mỗi US có thể có ngày bàn giao khác nhau."],
@@ -4113,14 +4143,16 @@ function calculateMetrics() {
     const completedFeatures = appState.features.filter((row) => isCompletedFeatureStatus(row.status)).length;
     const statusDrivenProgress = features ? percent(completedFeatures, features) : 0;
     const totalCases = sum(appState.plans, "totalCases");
-    const executedCases = sum(appState.plans, "executedCases");
-    const coverage = percent(executedCases, totalCases);
+    const passedCases = sum(appState.daily, "passedCases");
+    const deliveredStories = appState.handoffs.filter((row) => isFilled(row.uatHandoff)).length;
+    const coverage = percent(deliveredStories, features);
     const successRate = round(average([
         ...appState.weekly.map((row) => row.successRate),
         ...appState.readiness.map((row) => row.successRate)
     ]));
     const latestReadiness = getLatest(appState.readiness);
-    const dailyCritical = countDailyOpenSeverity("Blocker") + countDailyOpenSeverity("Critical");
+    const openCritical = countOpenDefectSeverity("Blocker") + countOpenDefectSeverity("Critical");
+    const pilotReadiness = round(coverage * 0.5 + percent(passedCases, totalCases) * 0.5);
     const readinessFallback = round(latestReadiness?.readinessLevel || average([coverage, successRate]));
     return {
         features,
@@ -4128,9 +4160,9 @@ function calculateMetrics() {
         totalRecords: Object.keys(modules).reduce((total, id) => total + appState[modules[id].collection].length, 0),
         coverage,
         successRate,
-        criticalBugs: dailyCritical,
+        criticalBugs: openCritical,
         trainingReadiness: calculateTrainingReadiness(),
-        pilotReadiness: round(latestReadiness?.pilotReadiness || readinessFallback || 0)
+        pilotReadiness: pilotReadiness || round(latestReadiness?.pilotReadiness || readinessFallback || 0)
     };
 }
 
@@ -4156,6 +4188,14 @@ function countDailyOpenSeverity(severity) {
     return appState.daily.filter((row) => (
         normalizeWorkbookFormulaText(row.maxBugSeverity) === target
         && isOpenBugStatus(row.bugStatus)
+    )).length;
+}
+
+function countOpenDefectSeverity(severity) {
+    const target = normalizeWorkbookFormulaText(severity);
+    return appState.defects.filter((row) => (
+        normalizeWorkbookFormulaText(row.severity) === target
+        && isOpenBugStatus(row.status)
     )).length;
 }
 
@@ -4510,7 +4550,6 @@ function refreshGroupChatIfOpen() {
     fetchGroupChat({ silent: true });
 }
 
-window.addEventListener("focus", refreshFromDbIfIdle);
 window.setInterval(refreshFromDbIfIdle, SYNC_INTERVAL_MS);
 window.setInterval(refreshGroupChatIfOpen, GROUP_CHAT_POLL_INTERVAL_MS);
 

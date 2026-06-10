@@ -50,6 +50,7 @@ const collections = [
   "handoffs",
   "plans",
   "daily",
+  "defects",
   "weekly",
   "readiness",
   "matrix",
@@ -82,12 +83,13 @@ const ownerAccountLinks = [
 const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
 const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Don UAT"];
 const planStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Hoàn thành", "Tạm dừng/Blocked", "Chờ sửa lỗi", "Đã ký UAT"];
+const testStatusOptions = ["Chưa Test", "Đang Test", "Passed", "Failed"];
 const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail"];
 const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 const collectionRules = {
   features: {
     required: ["code", "name"],
-    numbers: ["stt", "openBugs"],
+    numbers: ["stt", "totalCases", "passedCases", "failedCases", "blockedCases", "defectOpen", "blockerOpen", "criticalOpen", "openBugs"],
     percents: ["completionRate"],
     enums: {
       status: featureStatusOptions,
@@ -113,16 +115,19 @@ const collectionRules = {
     percents: [],
     enums: {
       handoffStatus: handoffStatusOptions,
-      note: handoffNoteOptions
+      note: handoffNoteOptions,
+      uatStatus: handoffNoteOptions
     }
   },
   plans: {
     required: ["feature"],
-    numbers: ["nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "executedCases"],
+    numbers: ["nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "executedCases", "priority"],
     percents: ["progress"],
     enums: {
       owner: ownerOptions,
-      uatStatus: planStatusOptions
+      testStatus: testStatusOptions,
+      uatStatus: planStatusOptions,
+      devStatus: handoffNoteOptions
     }
   },
   daily: {
@@ -134,16 +139,25 @@ const collectionRules = {
       maxBugSeverity: bugSeverityOptions
     }
   },
+  defects: {
+    required: [],
+    numbers: ["aging"],
+    percents: [],
+    enums: {
+      severity: bugSeverityOptions,
+      status: bugStatusOptions
+    }
+  },
   weekly: {
     required: ["week"],
-    numbers: ["totalStories", "totalCases", "executedCases", "passedCases", "blockerBugs", "criticalBugs", "majorBugs", "highBugs", "totalOpenBugs", "reopenedBugs"],
-    percents: ["coverageRate", "successRate"],
+    numbers: ["totalStories", "storyTested", "totalCases", "executedCases", "passedCases", "blockerBugs", "criticalBugs", "majorBugs", "highBugs", "totalOpenBugs", "reopenedBugs"],
+    percents: ["coverageRate", "successRate", "reopenRate"],
     enums: {}
   },
   readiness: {
     required: ["sprint"],
-    numbers: ["totalStories", "totalCases", "executedCases", "passedCases", "openCriticalBugs", "openHighBugs"],
-    percents: ["coverageRate", "successRate", "trainingReadiness", "pilotReadiness"],
+    numbers: ["totalStories", "deliveredStories", "totalCases", "executedCases", "passedCases", "openBlockerBugs", "openCriticalBugs", "openMajorBugs", "openHighBugs"],
+    percents: ["coverageRate", "successRate", "reopenRate", "trainingReadiness", "pilotReadiness"],
     enums: {}
   },
   matrix: {
@@ -162,105 +176,158 @@ const collectionRules = {
 const excelSheets = [
   {
     collection: "features",
-    name: "01_DanhMuc_UAT",
+    name: "DM_ChucNang",
     freezeColumns: 4,
     columns: [
       ["stt", "STT", 8, "number"],
-      ["code", "Mã CN", 18],
-      ["storyCode", "Mã Story", 18],
+      ["code", "Mã CN", 12],
+      ["storyCode", "Mã Story", 12],
       ["jiraCode", "Mã Jira", 20],
       ["group", "Nhóm chức năng", 28],
       ["name", "Tên chức năng", 34],
-      ["jiraName", "Tên Jira", 34],
-      ["jiraLink", "Link Jira", 22],
-      ["rsdLink", "Link RSD", 22],
-      ["sprintBA", "Sprint BA", 14],
-      ["sprintDev", "Sprint DEV", 14],
-      ["sprintQC", "Sprint QC", 14],
-      ["businessSprint", "Sprint Nghiệp vụ", 18],
-      ["status", "Trạng thái", 16],
+      ["sprint", "Sprint", 16],
       ["owner", "Đầu mối nghiệp vụ", 28],
-      ["uatHandoff", "Ngày bàn giao UAT", 18, "date"],
-      ["uatStart", "Ngày bắt đầu UAT", 18, "date"],
-      ["uatEnd", "Ngày kết thúc UAT", 18, "date"],
-      ["uatDone", "Ngày hoàn thành UAT", 20, "date"],
-      ["uatSigned", "Ngày ký UAT", 16, "date"],
-      ["handoffStatus", "Tình trạng bàn giao", 22],
-      ["completionRate", "% Hoàn thành TC", 18, "number"],
-      ["openBugs", "Số lỗi mở", 14, "number"],
-      ["uatWarning", "Cảnh báo UAT", 22]
+      ["uatHandoff", "Ngày BG UAT", 16, "date"],
+      ["handoffStatus", "Trạng thái BG", 18],
+      ["totalCases", "Tổng TC", 12, "number"],
+      ["passedCases", "Passed", 12, "number"],
+      ["failedCases", "Failed", 12, "number"],
+      ["blockedCases", "Blocked", 12, "number"],
+      ["defectOpen", "Defect Open", 14, "number"],
+      ["blockerOpen", "Blocker Open", 14, "number"],
+      ["criticalOpen", "Critical Open", 14, "number"],
+      ["uatResult", "Kết quả UAT", 18],
+      ["status", "Trạng thái UAT", 18],
+      ["completionRate", "% Hoàn thành TC", 16, "number"]
+    ]
+  },
+  {
+    collection: "handoffs",
+    name: "Lich_BG_US",
+    sectionKey: "sectionLevel1",
+    sectionColumnKey: "name",
+    columns: [
+      ["jiraCode", "Mã Jira", 20],
+      ["code", "Mã CN", 12],
+      ["storyCode", "Mã Story", 12],
+      ["name", "Tên chức năng", 34],
+      ["sprint", "Sprint", 16],
+      ["uatHandoff", "BG UAT", 14, "date"],
+      ["uatStart", "Bắt đầu UAT", 14, "date"],
+      ["uatEnd", "Kết thúc UAT", 14, "date"],
+      ["handoffStatus", "Trạng thái BG", 18],
+      ["uatStatus", "Trạng thái UAT", 18]
     ]
   },
   {
     collection: "plans",
-    name: "02_PhanCong_Sprint",
+    name: "PhanCong_UAT",
     columns: [
-      ["sprint", "Sprint", 14],
-      ["feature", "Chức năng", 34],
-      ["owner", "Chủ quản", 20],
-      ["t1", "T1", 14, "date"],
-      ["t2", "T2", 14, "date"],
-      ["t3", "T3", 14, "date"],
-      ["t4", "T4", 14, "date"],
-      ["t5", "T5", 14, "date"],
-      ["t6", "T6", 14, "date"],
-      ["note", "Ghi chú", 36]
-    ]
-  },
-  {
-    collection: "matrix",
-    name: "03_MaTran_NangLuc",
-    columns: [
+      ["code", "Mã CN", 12],
+      ["jiraCode", "Mã Jira", 20],
       ["group", "Nhóm chức năng", 28],
-      ["t1", "T1", 20],
-      ["t2", "T2", 20],
-      ["t3", "T3", 20],
-      ["t4", "T4", 20],
-      ["t5", "T5", 20],
-      ["t6", "T6", 20]
+      ["feature", "Tên chức năng", 34],
+      ["sprint", "Sprint", 16],
+      ["uatHandoff", "Bàn giao UAT", 14, "date"],
+      ["owner", "Đầu mối nghiệp vụ", 28],
+      ["nv", "NV", 10, "number"],
+      ["t1", "T1", 10, "number"],
+      ["t2", "T2", 10, "number"],
+      ["t3", "T3", 10, "number"],
+      ["t4", "T4", 10, "number"],
+      ["t5", "T5", 10, "number"],
+      ["t6", "T6", 10, "number"],
+      ["totalCases", "Tổng Testcase", 14, "number"],
+      ["testStatus", "Trạng thái kiểm thử", 20],
+      ["progress", "% hoàn thành", 16, "number"],
+      ["uatStatus", "Trạng thái UAT", 18],
+      ["devStatus", "Trạng thái DEV", 18],
+      ["priority", "Mức độ ưu tiên", 16, "number"]
     ]
   },
   {
     collection: "daily",
-    name: "04_DieuHanh_HangNgay",
+    name: "DieuHanh_Ngay",
     columns: [
       ["date", "Ngày", 14, "date"],
-      ["feature", "Chức năng", 34],
-      ["owner", "Chủ quản", 20],
-      ["tester", "Tester", 20],
-      ["totalCases", "Tổng testcase", 16, "number"],
-      ["executedCases", "Đã thực hiện", 16, "number"],
-      ["progress", "% hoàn thành", 16, "number"],
-      ["criticalBugs", "Lỗi nghiêm trọng", 18, "number"],
-      ["highBugs", "Lỗi mức cao", 16, "number"],
-      ["blocker", "Vướng mắc", 36]
+      ["jiraCode", "Mã Jira", 20],
+      ["feature", "Tên chức năng", 34],
+      ["sprint", "Sprint", 16],
+      ["tester", "Tester", 18],
+      ["totalCases", "Tổng TC", 12, "number"],
+      ["passedCases", "TC Passed", 12, "number"],
+      ["failedCases", "TC Failed", 12, "number"],
+      ["bugStatus", "Trạng thái lỗi", 18],
+      ["maxBugSeverity", "Mức độ lỗi", 16],
+      ["blocker", "Vướng mắc/Blocker", 32],
+      ["handler", "Người xử lý", 20],
+      ["dueDate", "Thời hạn xử lý", 16, "date"]
+    ]
+  },
+  {
+    collection: "defects",
+    name: "DEFECT_LOG",
+    columns: [
+      ["bugId", "Bug ID", 14],
+      ["jiraCode", "Mã Jira", 20],
+      ["storyName", "Tên Story", 34],
+      ["sprint", "Sprint", 16],
+      ["severity", "Severity", 14],
+      ["status", "Status", 16],
+      ["foundDate", "Ngày phát hiện", 16, "date"],
+      ["tester", "Tester", 18],
+      ["owner", "Owner", 28],
+      ["resolvedDate", "Ngày xử lý", 16, "date"],
+      ["aging", "Aging", 10, "number"],
+      ["note", "Ghi chú", 30]
     ]
   },
   {
     collection: "weekly",
-    name: "05_ChatLuong_Tuan",
+    name: "ChatLuong_Tuan",
     columns: [
       ["week", "Tuần", 14],
-      ["group", "Nhóm chức năng", 28],
-      ["totalCases", "Tổng testcase", 16, "number"],
-      ["executedCases", "Đã thực hiện", 16, "number"],
-      ["coverageRate", "Tỷ lệ bao phủ", 18, "number"],
-      ["successRate", "Tỷ lệ thành công", 20, "number"],
-      ["criticalBugs", "Lỗi nghiêm trọng", 18, "number"],
-      ["reopenedBugs", "Lỗi mở lại", 16, "number"],
+      ["sprint", "Sprint", 16],
+      ["totalStories", "Tổng Story", 12, "number"],
+      ["storyTested", "Story đã test", 14, "number"],
+      ["coverageRate", "Coverage %", 14, "number"],
+      ["successRate", "Pass Rate %", 14, "number"],
+      ["blockerBugs", "Blocker Open", 14, "number"],
+      ["criticalBugs", "Critical Open", 14, "number"],
+      ["reopenRate", "Reopen Rate", 14, "number"],
       ["assessment", "Đánh giá", 18]
     ]
   },
   {
     collection: "readiness",
-    name: "06_KetThuc_Sprint",
+    name: "TongKet_Sprint",
     columns: [
       ["sprint", "Sprint", 14],
-      ["coverageRate", "Tỷ lệ bao phủ", 18, "number"],
-      ["successRate", "Tỷ lệ thành công", 20, "number"],
-      ["openCriticalBugs", "Lỗi nghiêm trọng tồn đọng", 24, "number"],
-      ["readinessLevel", "Mức độ sẵn sàng", 22, "number"],
+      ["totalStories", "Tổng Story", 12, "number"],
+      ["deliveredStories", "Story đã bàn giao", 16, "number"],
+      ["coverageRate", "Tỷ lệ bao phủ", 14, "number"],
+      ["successRate", "Pass Rate %", 14, "number"],
+      ["openBlockerBugs", "Blocker Open", 14, "number"],
+      ["openCriticalBugs", "Critical Open", 14, "number"],
+      ["openMajorBugs", "Major Open", 14, "number"],
+      ["reopenRate", "Reopen Rate", 14, "number"],
       ["decision", "Quyết định", 20]
+    ]
+  },
+  {
+    collection: "matrix",
+    name: "NangSuat_Tester",
+    columns: [
+      ["group", "Nhóm chức năng", 34],
+      ["t1", "T1", 10, "number"],
+      ["t2", "T2", 10, "number"],
+      ["t3", "T3", 10, "number"],
+      ["t4", "T4", 10, "number"],
+      ["t5", "T5", 10, "number"],
+      ["t6", "T6", 10, "number"],
+      ["totalParticipation", "Tổng lượt tham gia", 18, "number"],
+      ["target", "Mục tiêu", 12, "number"],
+      ["warning", "Cảnh báo", 20]
     ]
   }
 ];
@@ -779,154 +846,6 @@ function ensureSchema() {
   return schemaPromise;
 }
 
-async function parseFeatureImportWorkbook(buffer) {
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer);
-  const worksheet = findFeatureImportWorksheet(workbook);
-  const header = worksheet ? findFeatureImportHeader(worksheet) : null;
-  if (!worksheet || !header) {
-    throw httpError(400, "Không tìm thấy header danh mục UAT trong file Excel.");
-  }
-
-  const records = [];
-  for (let rowNumber = header.rowNumber + 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
-    const row = worksheet.getRow(rowNumber);
-    const values = readFeatureImportRow(row, header.map);
-    if (isFeatureImportHeaderLike(values)) continue;
-    const code = normalizeImportedText(values.code);
-    const jiraCode = normalizeImportedText(values.jiraCode);
-    const name = normalizeImportedText(values.name || values.jiraName);
-    if (!code && !jiraCode && !name) continue;
-
-    const record = {
-      id: importId("features", jiraCode || code || name),
-      stt: toImportNumber(values.stt) || records.length + 1,
-      code,
-      storyCode: normalizeImportedText(values.storyCode),
-      jiraCode,
-      group: normalizeImportedText(values.group),
-      name,
-      jiraName: normalizeImportedText(values.jiraName),
-      jiraLink: normalizeImportedText(values.jiraLink),
-      rsdLink: normalizeImportedText(values.rsdLink),
-      sprintBA: normalizeImportedText(values.sprintBA),
-      sprintDev: normalizeImportedText(values.sprintDev),
-      sprintQC: normalizeImportedText(values.sprintQC),
-      businessSprint: normalizeImportedText(values.businessSprint),
-      sprint: normalizeImportedText(values.businessSprint) || normalizeImportedText(values.sprintQC) || normalizeImportedText(values.sprint),
-      status: normalizeImportedFeatureStatus(values.status),
-      owner: normalizeImportedOwner(values.owner),
-      uatHandoff: normalizeImportedDate(values.uatHandoff),
-      uatStart: normalizeImportedDate(values.uatStart),
-      uatEnd: normalizeImportedDate(values.uatEnd),
-      uatDone: normalizeImportedDate(values.uatDone),
-      uatSigned: normalizeImportedDate(values.uatSigned),
-      handoffStatus: normalizeImportedText(values.handoffStatus),
-      completionRate: toImportPercent(values.completionRate),
-      openBugs: toImportNumber(values.openBugs),
-      uatWarning: normalizeImportedText(values.uatWarning)
-    };
-    records.push(record);
-  }
-  return records;
-}
-
-function findFeatureImportWorksheet(workbook) {
-  const dm = workbook.getWorksheet("DM_ChucNang");
-  if (dm && findFeatureImportHeader(dm)) return dm;
-  const named = workbook.getWorksheet("01_DanhMuc_UAT");
-  if (named && findFeatureImportHeader(named)) return named;
-  return workbook.worksheets.find((worksheet) => findFeatureImportHeader(worksheet)) || null;
-}
-
-function findFeatureImportHeader(worksheet) {
-  const maxRows = Math.min(worksheet.rowCount, 80);
-  for (let rowNumber = 1; rowNumber <= maxRows; rowNumber += 1) {
-    const map = buildFeatureImportHeaderMap(worksheet.getRow(rowNumber));
-    if (map.code && map.name && (map.storyCode || map.jiraCode || map.sprint || map.status)) {
-      return { rowNumber, map };
-    }
-  }
-  return null;
-}
-
-const featureImportHeaderAliases = {
-  stt: ["stt", "so thu tu"],
-  code: ["ma chuc nang"],
-  storyCode: ["ma story"],
-  jiraCode: ["ma jira"],
-  group: ["nhom chuc nang"],
-  name: ["ten chuc nang"],
-  jiraName: ["ten jira"],
-  jiraLink: ["link jira"],
-  rsdLink: ["link rsd"],
-  sprintBA: ["sprint ba"],
-  sprintDev: ["sprint dev"],
-  sprintQC: ["sprint qc"],
-  businessSprint: ["sprint nghiep vu"],
-  sprint: ["sprint"],
-  status: ["trang thai"],
-  owner: ["dau moi nghiep vu", "nghiep vu", "chu quan", "chu quan nv"],
-  uatStatus: ["trang thai uat"],
-  uatHandoff: ["ban giao uat", "ngay ban giao uat"],
-  uatStart: ["ngay bat dau uat", "bat dau uat"],
-  uatEnd: ["ngay ket thuc uat", "ket thuc uat"],
-  uatDone: ["hoan thanh uat", "ngay hoan thanh uat"],
-  uatSigned: ["ngay ky uat"],
-  handoffStatus: ["tinh trang ban giao", "trang thai ban giao"],
-  completionRate: ["hoan thanh tc", "phan tram hoan thanh tc"],
-  openBugs: ["so loi mo"],
-  uatWarning: ["canh bao uat"]
-};
-
-function buildFeatureImportHeaderMap(row) {
-  const map = {};
-  for (let column = 1; column <= row.cellCount; column += 1) {
-    const label = normalizeImportHeader(row.getCell(column).value);
-    if (!label) continue;
-    for (const [key, aliases] of Object.entries(featureImportHeaderAliases)) {
-      if (!map[key] && aliases.includes(label)) {
-        map[key] = column;
-      }
-    }
-  }
-  return map;
-}
-
-function readFeatureImportRow(row, map) {
-  const values = {};
-  for (const key of Object.keys(featureImportHeaderAliases)) {
-    values[key] = map[key] ? unwrapExcelCellValue(row.getCell(map[key]).value) : "";
-  }
-  return values;
-}
-
-function isFeatureImportHeaderLike(values) {
-  return normalizeImportHeader(values.code) === "ma chuc nang"
-    || normalizeImportHeader(values.name) === "ten chuc nang";
-}
-
-function normalizeImportHeader(value) {
-  return normalizeImportedText(unwrapExcelCellValue(value))
-    .toLocaleLowerCase("vi")
-    .replace(/[đĐ]/g, "d")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function unwrapExcelCellValue(value) {
-  if (value == null) return "";
-  if (value instanceof Date) return value;
-  if (typeof value !== "object") return value;
-  if (Object.prototype.hasOwnProperty.call(value, "result")) return unwrapExcelCellValue(value.result);
-  if (typeof value.text === "string") return value.text;
-  if (Array.isArray(value.richText)) return value.richText.map((part) => part.text || "").join("");
-  return "";
-}
-
 function normalizeImportedText(value) {
   if (value == null) return "";
   if (value instanceof Date) return formatDateForInput(value);
@@ -937,6 +856,17 @@ function normalizeImportedNumber(value) {
   if (isBlank(value)) return "";
   const number = Number(String(value).replace(",", "."));
   return Number.isFinite(number) ? number : normalizeImportedText(value);
+}
+
+function normalizeImportHeader(value) {
+  return String(value || "")
+    .trim()
+    .toLocaleLowerCase("vi")
+    .replace(/[đĐ]/g, "d")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function normalizeImportedFeatureStatus(value) {
@@ -992,9 +922,10 @@ async function parseWorkbookImportState(buffer) {
   state.handoffs = parseHandoffSheet(workbook.getWorksheet("Lich_BG_US"));
   state.plans = parsePlanSheet(workbook.getWorksheet("PhanCong_UAT"));
   state.daily = parseDailySheet(workbook.getWorksheet("DieuHanh_Ngay"));
+  state.defects = parseDefectSheet(workbook.getWorksheet("DEFECT_LOG"));
   state.weekly = parseWeeklySheet(workbook.getWorksheet("ChatLuong_Tuan"));
   state.readiness = parseReadinessSheet(workbook.getWorksheet("TongKet_Sprint"));
-  state.matrix = parseMatrixSheet(workbook.getWorksheet("MaTran_NangLuc"));
+  state.matrix = parseMatrixSheet(workbook.getWorksheet("NangSuat_Tester"));
   state.guide = parseGuideSheet(workbook.getWorksheet("HD_UAT"));
   applyWorkbookRules(state);
   assignSortOrder(state);
@@ -1005,7 +936,7 @@ async function parseWorkbookImportState(buffer) {
 function parseDmChucNangSheet(worksheet) {
   if (!worksheet) return [];
   const records = [];
-  for (let rowNumber = 5; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
     const row = worksheet.getRow(rowNumber);
     const jiraCode = cellTextAt(row, 4);
     const code = cellTextAt(row, 2);
@@ -1020,25 +951,23 @@ function parseDmChucNangSheet(worksheet) {
       jiraCode,
       group,
       name,
-      jiraName: cellTextAt(row, 7),
-      jiraLink: cellTextAt(row, 8),
-      rsdLink: cellTextAt(row, 9),
-      sprintBA: cellTextAt(row, 10),
-      sprintDev: cellTextAt(row, 11),
-      sprintQC: cellTextAt(row, 12),
-      businessSprint: cellTextAt(row, 13),
-      sprint: cellTextAt(row, 13) || cellTextAt(row, 12),
-      status: cellTextAt(row, 14),
-      owner: normalizeImportedOwner(cellValueAt(row, 15)),
-      uatHandoff: toImportDate(cellValueAt(row, 16)),
-      uatStart: toImportDate(cellValueAt(row, 17)),
-      uatEnd: toImportDate(cellValueAt(row, 18)),
-      uatDone: toImportDate(cellValueAt(row, 19)),
-      uatSigned: toImportDate(cellValueAt(row, 20)),
-      handoffStatus: cellTextAt(row, 21),
-      completionRate: toImportPercent(cellValueAt(row, 22)),
-      openBugs: toImportNumber(cellValueAt(row, 23)),
-      uatWarning: cellTextAt(row, 24)
+      jiraName: name,
+      sprint: cellTextAt(row, 7),
+      owner: normalizeImportedOwner(cellValueAt(row, 8)),
+      uatHandoff: toImportDate(cellValueAt(row, 9)),
+      handoffStatus: cellTextAt(row, 10),
+      totalCases: toImportNumber(cellValueAt(row, 11)),
+      passedCases: toImportNumber(cellValueAt(row, 12)),
+      failedCases: toImportNumber(cellValueAt(row, 13)),
+      blockedCases: toImportNumber(cellValueAt(row, 14)),
+      defectOpen: toImportNumber(cellValueAt(row, 15)),
+      blockerOpen: toImportNumber(cellValueAt(row, 16)),
+      criticalOpen: toImportNumber(cellValueAt(row, 17)),
+      uatResult: cellTextAt(row, 18),
+      status: cellTextAt(row, 19),
+      completionRate: toImportPercent(cellValueAt(row, 20)),
+      openBugs: toImportNumber(cellValueAt(row, 15)),
+      uatWarning: cellTextAt(row, 18)
     });
   }
   return records;
@@ -1112,12 +1041,11 @@ function parseHandoffSheet(worksheet) {
       sectionLevel2,
       name,
       sprint: cellTextAt(row, 5),
-      defaultHandoffDate: toImportDate(cellValueAt(row, 6)),
-      uatHandoff: toImportDate(cellValueAt(row, 7)),
-      uatStart: toImportDate(cellValueAt(row, 8)),
-      uatEnd: toImportDate(cellValueAt(row, 9)),
-      handoffStatus: cellTextAt(row, 10),
-      note: cellTextAt(row, 11)
+      uatHandoff: toImportDate(cellValueAt(row, 6)),
+      uatStart: toImportDate(cellValueAt(row, 7)),
+      uatEnd: toImportDate(cellValueAt(row, 8)),
+      handoffStatus: cellTextAt(row, 9),
+      uatStatus: cellTextAt(row, 10)
     });
   }
   return records;
@@ -1139,7 +1067,7 @@ function parsePlanSheet(worksheet) {
     const feature = cellTextAt(row, 4);
     if (!jiraCode || !feature) return null;
     const totalCases = toImportNumber(cellValueAt(row, 15));
-    const executedCases = toImportNumber(cellValueAt(row, 16));
+    const executedCases = 0;
     return {
       id: importId("plans", cellTextAt(row, 5), jiraCode),
       code,
@@ -1159,10 +1087,11 @@ function parsePlanSheet(worksheet) {
       t6: toImportNumber(cellValueAt(row, 14)),
       totalCases,
       executedCases,
+      testStatus: cellTextAt(row, 16),
       progress: toImportPercent(cellValueAt(row, 17)) || percent(executedCases, totalCases),
       uatStatus: cellTextAt(row, 18),
-      rotationWarning: cellTextAt(row, 19),
-      note: cellTextAt(row, 20)
+      devStatus: cellTextAt(row, 19),
+      priority: toImportNumber(cellValueAt(row, 20))
     };
   });
 }
@@ -1171,86 +1100,107 @@ function parseDailySheet(worksheet) {
   if (!worksheet) return [];
   return parseRows(worksheet, 4, (row) => {
     const date = toImportDate(cellValueAt(row, 1));
-    const jiraCode = cellTextAt(row, 4);
-    const tester = cellTextAt(row, 6);
-    const totalCases = toImportNumber(cellValueAt(row, 7));
-    const executedCases = toImportNumber(cellValueAt(row, 8));
-    const blocker = cellTextAt(row, 13);
+    const jiraCode = cellTextAt(row, 2);
+    const feature = cellTextAt(row, 3);
+    const sprint = cellTextAt(row, 4);
+    const tester = cellTextAt(row, 5);
+    const totalCases = toImportNumber(cellValueAt(row, 6));
+    const passedCases = toImportNumber(cellValueAt(row, 7));
+    const failedCases = toImportNumber(cellValueAt(row, 8));
+    const blocker = cellTextAt(row, 11);
+    const executedCases = Number(passedCases || 0) + Number(failedCases || 0);
     if (!date && !jiraCode && !tester && !totalCases && !executedCases && !blocker) return null;
     return {
       id: importId("daily", date, jiraCode, tester, row.number),
       date,
-      sprint: cellTextAt(row, 2),
-      code: cellTextAt(row, 3),
+      sprint,
+      code: "",
       jiraCode,
-      feature: cellTextAt(row, 5),
+      feature,
       tester,
       totalCases,
       executedCases,
-      passedCases: toImportNumber(cellValueAt(row, 9)),
-      failedCases: toImportNumber(cellValueAt(row, 10)),
-      bugStatus: cellTextAt(row, 11),
-      maxBugSeverity: cellTextAt(row, 12),
-      criticalBugs: normalizeSeverityCount(cellTextAt(row, 12), ["Blocker", "Critical", "Nghiêm trọng"], cellTextAt(row, 11)),
-      highBugs: normalizeSeverityCount(cellTextAt(row, 12), ["Major", "Cao"], cellTextAt(row, 11)),
+      passedCases,
+      failedCases,
+      bugStatus: cellTextAt(row, 9),
+      maxBugSeverity: cellTextAt(row, 10),
+      criticalBugs: normalizeSeverityCount(cellTextAt(row, 10), ["Blocker", "Critical", "Nghiêm trọng"], cellTextAt(row, 9)),
+      highBugs: normalizeSeverityCount(cellTextAt(row, 10), ["Major", "Cao"], cellTextAt(row, 9)),
       blocker,
-      handler: cellTextAt(row, 14),
-      dueDate: toImportDate(cellValueAt(row, 15))
+      handler: cellTextAt(row, 12),
+      dueDate: toImportDate(cellValueAt(row, 13))
+    };
+  });
+}
+
+function parseDefectSheet(worksheet) {
+  if (!worksheet) return [];
+  return parseRows(worksheet, 2, (row) => {
+    const bugId = cellTextAt(row, 1);
+    const jiraCode = cellTextAt(row, 2);
+    const severity = cellTextAt(row, 5);
+    const status = cellTextAt(row, 6);
+    const note = cellTextAt(row, 12);
+    if (!bugId && !jiraCode && !severity && !status && !note) return null;
+    return {
+      id: importId("defects", bugId || jiraCode, row.number),
+      bugId,
+      jiraCode,
+      storyName: cellTextAt(row, 3),
+      sprint: cellTextAt(row, 4),
+      severity,
+      status,
+      foundDate: toImportDate(cellValueAt(row, 7)),
+      tester: cellTextAt(row, 8),
+      owner: normalizeImportedOwner(cellValueAt(row, 9)),
+      resolvedDate: toImportDate(cellValueAt(row, 10)),
+      aging: toImportNumber(cellValueAt(row, 11)),
+      note
     };
   });
 }
 
 function parseWeeklySheet(worksheet) {
   if (!worksheet) return [];
-  return parseRows(worksheet, 4, (row) => {
+  return parseRows(worksheet, 2, (row) => {
     const week = cellTextAt(row, 1);
     if (!week) return null;
-    const blockerBugs = toImportNumber(cellValueAt(row, 10));
-    const criticalBugs = toImportNumber(cellValueAt(row, 11));
-    const majorBugs = toImportNumber(cellValueAt(row, 12));
+    const blockerBugs = toImportNumber(cellValueAt(row, 7));
+    const criticalBugs = toImportNumber(cellValueAt(row, 8));
     return {
-      id: importId("weekly", week, cellTextAt(row, 2), cellTextAt(row, 3)),
+      id: importId("weekly", week, cellTextAt(row, 2)),
       week,
       sprint: cellTextAt(row, 2),
-      group: cellTextAt(row, 3),
-      totalStories: toImportNumber(cellValueAt(row, 4)),
-      totalCases: toImportNumber(cellValueAt(row, 5)),
-      executedCases: toImportNumber(cellValueAt(row, 6)),
-      coverageRate: toImportPercent(cellValueAt(row, 7)),
-      passedCases: toImportNumber(cellValueAt(row, 8)),
-      successRate: toImportPercent(cellValueAt(row, 9)),
+      totalStories: toImportNumber(cellValueAt(row, 3)),
+      storyTested: toImportNumber(cellValueAt(row, 4)),
+      coverageRate: toImportPercent(cellValueAt(row, 5)),
+      successRate: toImportPercent(cellValueAt(row, 6)),
       blockerBugs,
       criticalBugs,
-      majorBugs,
-      highBugs: majorBugs,
-      totalOpenBugs: toImportNumber(cellValueAt(row, 13)),
-      gateResult: cellTextAt(row, 14),
-      assessment: cellTextAt(row, 14),
-      note: cellTextAt(row, 15)
+      reopenRate: toImportPercent(cellValueAt(row, 9)),
+      gateResult: cellTextAt(row, 10),
+      assessment: cellTextAt(row, 10)
     };
   });
 }
 
 function parseReadinessSheet(worksheet) {
   if (!worksheet) return [];
-  return parseRows(worksheet, 4, (row) => {
+  return parseRows(worksheet, 2, (row) => {
     const sprint = cellTextAt(row, 1);
     if (!sprint) return null;
     return {
       id: importId("readiness", sprint),
       sprint,
-      handoffDate: toImportDate(cellValueAt(row, 2)),
-      totalStories: toImportNumber(cellValueAt(row, 3)),
-      totalCases: toImportNumber(cellValueAt(row, 4)),
-      executedCases: toImportNumber(cellValueAt(row, 5)),
-      coverageRate: toImportPercent(cellValueAt(row, 6)),
-      passedCases: toImportNumber(cellValueAt(row, 7)),
-      successRate: toImportPercent(cellValueAt(row, 8)),
-      openCriticalBugs: toImportNumber(cellValueAt(row, 9)),
-      openHighBugs: toImportNumber(cellValueAt(row, 10)),
-      readinessLevel: cellTextAt(row, 11),
-      decision: cellTextAt(row, 12),
-      note: cellTextAt(row, 13)
+      totalStories: toImportNumber(cellValueAt(row, 2)),
+      deliveredStories: toImportNumber(cellValueAt(row, 3)),
+      coverageRate: toImportPercent(cellValueAt(row, 4)),
+      successRate: toImportPercent(cellValueAt(row, 5)),
+      openBlockerBugs: toImportNumber(cellValueAt(row, 6)),
+      openCriticalBugs: toImportNumber(cellValueAt(row, 7)),
+      openMajorBugs: toImportNumber(cellValueAt(row, 8)),
+      reopenRate: toImportPercent(cellValueAt(row, 9)),
+      decision: cellTextAt(row, 10)
     };
   });
 }
@@ -1325,6 +1275,16 @@ function parseRows(worksheet, startRow, mapper) {
   return records;
 }
 
+function unwrapExcelCellValue(value) {
+  if (value == null) return "";
+  if (value instanceof Date) return value;
+  if (typeof value !== "object") return value;
+  if (Object.prototype.hasOwnProperty.call(value, "result")) return unwrapExcelCellValue(value.result);
+  if (Object.prototype.hasOwnProperty.call(value, "text")) return value.text;
+  if (Array.isArray(value.richText)) return value.richText.map((part) => part?.text || "").join("");
+  return value.text ?? value.result ?? "";
+}
+
 function cellValueAt(row, column) {
   return unwrapExcelCellValue(row.getCell(column).value);
 }
@@ -1359,19 +1319,20 @@ function applyWorkbookRules(state) {
   const features = collectionRows(state, "features");
   const plans = collectionRows(state, "plans");
   const daily = collectionRows(state, "daily");
+  const defects = collectionRows(state, "defects");
   const weekly = collectionRows(state, "weekly");
   const readiness = collectionRows(state, "readiness");
   const matrix = collectionRows(state, "matrix");
 
   applyScheduleRules(schedule);
 
-  // Lich_BG_US!F/H/I are formulas. G/J/K remain manual inputs.
   const scheduleBySprint = lookupBy(schedule, "sprint");
   handoffs.forEach((row) => {
-    const scheduleRow = scheduleBySprint.get(lookupKey(row.sprint));
-    row.defaultHandoffDate = scheduleRow?.handoffDate || "";
-    row.uatStart = row.uatHandoff || "";
-    row.uatEnd = row.uatHandoff ? addDays(row.uatHandoff, 4) : "";
+    row.uatStart = row.uatStart || row.uatHandoff || "";
+    row.uatEnd = row.uatEnd || (row.uatHandoff ? addDays(row.uatHandoff, 4) : "");
+    row.handoffStatus = row.handoffStatus || (row.uatHandoff ? "✅ Đã bàn giao" : "⏯️Chưa bàn giao");
+    row.uatStatus = row.uatStatus || row.note || "";
+    delete row.note;
   });
 
   const featureByJira = lookupBy(features, "jiraCode");
@@ -1379,52 +1340,74 @@ function applyWorkbookRules(state) {
   const handoffByJira = lookupBy(handoffs, "jiraCode");
   const handoffByFeatureName = lookupBy(handoffs, "name");
 
-  // PhanCong_UAT!E/F/O/Q/S are formulas. Column E follows the workbook
-  // VLOOKUP from DM_ChucNang and resolves to Sprint QC, not Sprint Nghiệp vụ.
   plans.forEach((row) => {
     const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.feature));
     const handoff = handoffByJira.get(lookupKey(row.jiraCode)) || handoffByFeatureName.get(lookupKey(row.feature));
     row.feature = feature?.name || row.feature || "";
     row.group = feature?.group || row.group || "";
-    row.sprint = feature?.sprintQC || row.sprint || feature?.businessSprint || "";
+    row.sprint = row.sprint || handoff?.sprint || feature?.sprint || "";
     row.featureSprint = row.sprint;
     row.uatHandoff = handoff?.uatHandoff || row.uatHandoff || "";
     row.owner = row.owner || feature?.owner || "";
-    row.totalCases = sumPlanAssignments(row);
-    row.executedCases = Number(row.executedCases || 0);
+    row.totalCases = row.totalCases === "" || row.totalCases == null ? 0 : Number(row.totalCases || 0);
+    row.executedCases = sumWhere(daily, (item) => sameLookup(item.jiraCode, row.jiraCode), "executedCases");
     row.progress = percent(row.executedCases, row.totalCases);
-    row.rotationWarning = rotationWarning(row);
+    row.testStatus = row.testStatus || inferTestStatus(row.executedCases, row.totalCases);
+    row.uatStatus = row.uatStatus || inferUatStatus(row.executedCases, row.totalCases);
+    row.devStatus = row.devStatus || handoff?.uatStatus || "";
+    row.priority = row.priority === "" || row.priority == null ? inferUatPriority(row.devStatus) : row.priority;
+    delete row.note;
   });
 
-  // DieuHanh_Ngay!B/E are formulas. E intentionally follows the workbook
-  // VLOOKUP(D:F,2), which returns the function group.
   daily.forEach((row) => {
     const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.feature));
-    row.sprint = feature?.businessSprint || "";
-    row.feature = feature?.group || "";
+    row.code = feature?.code || row.code || "";
+    row.sprint = row.sprint || feature?.sprint || "";
+    row.feature = row.feature || feature?.name || "";
+    row.executedCases = Number(row.executedCases || 0) || Number(row.passedCases || 0) + Number(row.failedCases || 0);
     row.criticalBugs = isBlockingSeverity(row.maxBugSeverity) && isOpenBugStatus(row.bugStatus) ? 1 : 0;
     row.highBugs = isHighSeverity(row.maxBugSeverity) && isOpenBugStatus(row.bugStatus) ? 1 : 0;
   });
 
-  // DM_ChucNang!P/Q/R/U/V/W/X are formulas.
+  defects.forEach((row) => {
+    const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.storyName));
+    row.storyName = row.storyName || feature?.name || "";
+    row.sprint = row.sprint || feature?.sprint || "";
+    row.owner = row.owner || feature?.owner || "";
+  });
+
   features.forEach((row) => {
-    const handoff = handoffByJira.get(lookupKey(row.jiraCode));
+    const handoff = handoffByJira.get(lookupKey(row.jiraCode)) || handoffByFeatureName.get(lookupKey(row.name));
+    const planRows = plans.filter((plan) => sameLookup(plan.jiraCode, row.jiraCode) || sameLookup(plan.feature, row.name));
+    const dailyRows = daily.filter((item) => sameLookup(item.jiraCode, row.jiraCode) || sameLookup(item.feature, row.name));
+    const defectRows = defects.filter((item) => (
+      sameLookup(item.jiraCode, row.jiraCode) || sameLookup(item.storyName, row.name)
+    ) && isOpenBugStatus(item.status));
     row.uatHandoff = handoff?.uatHandoff || "";
     row.uatStart = handoff?.uatStart || "";
     row.uatEnd = handoff?.uatEnd || "";
     row.handoffStatus = handoff?.handoffStatus || "";
-    const numerator = sumWhere(plans, (plan) => sameLookup(plan.jiraCode, row.jiraCode), "t6", true);
-    const denominator = sumWhere(plans, (plan) => sameLookup(plan.jiraCode, row.jiraCode), "t5", true);
-    row.completionRate = denominator ? round((numerator / denominator) * 100) : 0;
-    row.openBugs = daily.filter((item) => sameLookup(item.jiraCode, row.jiraCode) && isOpenBugStatus(item.bugStatus)).length;
-    row.uatWarning = row.openBugs > 0 ? "Có lỗi mở" : (Number(row.completionRate || 0) < 100 ? "Chưa hoàn thành TC" : "Đạt");
+    row.sprint = handoff?.sprint || row.sprint || planRows[0]?.sprint || "";
+    row.owner = row.owner || planRows[0]?.owner || "";
+    row.status = handoff?.uatStatus || row.status || planRows[0]?.devStatus || "";
+    row.totalCases = sumWhere(planRows, () => true, "totalCases");
+    row.passedCases = sumWhere(dailyRows, () => true, "passedCases");
+    row.failedCases = sumWhere(dailyRows, () => true, "failedCases");
+    row.blockedCases = dailyRows.filter((item) => normalizeImportedText(item.blocker)).length;
+    row.defectOpen = defectRows.length;
+    row.blockerOpen = defectRows.filter((item) => isSeverity(item.severity, "Blocker")).length;
+    row.criticalOpen = defectRows.filter((item) => isSeverity(item.severity, "Critical")).length;
+    row.completionRate = percent(row.passedCases, row.totalCases);
+    row.uatResult = inferFeatureUatResult(row);
+    row.openBugs = row.defectOpen;
+    row.uatWarning = row.defectOpen > 0 ? "Có lỗi mở" : (Number(row.completionRate || 0) < 100 ? "Chưa hoàn thành TC" : "Đạt");
   });
 
-  // ChatLuong_Tuan!E:L are formulas.
   weekly.forEach((row) => {
     const sprintKey = row.sprint || (isSprintLabel(row.week) ? row.week : "");
     if (!sprintKey) {
       row.totalStories = 0;
+      row.storyTested = 0;
       row.totalCases = 0;
       row.executedCases = 0;
       row.coverageRate = 0;
@@ -1435,47 +1418,54 @@ function applyWorkbookRules(state) {
       row.majorBugs = 0;
       row.highBugs = 0;
       row.totalOpenBugs = 0;
-      row.gateResult = "Đạt có điều kiện";
+      row.reopenRate = 0;
+      row.gateResult = row.assessment || "Đạt có điều kiện";
       row.assessment = row.gateResult;
       return;
     }
-    row.totalStories = plans.filter((plan) => sameLookup(plan.sprint, sprintKey)).length;
+    row.totalStories = features.filter((feature) => sameLookup(feature.sprint, sprintKey)).length;
+    row.storyTested = features.filter((feature) => sameLookup(feature.sprint, sprintKey) && Number(feature.totalCases || 0) > 0).length;
     row.totalCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, sprintKey), "totalCases");
     row.executedCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, sprintKey), "executedCases");
-    row.coverageRate = percent(row.executedCases, row.totalCases);
+    row.coverageRate = percent(row.storyTested, row.totalStories);
     row.passedCases = sumWhere(daily, (item) => sameLookup(item.sprint, sprintKey), "passedCases");
-    row.successRate = percent(row.passedCases, row.executedCases);
-    row.blockerBugs = daily.filter((item) => sameLookup(item.sprint, sprintKey) && isSeverity(item.maxBugSeverity, "Blocker") && isOpenBugStatus(item.bugStatus)).length;
-    row.criticalBugs = daily.filter((item) => sameLookup(item.sprint, sprintKey) && isSeverity(item.maxBugSeverity, "Critical") && isOpenBugStatus(item.bugStatus)).length;
-    row.majorBugs = daily.filter((item) => sameLookup(item.sprint, sprintKey) && isSeverity(item.maxBugSeverity, "Major") && isOpenBugStatus(item.bugStatus)).length;
+    row.successRate = percent(row.passedCases, row.executedCases || row.totalCases);
+    const openDefects = defects.filter((item) => sameLookup(item.sprint, sprintKey) && isOpenBugStatus(item.status));
+    row.blockerBugs = openDefects.filter((item) => isSeverity(item.severity, "Blocker")).length;
+    row.criticalBugs = openDefects.filter((item) => isSeverity(item.severity, "Critical")).length;
+    row.majorBugs = openDefects.filter((item) => isSeverity(item.severity, "Major")).length;
     row.highBugs = row.majorBugs;
     row.totalOpenBugs = row.blockerBugs + row.criticalBugs + row.majorBugs;
-    row.gateResult = row.totalOpenBugs > 0 ? "Chưa đạt" : (Number(row.coverageRate || 0) < 90 ? "Đạt có điều kiện" : "Đạt");
+    row.reopenRate = percent(defects.filter((item) => sameLookup(item.sprint, sprintKey) && isSeverity(item.status, "Reopened")).length, defects.filter((item) => sameLookup(item.sprint, sprintKey)).length);
+    row.gateResult = row.totalOpenBugs > 0 ? "Chưa đạt" : (Number(row.coverageRate || 0) < 95 || Number(row.successRate || 0) < 90 ? "Đạt có điều kiện" : "Đạt");
     row.assessment = row.gateResult;
   });
 
-  // TongKet_Sprint!B:L are formulas.
   readiness.forEach((row) => {
     const scheduleRow = scheduleBySprint.get(lookupKey(row.sprint));
     row.handoffDate = scheduleRow?.handoffDate || "";
-    row.totalStories = plans.filter((plan) => sameLookup(plan.sprint, row.sprint)).length;
+    row.totalStories = features.filter((feature) => sameLookup(feature.sprint, row.sprint)).length;
+    row.deliveredStories = handoffs.filter((handoff) => sameLookup(handoff.sprint, row.sprint) && normalizeImportedText(handoff.uatHandoff)).length;
     row.totalCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, row.sprint), "totalCases");
     row.executedCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, row.sprint), "executedCases");
-    row.coverageRate = percent(row.executedCases, row.totalCases);
+    row.coverageRate = percent(row.deliveredStories, row.totalStories);
     row.passedCases = sumWhere(daily, (item) => sameLookup(item.sprint, row.sprint), "passedCases");
-    row.successRate = percent(row.passedCases, row.executedCases);
-    row.openCriticalBugs = daily.filter((item) => sameLookup(item.sprint, row.sprint) && isBlockingSeverity(item.maxBugSeverity) && isOpenBugStatus(item.bugStatus)).length;
-    row.openHighBugs = daily.filter((item) => sameLookup(item.sprint, row.sprint) && isHighSeverity(item.maxBugSeverity) && isOpenBugStatus(item.bugStatus)).length;
-    row.readinessLevel = row.openCriticalBugs > 0 ? "Đỏ" : (Number(row.coverageRate || 0) < 90 ? "Vàng" : "Xanh");
-    row.decision = row.openCriticalBugs > 0
+    row.successRate = percent(row.passedCases, row.executedCases || row.totalCases);
+    const openDefects = defects.filter((item) => sameLookup(item.sprint, row.sprint) && isOpenBugStatus(item.status));
+    row.openBlockerBugs = openDefects.filter((item) => isSeverity(item.severity, "Blocker")).length;
+    row.openCriticalBugs = openDefects.filter((item) => isSeverity(item.severity, "Critical")).length;
+    row.openMajorBugs = openDefects.filter((item) => isSeverity(item.severity, "Major")).length;
+    row.openHighBugs = row.openMajorBugs;
+    row.reopenRate = percent(defects.filter((item) => sameLookup(item.sprint, row.sprint) && isSeverity(item.status, "Reopened")).length, defects.filter((item) => sameLookup(item.sprint, row.sprint)).length);
+    row.readinessLevel = row.openBlockerBugs || row.openCriticalBugs ? "Đỏ" : (Number(row.coverageRate || 0) < 95 || Number(row.successRate || 0) < 90 ? "Vàng" : "Xanh");
+    row.decision = row.openBlockerBugs || row.openCriticalBugs
       ? "NO GO"
-      : (Number(row.coverageRate || 0) >= 95 && Number(row.successRate || 0) >= 90 && Number(row.openHighBugs || 0) <= 3 ? "GO" : "CONDITIONAL GO");
+      : (Number(row.coverageRate || 0) >= 95 && Number(row.successRate || 0) >= 90 && Number(row.openMajorBugs || 0) <= 5 && Number(row.reopenRate || 0) < 10 ? "GO" : "CONDITIONAL GO");
   });
 
-  // MaTran_NangLuc!B:H/J are formulas. I is the manual target.
   matrix.forEach((row) => {
     testerKeys.forEach((testerKey) => {
-      row[testerKey] = plans.filter((plan) => sameLookup(plan.group, row.group) && isCheckmark(plan[testerKey])).length;
+      row[testerKey] = plans.filter((plan) => sameLookup(plan.group, row.group) && excelNumeric(plan[testerKey]) > 0).length;
     });
     row.totalParticipation = testerKeys.reduce((total, testerKey) => total + Number(row[testerKey] || 0), 0);
     row.warning = Number(row.totalParticipation || 0) < Number(row.target || 0) ? "Chưa đủ luân chuyển" : "Đạt";
@@ -1529,11 +1519,32 @@ function isCheckmark(value) {
   return normalizeImportedText(value) === "✓";
 }
 
-function rotationWarning(row) {
-  const assigned = testerKeys.filter((key) => isCheckmark(row?.[key])).length;
-  if (assigned < 2) return "Thiếu tester";
-  if (assigned > 3) return "Quá nhiều tester";
-  return "Đạt";
+function inferTestStatus(executedCases, totalCases) {
+  const executed = Number(executedCases || 0);
+  const total = Number(totalCases || 0);
+  if (!executed) return "Chưa Test";
+  return total && executed >= total ? "Passed" : "Đang Test";
+}
+
+function inferUatStatus(executedCases, totalCases) {
+  const executed = Number(executedCases || 0);
+  const total = Number(totalCases || 0);
+  if (!executed) return "Chưa bắt đầu";
+  return total && executed >= total ? "Hoàn thành" : "Đang kiểm thử";
+}
+
+function inferUatPriority(devStatus) {
+  const normalized = normalizeImportHeader(devStatus);
+  if (normalized === "done sit") return 1;
+  if (normalized === "done uat") return 2;
+  return "";
+}
+
+function inferFeatureUatResult(row) {
+  if (Number(row.blockerOpen || 0) || Number(row.criticalOpen || 0)) return "CÓ LỖI NGHIÊM TRỌNG";
+  if (!Number(row.totalCases || 0) || !Number(row.passedCases || 0)) return "CHƯA TEST";
+  if (Number(row.failedCases || 0) || Number(row.blockedCases || 0)) return "ĐANG XỬ LÝ";
+  return Number(row.completionRate || 0) >= 100 ? "PASS" : "ĐANG TEST";
 }
 
 function isSeverity(value, target) {
@@ -1758,18 +1769,20 @@ function calculateWorkbookMetrics(state) {
   const readiness = Array.isArray(state.readiness) ? state.readiness : [];
   const plans = Array.isArray(state.plans) ? state.plans : [];
   const matrix = Array.isArray(state.matrix) ? state.matrix : [];
+  const defects = Array.isArray(state.defects) ? state.defects : [];
   const completedFeatures = features.filter((row) => isCompletedFeatureStatus(row.status)).length;
   const statusDrivenProgress = features.length ? percent(completedFeatures, features.length) : 0;
   const totalCases = sumBy(plans, "totalCases");
-  const executedCases = sumBy(plans, "executedCases");
-  const coverage = percent(executedCases, totalCases);
+  const passedCases = sumBy(daily, "passedCases");
+  const deliveredStories = (state.handoffs || []).filter((row) => normalizeImportedText(row.uatHandoff)).length;
+  const coverage = percent(deliveredStories, features.length);
   const successRate = round(average([
     ...weekly.map((row) => row.successRate),
     ...readiness.map((row) => row.successRate)
   ]) || 0);
   const latestReadiness = getLatestRecord(readiness);
-  const blockerBugs = daily.filter((row) => isSeverity(row.maxBugSeverity, "Blocker") && isOpenBugStatus(row.bugStatus)).length;
-  const dailyCritical = daily.filter((row) => isSeverity(row.maxBugSeverity, "Critical") && isOpenBugStatus(row.bugStatus)).length;
+  const blockerBugs = defects.filter((row) => isSeverity(row.severity, "Blocker") && isOpenBugStatus(row.status)).length;
+  const criticalBugs = defects.filter((row) => isSeverity(row.severity, "Critical") && isOpenBugStatus(row.status)).length;
   const readinessFallback = round(latestReadiness?.readinessLevel || average([coverage, successRate]));
 
   return {
@@ -1777,9 +1790,9 @@ function calculateWorkbookMetrics(state) {
     coverage,
     successRate,
     blockerBugs,
-    criticalBugs: dailyCritical,
+    criticalBugs,
     trainingReadiness: calculateDashboardTrainingReadiness(matrix),
-    pilotReadiness: round(latestReadiness?.pilotReadiness || readinessFallback || 0)
+    pilotReadiness: round((coverage * 0.5 + percent(passedCases, totalCases) * 0.5) || latestReadiness?.pilotReadiness || readinessFallback || 0)
   };
 }
 
@@ -2064,6 +2077,7 @@ function emptyState() {
     handoffs: [],
     plans: [],
     daily: [],
+    defects: [],
     weekly: [],
     readiness: [],
     matrix: [],
@@ -2318,17 +2332,21 @@ function normalizeAiHistory(history) {
 function buildAiDataContext(state) {
   const metrics = calculateWorkbookMetrics(state);
   const totalCases = sumBy(state.plans || [], "totalCases");
-  const executedCases = sumBy(state.plans || [], "executedCases");
+  const passedCases = sumBy(state.daily || [], "passedCases");
+  const failedCases = sumBy(state.daily || [], "failedCases");
+  const deliveredStories = (state.handoffs || []).filter((row) => row.uatHandoff).length;
   const context = {
     generatedAt: new Date().toISOString(),
     dataUpdatedAt: state.updatedAt || "",
     counts: summarizeImportState(state),
     dashboard: {
       totalStories: (state.features || []).length,
-      storiesWithUatSchedule: (state.features || []).filter((row) => row.uatHandoff || row.handoffDate).length,
+      deliveredStories,
+      notDeliveredStories: Math.max(0, (state.features || []).length - deliveredStories),
       totalCases,
-      executedCases,
-      coverageRate: percent(executedCases, totalCases),
+      passedCases,
+      failedCases,
+      handoffRate: percent(deliveredStories, (state.features || []).length),
       blockerBugs: metrics.blockerBugs,
       criticalBugs: metrics.criticalBugs,
       trainingReadiness: metrics.trainingReadiness,
@@ -2371,7 +2389,7 @@ function summarizeAiSprints(state) {
   const ensure = (sprint) => {
     const key = String(sprint || "Chưa gán Sprint").trim();
     if (!buckets.has(key)) {
-      buckets.set(key, { sprint: key, storyCount: 0, totalCases: 0, executedCases: 0, decision: "" });
+      buckets.set(key, { sprint: key, storyCount: 0, deliveredStories: 0, totalCases: 0, executedCases: 0, coverageRate: 0, decision: "" });
     }
     return buckets.get(key);
   };
@@ -2384,14 +2402,16 @@ function summarizeAiSprints(state) {
   (state.readiness || []).forEach((row) => {
     const bucket = ensure(row.sprint);
     bucket.storyCount = Number(row.totalStories || bucket.storyCount);
+    bucket.deliveredStories = Number(row.deliveredStories || bucket.deliveredStories);
     bucket.totalCases = Number(row.totalCases || bucket.totalCases);
     bucket.executedCases = Number(row.executedCases || bucket.executedCases);
+    bucket.coverageRate = Number(row.coverageRate || bucket.coverageRate);
     bucket.decision = row.decision || bucket.decision;
   });
   return [...buckets.values()]
     .map((row) => ({
       ...row,
-      coverageRate: percent(row.executedCases, row.totalCases),
+      coverageRate: row.coverageRate || percent(row.deliveredStories, row.storyCount),
       decision: row.decision || "Chưa quyết định"
     }))
     .sort((a, b) => a.sprint.localeCompare(b.sprint, "vi", { numeric: true }));
@@ -2422,23 +2442,25 @@ function aiCollectionName(collection) {
     handoffs: "Lich_BG_US",
     plans: "PhanCong_UAT",
     daily: "DieuHanh_Ngay",
+    defects: "DEFECT_LOG",
     weekly: "ChatLuong_Tuan",
     readiness: "TongKet_Sprint",
-    matrix: "MaTran_NangLuc",
+    matrix: "NangSuat_Tester",
     guide: "HD_UAT"
   }[collection] || collection;
 }
 
 function aiFieldOrder(collection) {
   return {
-    features: ["stt", "code", "storyCode", "jiraCode", "group", "name", "jiraName", "jiraLink", "rsdLink", "sprintBA", "sprintDev", "sprintQC", "businessSprint", "status", "owner", "uatHandoff", "uatStart", "uatEnd", "uatDone", "uatSigned", "handoffStatus", "completionRate", "openBugs", "uatWarning"],
+    features: ["stt", "code", "storyCode", "jiraCode", "group", "name", "sprint", "owner", "uatHandoff", "handoffStatus", "totalCases", "passedCases", "failedCases", "blockedCases", "defectOpen", "blockerOpen", "criticalOpen", "uatResult", "status", "completionRate", "uatWarning"],
     personnel: ["staffCode", "name", "role", "scope", "status", "birthYear", "phone", "email", "unit"],
     schedule: ["sprint", "devStart", "devEnd", "handoffDate", "startDate", "endDate", "note"],
-    handoffs: ["jiraCode", "code", "storyCode", "sectionLevel1", "sectionLevel2", "name", "sprint", "defaultHandoffDate", "uatHandoff", "uatStart", "uatEnd", "handoffStatus", "note"],
-    plans: ["code", "jiraCode", "group", "feature", "sprint", "uatHandoff", "owner", "nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "executedCases", "progress", "uatStatus", "rotationWarning", "note"],
-    daily: ["date", "sprint", "code", "jiraCode", "feature", "tester", "totalCases", "executedCases", "passedCases", "failedCases", "bugStatus", "maxBugSeverity", "blocker", "handler", "deadline"],
-    weekly: ["week", "sprint", "group", "totalStories", "totalCases", "executedCases", "coverageRate", "passedCases", "successRate", "blockerBugs", "criticalBugs", "majorBugs", "totalOpenBugs", "gateResult", "note"],
-    readiness: ["sprint", "handoffDate", "totalStories", "totalCases", "executedCases", "coverageRate", "passedCases", "successRate", "openCriticalBugs", "openHighBugs", "readinessLevel", "decision", "note"],
+    handoffs: ["jiraCode", "code", "storyCode", "sectionLevel1", "sectionLevel2", "name", "sprint", "uatHandoff", "uatStart", "uatEnd", "handoffStatus", "uatStatus"],
+    plans: ["code", "jiraCode", "group", "feature", "sprint", "uatHandoff", "owner", "nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "testStatus", "progress", "uatStatus", "devStatus", "priority"],
+    daily: ["date", "jiraCode", "feature", "sprint", "tester", "totalCases", "passedCases", "failedCases", "bugStatus", "maxBugSeverity", "blocker", "handler", "dueDate"],
+    defects: ["bugId", "jiraCode", "storyName", "sprint", "severity", "status", "foundDate", "tester", "owner", "resolvedDate", "aging", "note"],
+    weekly: ["week", "sprint", "totalStories", "storyTested", "coverageRate", "successRate", "blockerBugs", "criticalBugs", "reopenRate", "assessment"],
+    readiness: ["sprint", "totalStories", "deliveredStories", "coverageRate", "successRate", "openBlockerBugs", "openCriticalBugs", "openMajorBugs", "reopenRate", "decision"],
     matrix: ["group", "t1", "t2", "t3", "t4", "t5", "t6", "totalParticipation", "target", "warning"],
     guide: ["category", "index", "topic", "content"]
   }[collection] || [];
@@ -2458,10 +2480,15 @@ function aiFieldLegend() {
     sectionLevel2: "Badge/tiêu đề cấp 2 của Lich_BG_US",
     note: "Ghi chú",
     totalCases: "Tổng testcase",
-    executedCases: "Testcase đã thực hiện",
+    passedCases: "Testcase Passed",
+    failedCases: "Testcase Failed",
     progress: "% hoàn thành",
     uatStatus: "Trạng thái UAT",
-    rotationWarning: "Cảnh báo luân chuyển tester",
+    devStatus: "Trạng thái DEV",
+    testStatus: "Trạng thái kiểm thử",
+    defectOpen: "Số defect đang mở",
+    blockerOpen: "Số lỗi Blocker đang mở",
+    criticalOpen: "Số lỗi Critical đang mở",
     t1: "Tester Sơn T1",
     t2: "Tester Sinh T2",
     t3: "Tester Trí T3",
@@ -2512,7 +2539,7 @@ async function askGeminiUatAssistant({ message, history, context, user }) {
               "Bạn là trợ lý AI cho web Squad 2 UAT Dashboard.",
               "Luôn trả lời bằng tiếng Việt, ngắn gọn, rõ số liệu.",
               "Chỉ dùng dữ liệu JSON được cung cấp. Nếu dữ liệu không có, nói rõ là chưa có dữ liệu thay vì suy đoán.",
-              "Khi người dùng hỏi nghiệp vụ, hãy liên hệ đúng sheet/module như DM_ChucNang, Lich_BG_US, PhanCong_UAT, DieuHanh_Ngay, ChatLuong_Tuan, TongKet_Sprint, MaTran_NangLuc.",
+              "Khi người dùng hỏi nghiệp vụ, hãy liên hệ đúng sheet/module như DM_ChucNang, Lich_BG_US, PhanCong_UAT, DieuHanh_Ngay, DEFECT_LOG, ChatLuong_Tuan, TongKet_Sprint, NangSuat_Tester.",
               `Người đang hỏi: ${user?.name || user?.email || user?.username || "người dùng"}.`
             ].join("\n")
           }]
