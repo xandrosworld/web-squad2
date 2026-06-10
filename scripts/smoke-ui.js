@@ -99,12 +99,14 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(await download.path());
   const expectedSheets = [
-    "01_DanhMuc_UAT",
-    "02_PhanCong_Sprint",
-    "03_MaTran_NangLuc",
-    "04_DieuHanh_HangNgay",
-    "05_ChatLuong_Tuan",
-    "06_KetThuc_Sprint",
+    "DM_ChucNang",
+    "Lich_BG_US",
+    "PhanCong_UAT",
+    "DieuHanh_Ngay",
+    "DEFECT_LOG",
+    "ChatLuong_Tuan",
+    "TongKet_Sprint",
+    "NangSuat_Tester",
     "07_Dashboard"
   ];
   const actualSheets = workbook.worksheets.map((sheet) => sheet.name);

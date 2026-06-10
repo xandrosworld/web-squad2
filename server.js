@@ -81,7 +81,7 @@ const ownerAccountLinks = [
   { code: "NV3", label: ownerOptions[2], email: "tuantd3@bidv.com.vn" }
 ];
 const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
-const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Don UAT"];
+const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Done UAT"];
 const planStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Hoàn thành", "Tạm dừng/Blocked", "Chờ sửa lỗi", "Đã ký UAT"];
 const testStatusOptions = ["Chưa Test", "Đang Test", "Passed", "Failed"];
 const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail"];
@@ -1710,13 +1710,13 @@ function addDashboardWorksheet(workbook, state) {
   const worksheet = workbook.addWorksheet("07_Dashboard");
   const metrics = calculateWorkbookMetrics(state);
   const rows = [
-    ["Tiến độ UAT toàn Squad", `${metrics.squadProgress}%`, "Sheet 01_DanhMuc_UAT"],
+    ["Tiến độ UAT toàn Squad", `${metrics.squadProgress}%`, "Sheet DM_ChucNang"],
     ["Tỷ lệ bao phủ kiểm thử", `${metrics.coverage}%`, "Sheet 04-06"],
     ["Tỷ lệ thành công", `${metrics.successRate}%`, "Sheet 05-06"],
     ["Lỗi Blocker", metrics.blockerBugs, "Sheet 04-06"],
     ["Lỗi Critical", metrics.criticalBugs, "Sheet 04-06"],
-    ["Mức độ sẵn sàng đào tạo", `${metrics.trainingReadiness}%`, "Sheet 06_KetThuc_Sprint"],
-    ["Mức độ sẵn sàng Pilot/Go-live", `${metrics.pilotReadiness}%`, "Sheet 06_KetThuc_Sprint"]
+    ["Mức độ sẵn sàng đào tạo", `${metrics.trainingReadiness}%`, "Sheet NangSuat_Tester"],
+    ["Mức độ sẵn sàng Pilot/Go-live", `${metrics.pilotReadiness}%`, "Sheet TongKet_Sprint"]
   ];
 
   worksheet.columns = [

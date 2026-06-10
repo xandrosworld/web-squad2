@@ -50,7 +50,7 @@ const ownerOptions = [
     "BA"
 ];
 const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
-const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Don UAT"];
+const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Done UAT"];
 const handoffSectionDefaults = [
     { level1: "Luồng quy trình", children: ["Tính năng gợi ý và lựa chọn cấp trình"] },
     { level1: "Tính năng nâng cao", children: [] },
