@@ -852,10 +852,21 @@ function normalizeImportedText(value) {
   return String(value).replace(/\s+/g, " ").trim();
 }
 
+function isSpreadsheetErrorText(value) {
+  return /^#(?:N\/A|VALUE!|REF!|DIV\/0!|NAME\?|NULL!|NUM!)$/i.test(normalizeImportedText(value));
+}
+
+function cleanSpreadsheetText(value) {
+  const text = normalizeImportedText(value);
+  return isSpreadsheetErrorText(text) ? "" : text;
+}
+
 function normalizeImportedNumber(value) {
   if (isBlank(value)) return "";
-  const number = Number(String(value).replace(",", "."));
-  return Number.isFinite(number) ? number : normalizeImportedText(value);
+  const text = cleanSpreadsheetText(value);
+  if (!text) return "";
+  const number = Number(text.replace(",", "."));
+  return Number.isFinite(number) ? number : text;
 }
 
 function normalizeImportHeader(value) {
@@ -894,7 +905,7 @@ function normalizeImportedDate(value) {
     return formatDateForInput(new Date(excelEpoch + value * 24 * 60 * 60 * 1000));
   }
   const text = normalizeImportedText(value);
-  if (!text) return "";
+  if (!text || isSpreadsheetErrorText(text)) return "";
   const slashDate = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
   if (slashDate) {
     const day = Number(slashDate[1]);
@@ -1280,6 +1291,7 @@ function unwrapExcelCellValue(value) {
   if (value instanceof Date) return value;
   if (typeof value !== "object") return value;
   if (Object.prototype.hasOwnProperty.call(value, "result")) return unwrapExcelCellValue(value.result);
+  if (Object.prototype.hasOwnProperty.call(value, "error")) return "";
   if (Object.prototype.hasOwnProperty.call(value, "text")) return value.text;
   if (Array.isArray(value.richText)) return value.richText.map((part) => part?.text || "").join("");
   return value.text ?? value.result ?? "";
@@ -1290,7 +1302,7 @@ function cellValueAt(row, column) {
 }
 
 function cellTextAt(row, column) {
-  return normalizeImportedText(cellValueAt(row, column));
+  return cleanSpreadsheetText(cellValueAt(row, column));
 }
 
 function toImportDate(value) {
