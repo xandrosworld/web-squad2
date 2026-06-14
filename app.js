@@ -1939,7 +1939,7 @@ function getRecentActivities(limit = 8) {
     const items = [];
     Object.keys(modules).forEach((id) => {
         const mod = modules[id];
-        appState[mod.collection].forEach((row) => {
+        getDisplayRows(mod.collection).forEach((row) => {
             const stamp = row.updatedAt || row.createdAt || appState.updatedAt;
             const time = new Date(stamp || 0).getTime();
             items.push({
@@ -4197,7 +4197,7 @@ async function importExcelFile(file, input) {
 }
 
 function getFilteredRows(mod) {
-    const rows = appState[mod.collection] || [];
+    const rows = getDisplayRows(mod.collection);
     const query = ui.query.trim().toLowerCase();
     return rows.filter((row) => {
         const matchQuery = !query || Object.values(row).some((value) => String(value ?? "").toLowerCase().includes(query));
@@ -4213,6 +4213,14 @@ function getFilteredRows(mod) {
             return String(getColumnRawValue(row, col) ?? "").toLowerCase().includes(String(selected).toLowerCase());
         });
     });
+}
+
+function getDisplayRows(collection) {
+    return (appState[collection] || []).filter(shouldDisplaySourceRow);
+}
+
+function shouldDisplaySourceRow(row) {
+    return !row?.sourceHidden && !row?.sourceStruck;
 }
 
 function countActiveFilters(mod) {
@@ -4236,7 +4244,7 @@ function getFieldForColumn(mod, col) {
 function getColumnFilterOptions(mod, col, field) {
     const fieldOptions = getFieldOptions(field);
     if (field?.type === "select" && fieldOptions.length) return fieldOptions;
-    const values = uniqueValues(appState[mod.collection], col.key);
+    const values = uniqueValues(getDisplayRows(mod.collection), col.key);
     if (values.length > 0 && values.length <= 8) return values;
     return [];
 }

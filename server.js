@@ -967,7 +967,7 @@ function parseDmChucNangSheet(worksheet) {
     const name = cellTextAt(row, 6);
     if (!jiraCode && !code && !name) continue;
     const group = cellTextAt(row, 5);
-    records.push({
+    records.push(markWorksheetRowSourceFlags({
       id: importId("features", jiraCode || code || name),
       stt: toImportNumber(cellValueAt(row, 1)) || records.length + 1,
       code,
@@ -992,7 +992,7 @@ function parseDmChucNangSheet(worksheet) {
       completionRate: toImportPercent(cellValueAt(row, 20)),
       openBugs: toImportNumber(cellValueAt(row, 15)),
       uatWarning: cellTextAt(row, 18)
-    });
+    }, row, { maxStrikeColumns: 20 }));
   }
   return records;
 }
@@ -1056,7 +1056,7 @@ function parseHandoffSheet(worksheet) {
       continue;
     }
     if (!jiraCode || !name) continue;
-    records.push({
+    records.push(markWorksheetRowSourceFlags({
       id: importId("handoffs", jiraCode),
       jiraCode,
       code: cellTextAt(row, 2),
@@ -1070,7 +1070,7 @@ function parseHandoffSheet(worksheet) {
       uatEnd: toImportDate(cellValueAt(row, 8)),
       handoffStatus: cellTextAt(row, 9),
       uatStatus: cellTextAt(row, 10)
-    });
+    }, row, { maxStrikeColumns: 10 }));
   }
   return records;
 }
@@ -1085,7 +1085,6 @@ function handoffSectionRowType(row) {
 function parsePlanSheet(worksheet) {
   if (!worksheet) return [];
   return parseRows(worksheet, 4, (row) => {
-    if (rowHasStrikethrough(row, 21)) return null;
     const code = cellTextAt(row, 1);
     const jiraCode = cellTextAt(row, 2);
     const group = cellTextAt(row, 3);
@@ -1273,13 +1272,13 @@ function parseGuideSheet(worksheet) {
     const content = isNumbered ? c : (c || b);
     const rowCategory = isNumbered ? category : (c ? a : category);
     if (!topic || !content) continue;
-    records.push({
+    records.push(markWorksheetRowSourceFlags({
       id: importId("guide", rowCategory, topic),
       category: rowCategory,
       index: isNumbered ? numericIndex : records.length + 1,
       topic,
       content
-    });
+    }, row));
   }
   return records;
 }
@@ -1295,10 +1294,28 @@ function assignSortOrder(state) {
 function parseRows(worksheet, startRow, mapper) {
   const records = [];
   for (let rowNumber = startRow; rowNumber <= worksheet.rowCount; rowNumber += 1) {
-    const record = mapper(worksheet.getRow(rowNumber), rowNumber);
-    if (record) records.push(record);
+    const row = worksheet.getRow(rowNumber);
+    const record = mapper(row, rowNumber);
+    if (record) records.push(markWorksheetRowSourceFlags(record, row));
   }
   return records;
+}
+
+function markWorksheetRowSourceFlags(record, row, options = {}) {
+  const flags = worksheetRowSourceFlags(row, options);
+  if (flags.sourceHidden) record.sourceHidden = true;
+  if (flags.sourceStruck) record.sourceStruck = true;
+  return record;
+}
+
+function worksheetRowSourceFlags(row, options = {}) {
+  const skipHidden = options.skipHidden !== false;
+  const skipStruck = options.skipStruck !== false;
+  const maxStrikeColumns = options.maxStrikeColumns || row.worksheet?.columnCount || row.cellCount || 0;
+  return {
+    sourceHidden: Boolean(skipHidden && row.hidden),
+    sourceStruck: Boolean(skipStruck && rowHasStrikethrough(row, maxStrikeColumns))
+  };
 }
 
 function rowHasStrikethrough(row, maxColumns = row.cellCount || 0) {

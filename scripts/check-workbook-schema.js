@@ -42,9 +42,15 @@ async function main() {
   const totalCases = sum(state.plans, "totalCases");
   const featureTotalCases = sum(state.features, "totalCases");
   const deliveredStories = state.handoffs.filter((row) => row.uatHandoff).length;
-  if (state.features.length !== 77) throw new Error(`Expected 77 DM_ChucNang rows, got ${state.features.length}`);
-  if (state.handoffs.length !== 77) throw new Error(`Expected 77 Lich_BG_US rows, got ${state.handoffs.length}`);
-  if (state.plans.length !== 57) throw new Error(`Expected 57 visible PhanCong_UAT rows, got ${state.plans.length}`);
+  const visibleFeatures = visibleSourceRows(state.features);
+  const visibleHandoffs = visibleSourceRows(state.handoffs);
+  const visiblePlans = visibleSourceRows(state.plans);
+  if (state.features.length !== 77) throw new Error(`Expected 77 DM_ChucNang source rows, got ${state.features.length}`);
+  if (state.handoffs.length !== 77) throw new Error(`Expected 77 Lich_BG_US source rows, got ${state.handoffs.length}`);
+  if (state.plans.length !== 77) throw new Error(`Expected 77 PhanCong_UAT source rows, got ${state.plans.length}`);
+  if (visibleFeatures.length !== 34) throw new Error(`Expected 34 visible DM_ChucNang rows, got ${visibleFeatures.length}`);
+  if (visibleHandoffs.length !== 10) throw new Error(`Expected 10 visible Lich_BG_US rows, got ${visibleHandoffs.length}`);
+  if (visiblePlans.length !== 57) throw new Error(`Expected 57 visible PhanCong_UAT rows, got ${visiblePlans.length}`);
   if (state.daily.length !== 6) throw new Error(`Expected 6 DieuHanh_Ngay rows, got ${state.daily.length}`);
   if (state.defects.length !== 11) throw new Error(`Expected 11 DEFECT_LOG rows, got ${state.defects.length}`);
   if (state.weekly.length !== 16) throw new Error(`Expected 16 ChatLuong_Tuan rows, got ${state.weekly.length}`);
@@ -67,10 +73,13 @@ async function main() {
     workbook: path.basename(workbookPath),
     imported: {
       features: state.features.length,
+      visibleFeatures: visibleFeatures.length,
       personnel: state.personnel.length,
       schedule: state.schedule.length,
       handoffs: state.handoffs.length,
+      visibleHandoffs: visibleHandoffs.length,
       plans: state.plans.length,
+      visiblePlans: visiblePlans.length,
       daily: state.daily.length,
       defects: state.defects.length,
       weekly: state.weekly.length,
@@ -105,6 +114,10 @@ function assertHandoffSections(handoffs) {
     && row.sectionLevel2 === "Màn hình thẩm định - Khoản cấp tín dụng"
   ));
   if (!hasNested) throw new Error("Lich_BG_US missing nested section mapping.");
+  const visibleFirst = visibleSourceRows(handoffs)[0] || {};
+  if (visibleFirst.jiraCode !== "SQ02_CN001_019") {
+    throw new Error(`Lich_BG_US visible filter mismatch. First visible row: ${visibleFirst.jiraCode || "-"}`);
+  }
 }
 
 function assertUpdatedWorkbookCalculations(state) {
@@ -129,7 +142,9 @@ function assertUpdatedWorkbookCalculations(state) {
   });
   ["SQ02_CN001_007", "SQ02_CN001_010", "SQ02_CN010_006"].forEach((jiraCode) => {
     const plan = state.plans.find((row) => row.jiraCode === jiraCode);
-    if (plan) throw new Error(`PhanCong_UAT hidden/struck row was imported: ${jiraCode} ${JSON.stringify(plan)}`);
+    if (!plan || !plan.sourceHidden || !plan.sourceStruck) {
+      throw new Error(`PhanCong_UAT hidden/struck row was not flagged: ${jiraCode} ${JSON.stringify(plan)}`);
+    }
   });
   const matrixParticipation = sum(state.matrix, "totalParticipation");
   if (matrixParticipation !== 162) {
@@ -159,4 +174,8 @@ function assertSameList(label, expected, actual) {
 
 function sum(rows, key) {
   return rows.reduce((total, row) => total + Number(row[key] || 0), 0);
+}
+
+function visibleSourceRows(rows) {
+  return rows.filter((row) => !row.sourceHidden && !row.sourceStruck);
 }
