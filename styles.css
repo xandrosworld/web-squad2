@@ -1204,6 +1204,43 @@ button {
     z-index: 20;
 }
 
+.data-table.has-group-header thead tr:first-child th {
+    height: 24px;
+    padding: 4px 10px 0;
+    background: #fff7ed;
+    color: #dc2626;
+    border-bottom: 0;
+    font-size: 11px;
+    line-height: 1;
+    text-align: center;
+    text-transform: none;
+}
+
+.data-table.has-group-header thead tr:first-child th.excel-header-top-cell.is-empty,
+.data-table.has-group-header thead tr:first-child th.excel-header-top-action {
+    background: #f8fafc;
+}
+
+.data-table.has-group-header thead tr:nth-child(2) th {
+    position: sticky;
+    top: 24px;
+    z-index: 2;
+    height: 36px;
+    border-top: 0;
+}
+
+.data-table.has-group-header thead tr:nth-child(2) th.filter-open {
+    z-index: 20;
+}
+
+.excel-header-top-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+}
+
 .column-resize-handle {
     position: absolute;
     top: 0;
@@ -1438,12 +1475,29 @@ body.is-column-resizing * {
     z-index: 4;
 }
 
+.data-table.has-sticky-columns.has-group-header thead tr:nth-child(2) th {
+    z-index: 4;
+}
+
 .data-table.has-sticky-columns thead tr:first-child th.sticky-col {
     z-index: 7;
     background: #f8fafc;
 }
 
+.data-table.has-sticky-columns.has-group-header thead tr:first-child th.sticky-col.has-label {
+    background: #fff7ed;
+}
+
+.data-table.has-sticky-columns.has-group-header thead tr:nth-child(2) th.sticky-col {
+    z-index: 7;
+    background: #f8fafc;
+}
+
 .data-table.has-sticky-columns thead tr:first-child th.sticky-col.filter-open {
+    z-index: 24;
+}
+
+.data-table.has-sticky-columns.has-group-header thead tr:nth-child(2) th.sticky-col.filter-open {
     z-index: 24;
 }
 

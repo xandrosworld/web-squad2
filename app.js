@@ -296,13 +296,13 @@ const modules = {
             { key: "sprint", label: "Sprint", width: "100px", render: (row) => tag(row.sprint, "teal") },
             { key: "uatHandoff", label: "Bàn giao UAT", width: "150px", render: (row) => formatDate(row.uatHandoff) },
             { key: "owner", label: "Đầu mối nghiệp vụ", width: "188px" },
-            { key: "nv", label: "NV", width: "68px", render: (row) => numberText(row.nv) },
-            { key: "t1", label: "Sơn T1", width: "76px", render: (row) => numberText(row.t1) },
-            { key: "t2", label: "Sinh T2", width: "78px", render: (row) => numberText(row.t2) },
-            { key: "t3", label: "Trí T3", width: "76px", render: (row) => numberText(row.t3) },
-            { key: "t4", label: "Huy T4", width: "76px", render: (row) => numberText(row.t4) },
-            { key: "t5", label: "Tuấn T5", width: "80px", render: (row) => numberText(row.t5) },
-            { key: "t6", label: "Thành T6", width: "84px", render: (row) => numberText(row.t6) },
+            { key: "nv", label: "NV", headerTop: "NV", width: "68px", render: (row) => numberText(row.nv) },
+            { key: "t1", label: "T1", headerTop: "Sơn", width: "76px", render: (row) => numberText(row.t1) },
+            { key: "t2", label: "T2", headerTop: "Sinh", width: "78px", render: (row) => numberText(row.t2) },
+            { key: "t3", label: "T3", headerTop: "Trí", width: "76px", render: (row) => numberText(row.t3) },
+            { key: "t4", label: "T4", headerTop: "Huy", width: "76px", render: (row) => numberText(row.t4) },
+            { key: "t5", label: "T5", headerTop: "Tuấn", width: "80px", render: (row) => numberText(row.t5) },
+            { key: "t6", label: "T6", headerTop: "Thành", width: "84px", render: (row) => numberText(row.t6) },
             { key: "totalCases", label: "Tổng Testcase", width: "130px", render: (row) => numberText(row.totalCases) },
             { key: "testStatus", label: "Trạng thái kiểm thử", width: "170px", render: (row) => renderStatus(row.testStatus) },
             { key: "progress", label: "% hoàn thành", width: "140px", render: (row) => progressCell(resolveRate(row.progress, row.executedCases, row.totalCases)) },
@@ -2144,7 +2144,8 @@ function renderTable(mod, rows) {
         `<col data-column-key="${e(col.key)}" style="width:${e(`${width}px`)}">`
     )).join("") + `<col data-column-key="${e(ACTION_COLUMN_KEY)}" style="width:${e(`${layout.actionWidth}px`)}">`;
     const columnMeta = layout.columnMeta;
-    const tableClass = ["data-table", mod.compactTable ? "is-compact" : "", mod.stickyColumns ? "has-sticky-columns" : ""]
+    const hasGroupedHeaders = mod.columns.some((col) => col.headerTop);
+    const tableClass = ["data-table", hasGroupedHeaders ? "has-group-header" : "", mod.compactTable ? "is-compact" : "", mod.stickyColumns ? "has-sticky-columns" : ""]
         .filter(Boolean)
         .join(" ");
     return `
@@ -2156,13 +2157,7 @@ function renderTable(mod, rows) {
             <table class="${e(tableClass)}" data-resizable-table="${e(mod.collection)}" style="width:${e(`${layout.totalWidth}px`)}; min-width:${e(`${layout.totalWidth}px`)}">
                 <colgroup>${colgroup}</colgroup>
                 <thead>
-                    <tr>
-                        ${mod.columns.map((col, index) => renderTableHeaderCell(mod, col, columnMeta[index])).join("")}
-                        <th class="col-actions">
-                            <span>Thao tác</span>
-                            ${renderColumnResizeHandle(ACTION_COLUMN_KEY, "Thao tác")}
-                        </th>
-                    </tr>
+                    ${renderTableHeaderRows(mod, columnMeta, hasGroupedHeaders)}
                 </thead>
                 <tbody>
                     ${rows.length ? renderTableRows(mod, rows, columnMeta) : `
@@ -2176,6 +2171,43 @@ function renderTable(mod, rows) {
             </table>
             </div>
         </div>
+    `;
+}
+
+function renderTableHeaderRows(mod, columnMeta, hasGroupedHeaders) {
+    const labelRowClass = hasGroupedHeaders ? ` class="excel-header-label"` : "";
+    const labelRow = `
+        <tr${labelRowClass}>
+            ${mod.columns.map((col, index) => renderTableHeaderCell(mod, col, columnMeta[index])).join("")}
+            ${renderActionHeaderCell()}
+        </tr>
+    `;
+    if (!hasGroupedHeaders) return labelRow;
+    return `
+        <tr class="excel-header-top">
+            ${mod.columns.map((col, index) => renderTableTopHeaderCell(col, columnMeta[index])).join("")}
+            <th class="col-actions excel-header-top-action" aria-hidden="true"></th>
+        </tr>
+        ${labelRow}
+    `;
+}
+
+function renderTableTopHeaderCell(col, meta) {
+    const label = col.headerTop || "";
+    const extraClass = `excel-header-top-cell ${label ? "has-label" : "is-empty"}`;
+    return `
+        <th${tableCellAttrs(meta, extraClass)}>
+            ${label ? `<span class="excel-header-top-label">${e(label)}</span>` : ""}
+        </th>
+    `;
+}
+
+function renderActionHeaderCell() {
+    return `
+        <th class="col-actions">
+            <span>Thao tác</span>
+            ${renderColumnResizeHandle(ACTION_COLUMN_KEY, "Thao tác")}
+        </th>
     `;
 }
 
