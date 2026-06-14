@@ -281,7 +281,8 @@ const modules = {
             { key: "progress", label: "% hoàn thành", type: "percent" },
             { key: "uatStatus", label: "Trạng thái UAT", type: "select", options: planStatusOptions },
             { key: "devStatus", label: "Trạng thái DEV", type: "select", options: handoffNoteOptions },
-            { key: "priority", label: "Mức độ ưu tiên", type: "number" }
+            { key: "priority", label: "Mức độ ưu tiên", type: "number" },
+            { key: "note", label: "Ghi chú", type: "textarea", full: true }
         ],
         filters: [
             { key: "sprint", label: "Sprint" },
@@ -307,7 +308,8 @@ const modules = {
             { key: "progress", label: "% hoàn thành", width: "140px", render: (row) => progressCell(resolveRate(row.progress, row.executedCases, row.totalCases)) },
             { key: "uatStatus", label: "Trạng thái UAT", width: "150px", render: (row) => renderStatus(row.uatStatus) },
             { key: "devStatus", label: "Trạng thái DEV", width: "150px", render: (row) => renderStatus(row.devStatus) },
-            { key: "priority", label: "Mức độ ưu tiên", width: "140px", render: (row) => numberText(row.priority) }
+            { key: "priority", label: "Mức độ ưu tiên", width: "140px", render: (row) => numberText(row.priority) },
+            { key: "note", label: "Ghi chú", width: "220px" }
         ]
     },
     matrix: {
@@ -719,9 +721,12 @@ async function hydrateState(showNotice = false) {
                 return;
             }
         }
+        const previousSignature = stateDataSignature(appState);
+        const nextSignature = stateDataSignature(remoteState);
         appState = remoteState;
         setDataStatus("online", "Railway Postgres đang hoạt động");
         cacheState();
+        if (!showNotice && previousSignature === nextSignature) return;
         render();
         if (showNotice) showToast("Đã kết nối Railway DB.");
     } catch (error) {
@@ -877,6 +882,19 @@ function render() {
     restorePageScroll(pageScroll);
 }
 
+function stateDataSignature(state) {
+    try {
+        return JSON.stringify(Object.fromEntries(
+            Object.keys(modules).map((id) => {
+                const collection = modules[id].collection;
+                return [collection, Array.isArray(state?.[collection]) ? state[collection] : []];
+            })
+        ));
+    } catch {
+        return "";
+    }
+}
+
 function capturePageScroll() {
     const workspace = document.querySelector(".workspace");
     return {
@@ -890,7 +908,7 @@ function capturePageScroll() {
 
 function restorePageScroll(snapshot) {
     if (!snapshot || snapshot.tab !== ui.activeTab) return;
-    requestAnimationFrame(() => {
+    const restore = () => {
         const workspace = document.querySelector(".workspace");
         if (workspace) {
             const maxWorkspaceLeft = Math.max(0, workspace.scrollWidth - workspace.clientWidth);
@@ -906,6 +924,11 @@ function restorePageScroll(snapshot) {
             Math.min(snapshot.left, maxLeft),
             Math.min(snapshot.top, maxTop)
         );
+    };
+    requestAnimationFrame(() => {
+        restore();
+        requestAnimationFrame(restore);
+        window.setTimeout(restore, 80);
     });
 }
 
@@ -1135,6 +1158,8 @@ function renderExcelDashboard() {
                 `).join("")}
             </div>
 
+            ${renderDefectDashboardPanel()}
+
             <div class="uat-dashboard-grid">
                 <section class="panel uat-dashboard-panel">
                     <div class="panel-head">
@@ -1248,15 +1273,117 @@ function renderExcelDashboard() {
     `;
 }
 
+function renderDefectDashboardPanel() {
+    const rows = getDefectDashboardRows();
+    const severityRows = getDefectSeverityStatusRows();
+    return `
+        <section class="panel uat-dashboard-panel defect-dashboard-panel">
+            <div class="panel-head">
+                <div class="panel-title">
+                    <i class="fa-solid fa-bug"></i>
+                    <div>
+                        <h2>DEFECT_Dashboard</h2>
+                        <span>Tổng hợp từ DEFECT_LOG</span>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body defect-dashboard-body">
+                <div class="defect-kpi-grid">
+                    ${rows.map((row) => `
+                        <article class="defect-kpi-card ${e(row.tone)}">
+                            <span>${e(row.label)}</span>
+                            <strong>${e(row.value)}</strong>
+                        </article>
+                    `).join("")}
+                </div>
+                <div class="defect-matrix-wrap">
+                    <table class="defect-matrix">
+                        <thead>
+                            <tr>
+                                <th>Severity</th>
+                                <th>Open</th>
+                                <th>In Progress</th>
+                                <th>Reopened</th>
+                                <th>Resolved</th>
+                                <th>Closed</th>
+                                <th>Cancelled</th>
+                                <th>Pending</th>
+                                <th>SIT Fail</th>
+                                <th>Tổng</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${severityRows.map((row) => `
+                                <tr>
+                                    <td>${e(row.severity)}</td>
+                                    ${row.statuses.map((value) => `<td>${e(value)}</td>`).join("")}
+                                    <td>${e(row.total)}</td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    `;
+}
+
+function getDefectDashboardRows() {
+    const openDefects = appState.defects.filter((row) => isOpenBugStatus(row.status));
+    const openSeverity = (severity) => openDefects.filter((row) => normalizeWorkbookFormulaText(row.severity) === normalizeWorkbookFormulaText(severity)).length;
+    return [
+        { label: "Tổng Defect", value: appState.defects.length, tone: appState.defects.length ? "blue" : "gray" },
+        { label: "Open", value: countDefectStatus("Open"), tone: openDefects.length ? "yellow" : "green" },
+        { label: "Major Open", value: openSeverity("Major"), tone: openSeverity("Major") ? "yellow" : "green" },
+        { label: "Minor Open", value: openSeverity("Minor"), tone: openSeverity("Minor") ? "blue" : "green" },
+        { label: "Blocker Open", value: openSeverity("Blocker"), tone: openSeverity("Blocker") ? "red" : "green" },
+        { label: "Critical Open", value: openSeverity("Critical"), tone: openSeverity("Critical") ? "red" : "green" }
+    ];
+}
+
+function getDefectSeverityStatusRows() {
+    const statuses = ["Open", "In Progress", "Reopened", "Resolved", "Closed", "Cancelled", "Pending", "SIT Fail"];
+    const severities = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
+    const rows = severities.map((severity) => {
+        const statusCounts = statuses.map((status) => countDefectsBySeverityStatus(severity, status));
+        return {
+            severity,
+            statuses: statusCounts,
+            total: statusCounts.reduce((sumValue, value) => sumValue + value, 0)
+        };
+    });
+    const totals = statuses.map((status) => countDefectStatus(status));
+    rows.push({
+        severity: "Tổng",
+        statuses: totals,
+        total: totals.reduce((sumValue, value) => sumValue + value, 0)
+    });
+    return rows;
+}
+
+function countDefectStatus(status) {
+    const target = normalizeWorkbookFormulaText(status);
+    return appState.defects.filter((row) => normalizeWorkbookFormulaText(row.status) === target).length;
+}
+
+function countDefectsBySeverityStatus(severity, status) {
+    const targetSeverity = normalizeWorkbookFormulaText(severity);
+    const targetStatus = normalizeWorkbookFormulaText(status);
+    return appState.defects.filter((row) => (
+        normalizeWorkbookFormulaText(row.severity) === targetSeverity
+        && normalizeWorkbookFormulaText(row.status) === targetStatus
+    )).length;
+}
+
 function getDashboardSummaryRows() {
     const totalStories = appState.features.length;
     const deliveredStories = appState.handoffs.filter((row) => isFilled(row.uatHandoff)).length;
     const notDeliveredStories = Math.max(0, totalStories - deliveredStories);
     const handoffRate = percent(deliveredStories, totalStories);
     const totalCases = sum(appState.plans, "totalCases");
-    const passedCases = sum(appState.daily, "passedCases");
-    const failedCases = sum(appState.daily, "failedCases");
-    const blockedCases = appState.daily.filter((row) => isFilled(row.blocker)).length;
+    const passedCases = sum(appState.features, "passedCases");
+    const failedCases = sum(appState.features, "failedCases");
+    const blockedCases = sum(appState.features, "blockedCases");
     const blockerBugs = countOpenDefectSeverity("Blocker");
     const criticalBugs = countOpenDefectSeverity("Critical");
     const pilotReadiness = round(handoffRate * 0.5 + percent(passedCases, totalCases) * 0.5);
@@ -1971,31 +2098,22 @@ function getGuideRows() {
 }
 
 function normalizeGuideRowsForDisplay(rows) {
-    return rows.map((row) => {
-        if (row.category !== "Cột tự động") return row;
-        const topic = String(row.topic || "").trim();
-        if (topic !== "DM_ChucNang!W:Y" && topic !== "DM_ChucNang!P:R, U:X") return row;
-        return {
-            ...row,
-            topic: "DM_ChucNang!P:R, U:X",
-            content: "P:R lấy ngày bàn giao/bắt đầu/kết thúc từ Lich_BG_US theo Mã Jira; U:X tự tính trạng thái, %TC, lỗi mở và cảnh báo."
-        };
-    });
+    return rows.map((row) => ({ ...row }));
 }
 
 function defaultGuideRows() {
     const rows = [
-        ["Hướng dẫn", 1, "Cập nhật lịch bàn giao", "Vào sheet Lich_UAT, chỉnh Ngày bàn giao/Bắt đầu/Kết thúc UAT theo lịch thực tế của TCT 217. DM_ChucNang và PhanCong_UAT tự động kế thừa."],
+        ["Hướng dẫn", 1, "Cập nhật lịch bàn giao", "Vào sheet Lich_BG_US"],
         ["Hướng dẫn", 2, "Phân công Tester", "Vào sheet PhanCong_UAT, đánh dấu ✓ cho T1-T6. Mô hình mặc định đã luân chuyển 2 Tester/Story."],
         ["Hướng dẫn", 3, "Theo dõi hằng ngày", "Vào sheet DieuHanh_Ngay để nhập số TC đã chạy, TC đạt, lỗi, blocker và người xử lý."],
         ["Hướng dẫn", 4, "Đánh giá hằng tuần", "Sheet ChatLuong_Tuan tổng hợp Quality Gate theo tuần/Sprint."],
         ["Hướng dẫn", 5, "Kết thúc Sprint", "Sheet TongKet_Sprint tự tính GO / CONDITIONAL GO / NO GO theo coverage, pass rate và lỗi mở."],
-        ["Hướng dẫn", 6, "Đào tạo chéo", "Sheet NangSuat_Tester theo dõi mức độ mỗi Tester tham gia các nhóm chức năng để hình thành giảng viên nội bộ."],
+        ["Hướng dẫn", 6, "Đào tạo chéo", "Sheet NangSuat_UAT theo dõi mức độ mỗi Tester tham gia các nhóm chức năng để hình thành giảng viên nội bộ."],
         ["Hướng dẫn", 7, "Báo cáo lãnh đạo", "Sheet Dashboard_UAT là bảng điều hành tổng hợp cho Squad Leader."],
         ["Cập nhật mới", 1, "Lịch bàn giao theo User Story", "Sử dụng sheet Lich_BG_US để nhập ngày bàn giao UAT riêng cho từng US; DM_ChucNang tự động lấy ngày từ sheet này."],
         ["Nguyên tắc", 2, "Không dùng lịch Sprint làm ngày bàn giao chính", "Trong cùng Sprint, mỗi US có thể có ngày bàn giao khác nhau."],
         ["Cột cần nhập", 3, "Lich_BG_US!G:G", "Ngày bàn giao UAT theo US"],
-        ["Cột tự động", 4, "DM_ChucNang!P:R, U:X", "P:R lấy ngày bàn giao/bắt đầu/kết thúc từ Lich_BG_US theo Mã Jira; U:X tự tính trạng thái, %TC, lỗi mở và cảnh báo."],
+        ["Cột tự động", 4, "DM_ChucNang!W:Y", "Ngày bàn giao/bắt đầu/kết thúc UAT tự động theo Mã Jira"],
         ["Khóa liên kết", 5, "Mã Jira", "SQ02_CNxxx_xxx"],
         ["Ý nghĩa các mức độ ưu tiên (Priority)", 1, "Blocker", "Lỗi chặn UAT, không thể kiểm thử tiếp"],
         ["Ý nghĩa các mức độ ưu tiên (Priority)", 2, "Critical", "Lỗi nghiêm trọng ảnh hưởng nghiệp vụ chính"],
@@ -4170,7 +4288,7 @@ function calculateMetrics() {
     const completedFeatures = appState.features.filter((row) => isCompletedFeatureStatus(row.status)).length;
     const statusDrivenProgress = features ? percent(completedFeatures, features) : 0;
     const totalCases = sum(appState.plans, "totalCases");
-    const passedCases = sum(appState.daily, "passedCases");
+    const passedCases = sum(appState.features, "passedCases");
     const deliveredStories = appState.handoffs.filter((row) => isFilled(row.uatHandoff)).length;
     const coverage = percent(deliveredStories, features);
     const successRate = round(average([

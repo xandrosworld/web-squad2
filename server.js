@@ -242,7 +242,8 @@ const excelSheets = [
       ["progress", "% hoàn thành", 16, "number"],
       ["uatStatus", "Trạng thái UAT", 18],
       ["devStatus", "Trạng thái DEV", 18],
-      ["priority", "Mức độ ưu tiên", 16, "number"]
+      ["priority", "Mức độ ưu tiên", 16, "number"],
+      ["note", "Ghi chú", 24]
     ]
   },
   {
@@ -899,10 +900,15 @@ function normalizeImportedOwner(value) {
 
 function normalizeImportedDate(value) {
   if (isBlank(value)) return "";
-  if (value instanceof Date) return formatDateForInput(value);
+  if (value instanceof Date) {
+    if (value.getUTCFullYear() < 2000) return "";
+    return formatDateForInput(value);
+  }
   if (typeof value === "number" && Number.isFinite(value)) {
+    if (value <= 0) return "";
     const excelEpoch = Date.UTC(1899, 11, 30);
-    return formatDateForInput(new Date(excelEpoch + value * 24 * 60 * 60 * 1000));
+    const parsed = new Date(excelEpoch + value * 24 * 60 * 60 * 1000);
+    return parsed.getUTCFullYear() < 2000 ? "" : formatDateForInput(parsed);
   }
   const text = normalizeImportedText(value);
   if (!text || isSpreadsheetErrorText(text)) return "";
@@ -1102,7 +1108,8 @@ function parsePlanSheet(worksheet) {
       progress: toImportPercent(cellValueAt(row, 17)) || percent(executedCases, totalCases),
       uatStatus: cellTextAt(row, 18),
       devStatus: cellTextAt(row, 19),
-      priority: toImportNumber(cellValueAt(row, 20))
+      priority: toImportNumber(cellValueAt(row, 20)),
+      note: cellTextAt(row, 21)
     };
   });
 }
@@ -1292,13 +1299,17 @@ function unwrapExcelCellValue(value) {
   if (typeof value !== "object") return value;
   if (Object.prototype.hasOwnProperty.call(value, "result")) return unwrapExcelCellValue(value.result);
   if (Object.prototype.hasOwnProperty.call(value, "error")) return "";
-  if (Object.prototype.hasOwnProperty.call(value, "text")) return value.text;
+  if (Object.prototype.hasOwnProperty.call(value, "text")) return unwrapExcelCellValue(value.text);
   if (Array.isArray(value.richText)) return value.richText.map((part) => part?.text || "").join("");
   return value.text ?? value.result ?? "";
 }
 
 function cellValueAt(row, column) {
-  return unwrapExcelCellValue(row.getCell(column).value);
+  const cell = row.getCell(column);
+  const value = unwrapExcelCellValue(cell.value);
+  const displayText = typeof cell.text === "string" ? cell.text.trim() : "";
+  if (value instanceof Date && /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/.test(displayText)) return displayText;
+  return value;
 }
 
 function cellTextAt(row, column) {
@@ -1311,6 +1322,7 @@ function toImportDate(value) {
 
 function toImportNumber(value) {
   const number = normalizeImportedNumber(value);
+  if (number === "") return "";
   return Number.isFinite(Number(number)) ? Number(number) : "";
 }
 
@@ -1368,7 +1380,6 @@ function applyWorkbookRules(state) {
     row.uatStatus = row.uatStatus || inferUatStatus(row.executedCases, row.totalCases);
     row.devStatus = row.devStatus || handoff?.uatStatus || "";
     row.priority = row.priority === "" || row.priority == null ? inferUatPriority(row.devStatus) : row.priority;
-    delete row.note;
   });
 
   daily.forEach((row) => {
@@ -1386,6 +1397,7 @@ function applyWorkbookRules(state) {
     row.storyName = row.storyName || feature?.name || "";
     row.sprint = row.sprint || feature?.sprint || "";
     row.owner = row.owner || feature?.owner || "";
+    row.aging = row.aging === "" || row.aging == null ? calculateDefectAging(row.foundDate, row.resolvedDate) : row.aging;
   });
 
   features.forEach((row) => {
@@ -1435,20 +1447,20 @@ function applyWorkbookRules(state) {
       row.assessment = row.gateResult;
       return;
     }
-    row.totalStories = features.filter((feature) => sameLookup(feature.sprint, sprintKey)).length;
-    row.storyTested = features.filter((feature) => sameLookup(feature.sprint, sprintKey) && Number(feature.totalCases || 0) > 0).length;
-    row.totalCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, sprintKey), "totalCases");
-    row.executedCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, sprintKey), "executedCases");
+    row.totalStories = features.filter((feature) => sprintMatches(feature.sprint, sprintKey)).length;
+    row.storyTested = plans.filter((plan) => sprintMatches(plan.sprint, sprintKey) && Number(plan.executedCases || 0) > 0).length;
+    row.totalCases = sumWhere(plans, (plan) => sprintMatches(plan.sprint, sprintKey), "totalCases");
+    row.executedCases = sumWhere(plans, (plan) => sprintMatches(plan.sprint, sprintKey), "executedCases");
     row.coverageRate = percent(row.storyTested, row.totalStories);
-    row.passedCases = sumWhere(daily, (item) => sameLookup(item.sprint, sprintKey), "passedCases");
+    row.passedCases = sumWhere(daily, (item) => sprintMatches(item.sprint, sprintKey) && hasDailyFeatureLink(item), "passedCases");
     row.successRate = percent(row.passedCases, row.executedCases || row.totalCases);
-    const openDefects = defects.filter((item) => sameLookup(item.sprint, sprintKey) && isOpenBugStatus(item.status));
+    const openDefects = defects.filter((item) => sprintMatches(item.sprint, sprintKey) && isOpenBugStatus(item.status));
     row.blockerBugs = openDefects.filter((item) => isSeverity(item.severity, "Blocker")).length;
     row.criticalBugs = openDefects.filter((item) => isSeverity(item.severity, "Critical")).length;
     row.majorBugs = openDefects.filter((item) => isSeverity(item.severity, "Major")).length;
     row.highBugs = row.majorBugs;
     row.totalOpenBugs = row.blockerBugs + row.criticalBugs + row.majorBugs;
-    row.reopenRate = percent(defects.filter((item) => sameLookup(item.sprint, sprintKey) && isSeverity(item.status, "Reopened")).length, defects.filter((item) => sameLookup(item.sprint, sprintKey)).length);
+    row.reopenRate = percent(defects.filter((item) => sprintMatches(item.sprint, sprintKey) && isSeverity(item.status, "Reopened")).length, defects.filter((item) => sprintMatches(item.sprint, sprintKey)).length);
     row.gateResult = row.totalOpenBugs > 0 ? "Chưa đạt" : (Number(row.coverageRate || 0) < 95 || Number(row.successRate || 0) < 90 ? "Đạt có điều kiện" : "Đạt");
     row.assessment = row.gateResult;
   });
@@ -1456,19 +1468,19 @@ function applyWorkbookRules(state) {
   readiness.forEach((row) => {
     const scheduleRow = scheduleBySprint.get(lookupKey(row.sprint));
     row.handoffDate = scheduleRow?.handoffDate || "";
-    row.totalStories = features.filter((feature) => sameLookup(feature.sprint, row.sprint)).length;
-    row.deliveredStories = handoffs.filter((handoff) => sameLookup(handoff.sprint, row.sprint) && normalizeImportedText(handoff.uatHandoff)).length;
-    row.totalCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, row.sprint), "totalCases");
-    row.executedCases = sumWhere(plans, (plan) => sameLookup(plan.sprint, row.sprint), "executedCases");
+    row.totalStories = features.filter((feature) => sprintMatches(feature.sprint, row.sprint)).length;
+    row.deliveredStories = handoffs.filter((handoff) => sprintMatches(handoff.sprint, row.sprint) && normalizeImportedText(handoff.uatHandoff)).length;
+    row.totalCases = sumWhere(plans, (plan) => sprintMatches(plan.sprint, row.sprint), "totalCases");
+    row.executedCases = sumWhere(plans, (plan) => sprintMatches(plan.sprint, row.sprint), "executedCases");
     row.coverageRate = percent(row.deliveredStories, row.totalStories);
-    row.passedCases = sumWhere(daily, (item) => sameLookup(item.sprint, row.sprint), "passedCases");
+    row.passedCases = sumWhere(daily, (item) => sprintMatches(item.sprint, row.sprint) && hasDailyFeatureLink(item), "passedCases");
     row.successRate = percent(row.passedCases, row.executedCases || row.totalCases);
-    const openDefects = defects.filter((item) => sameLookup(item.sprint, row.sprint) && isOpenBugStatus(item.status));
+    const openDefects = defects.filter((item) => sprintMatches(item.sprint, row.sprint) && isOpenBugStatus(item.status));
     row.openBlockerBugs = openDefects.filter((item) => isSeverity(item.severity, "Blocker")).length;
     row.openCriticalBugs = openDefects.filter((item) => isSeverity(item.severity, "Critical")).length;
     row.openMajorBugs = openDefects.filter((item) => isSeverity(item.severity, "Major")).length;
     row.openHighBugs = row.openMajorBugs;
-    row.reopenRate = percent(defects.filter((item) => sameLookup(item.sprint, row.sprint) && isSeverity(item.status, "Reopened")).length, defects.filter((item) => sameLookup(item.sprint, row.sprint)).length);
+    row.reopenRate = percent(defects.filter((item) => sprintMatches(item.sprint, row.sprint) && isSeverity(item.status, "Reopened")).length, defects.filter((item) => sprintMatches(item.sprint, row.sprint)).length);
     row.readinessLevel = row.openBlockerBugs || row.openCriticalBugs ? "Đỏ" : (Number(row.coverageRate || 0) < 95 || Number(row.successRate || 0) < 90 ? "Vàng" : "Xanh");
     row.decision = row.openBlockerBugs || row.openCriticalBugs
       ? "NO GO"
@@ -1509,6 +1521,40 @@ function lookupKey(value) {
 
 function sameLookup(left, right) {
   return lookupKey(left) === lookupKey(right);
+}
+
+function sprintMatches(left, right) {
+  if (sameLookup(left, right)) return true;
+  const leftSingle = singleSprintNumber(left);
+  const rightSingle = singleSprintNumber(right);
+  return leftSingle !== null && rightSingle !== null && leftSingle === rightSingle;
+}
+
+function singleSprintNumber(value) {
+  const text = normalizeImportedText(value);
+  if (!text) return null;
+  const numbers = [...text.matchAll(/\d+/g)].map((match) => Number(match[0])).filter((number) => Number.isFinite(number));
+  return numbers.length === 1 ? numbers[0] : null;
+}
+
+function hasDailyFeatureLink(row) {
+  return Boolean(normalizeImportedText(row?.jiraCode) || normalizeImportedText(row?.feature));
+}
+
+function calculateDefectAging(foundDate, resolvedDate) {
+  const from = parseImportDateOnly(foundDate);
+  if (!from) return "";
+  const to = parseImportDateOnly(resolvedDate) || new Date();
+  from.setHours(0, 0, 0, 0);
+  to.setHours(0, 0, 0, 0);
+  const days = Math.round((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000));
+  return Number.isFinite(days) && days >= 0 ? days : "";
+}
+
+function parseImportDateOnly(value) {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function sumWhere(rows, predicate, key, excelNumericMode = false) {
@@ -1785,7 +1831,7 @@ function calculateWorkbookMetrics(state) {
   const completedFeatures = features.filter((row) => isCompletedFeatureStatus(row.status)).length;
   const statusDrivenProgress = features.length ? percent(completedFeatures, features.length) : 0;
   const totalCases = sumBy(plans, "totalCases");
-  const passedCases = sumBy(daily, "passedCases");
+  const passedCases = sumBy(features, "passedCases");
   const deliveredStories = (state.handoffs || []).filter((row) => normalizeImportedText(row.uatHandoff)).length;
   const coverage = percent(deliveredStories, features.length);
   const successRate = round(average([
@@ -2233,6 +2279,7 @@ async function ensureDefaultUsers() {
         set email = excluded.email,
             name = excluded.name,
             role = excluded.role,
+            password_hash = excluded.password_hash,
             active = true,
             updated_at = now()
     `, [crypto.randomUUID(), username, email, name, role, passwordHash]);
@@ -2344,8 +2391,8 @@ function normalizeAiHistory(history) {
 function buildAiDataContext(state) {
   const metrics = calculateWorkbookMetrics(state);
   const totalCases = sumBy(state.plans || [], "totalCases");
-  const passedCases = sumBy(state.daily || [], "passedCases");
-  const failedCases = sumBy(state.daily || [], "failedCases");
+  const passedCases = sumBy(state.features || [], "passedCases");
+  const failedCases = sumBy(state.features || [], "failedCases");
   const deliveredStories = (state.handoffs || []).filter((row) => row.uatHandoff).length;
   const context = {
     generatedAt: new Date().toISOString(),
@@ -2468,7 +2515,7 @@ function aiFieldOrder(collection) {
     personnel: ["staffCode", "name", "role", "scope", "status", "birthYear", "phone", "email", "unit"],
     schedule: ["sprint", "devStart", "devEnd", "handoffDate", "startDate", "endDate", "note"],
     handoffs: ["jiraCode", "code", "storyCode", "sectionLevel1", "sectionLevel2", "name", "sprint", "uatHandoff", "uatStart", "uatEnd", "handoffStatus", "uatStatus"],
-    plans: ["code", "jiraCode", "group", "feature", "sprint", "uatHandoff", "owner", "nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "testStatus", "progress", "uatStatus", "devStatus", "priority"],
+    plans: ["code", "jiraCode", "group", "feature", "sprint", "uatHandoff", "owner", "nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "testStatus", "progress", "uatStatus", "devStatus", "priority", "note"],
     daily: ["date", "jiraCode", "feature", "sprint", "tester", "totalCases", "passedCases", "failedCases", "bugStatus", "maxBugSeverity", "blocker", "handler", "dueDate"],
     defects: ["bugId", "jiraCode", "storyName", "sprint", "severity", "status", "foundDate", "tester", "owner", "resolvedDate", "aging", "note"],
     weekly: ["week", "sprint", "totalStories", "storyTested", "coverageRate", "successRate", "blockerBugs", "criticalBugs", "reopenRate", "assessment"],

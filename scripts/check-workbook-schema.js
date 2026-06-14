@@ -9,7 +9,7 @@ const workbookPath = path.resolve(process.argv[2] || "SQ02_UAT_Squad2_QuanLy_Hoa
 const expectedHeaders = {
   DM_ChucNang: ["STT", "Mã CN", "Mã Story", "Mã Jira", "Nhóm chức năng", "Tên chức năng", "Sprint", "Đầu mối nghiệp vụ", "Ngày BG UAT", "Trạng thái BG", "Tổng TC", "Passed", "Failed", "Blocked", "Defect Open", "Blocker Open", "Critical Open", "Kết quả UAT", "Trạng thái UAT", "% Hoàn thành TC"],
   Lich_BG_US: ["Mã Jira", "Mã CN", "Mã Story", "Tên chức năng", "Sprint", "BG UAT", "Bắt đầu UAT", "Kết thúc UAT", "Trạng thái BG", "Trạng thái UAT"],
-  PhanCong_UAT: ["Mã CN", "Mã Jira", "Nhóm chức năng", "Tên chức năng", "Sprint", "Bàn giao UAT", "Đầu mối nghiệp vụ", "NV", "T1", "T2", "T3", "T4", "T5", "T6", "Tổng Testcase", "Trạng thái kiểm thử", "% hoàn thành", "Trạng thái UAT", "Trạng thái DEV", "Mức độ ưu tiên"],
+  PhanCong_UAT: ["Mã CN", "Mã Jira", "Nhóm chức năng", "Tên chức năng", "Sprint", "Bàn giao UAT", "Đầu mối nghiệp vụ", "NV", "T1", "T2", "T3", "T4", "T5", "T6", "Tổng Testcase", "Trạng thái kiểm thử", "% hoàn thành", "Trạng thái UAT", "Trạng thái DEV", "Mức độ ưu tiên", "Ghi chú"],
   DieuHanh_Ngay: ["Ngày", "Mã Jira", "Tên chức năng", "Sprint", "Tester", "Tổng TC", "TC Passed", "TC Failed", "Trạng thái lỗi", "Mức độ lỗi", "Vướng mắc/Blocker", "Người xử lý", "Thời hạn xử lý"],
   DEFECT_LOG: ["Bug ID", "Mã Jira", "Tên Story", "Sprint", "Severity", "Status", "Ngày phát hiện", "Tester", "Owner", "Ngày xử lý", "Aging", "Ghi chú"],
   ChatLuong_Tuan: ["Tuần", "Sprint", "Tổng Story", "Story đã test", "Coverage %", "Pass Rate %", "Blocker Open", "Critical Open", "Reopen Rate", "Đánh giá"],
@@ -45,13 +45,16 @@ async function main() {
   if (state.features.length !== 77) throw new Error(`Expected 77 DM_ChucNang rows, got ${state.features.length}`);
   if (state.handoffs.length !== 77) throw new Error(`Expected 77 Lich_BG_US rows, got ${state.handoffs.length}`);
   if (state.plans.length !== 77) throw new Error(`Expected 77 PhanCong_UAT rows, got ${state.plans.length}`);
-  if (state.weekly.length !== 17) throw new Error(`Expected 17 ChatLuong_Tuan rows, got ${state.weekly.length}`);
-  if (state.readiness.length !== 17) throw new Error(`Expected 17 TongKet_Sprint rows, got ${state.readiness.length}`);
+  if (state.daily.length !== 6) throw new Error(`Expected 6 DieuHanh_Ngay rows, got ${state.daily.length}`);
+  if (state.defects.length !== 11) throw new Error(`Expected 11 DEFECT_LOG rows, got ${state.defects.length}`);
+  if (state.weekly.length !== 16) throw new Error(`Expected 16 ChatLuong_Tuan rows, got ${state.weekly.length}`);
+  if (state.readiness.length !== 16) throw new Error(`Expected 16 TongKet_Sprint rows, got ${state.readiness.length}`);
   if (state.matrix.length !== 12) throw new Error(`Expected 12 NangSuat_Tester rows, got ${state.matrix.length}`);
   if (deliveredStories !== 37) throw new Error(`Expected 37 delivered stories, got ${deliveredStories}`);
-  if (totalCases !== 2414 || featureTotalCases !== 2414) {
-    throw new Error(`Expected total testcase 2414, got plans=${totalCases}, features=${featureTotalCases}`);
+  if (totalCases !== 2704 || featureTotalCases !== 2704) {
+    throw new Error(`Expected total testcase 2704, got plans=${totalCases}, features=${featureTotalCases}`);
   }
+  assertUpdatedWorkbookCalculations(state);
   assertHandoffSections(state.handoffs);
 
   const exportedWorkbook = buildExcelWorkbook(state);
@@ -102,6 +105,26 @@ function assertHandoffSections(handoffs) {
     && row.sectionLevel2 === "Màn hình thẩm định - Khoản cấp tín dụng"
   ));
   if (!hasNested) throw new Error("Lich_BG_US missing nested section mapping.");
+}
+
+function assertUpdatedWorkbookCalculations(state) {
+  const firstWeekly = state.weekly[0] || {};
+  if (firstWeekly.sprint !== "Sprint 1&2" || firstWeekly.totalStories !== 1 || firstWeekly.coverageRate !== 0) {
+    throw new Error(`ChatLuong_Tuan first row mismatch: ${JSON.stringify(firstWeekly)}`);
+  }
+  const firstReadiness = state.readiness[0] || {};
+  if (firstReadiness.sprint !== "Sprint 1&2" || firstReadiness.deliveredStories !== 1 || firstReadiness.coverageRate !== 100) {
+    throw new Error(`TongKet_Sprint first row mismatch: ${JSON.stringify(firstReadiness)}`);
+  }
+  const notedPlan = state.plans.find((row) => row.jiraCode === "SQ02_CN010_006");
+  if (!notedPlan || notedPlan.note !== "Kỹ thuật") {
+    throw new Error(`PhanCong_UAT note column was not imported correctly: ${JSON.stringify(notedPlan)}`);
+  }
+  const linkedPassed = sum(state.features, "passedCases");
+  const linkedFailed = sum(state.features, "failedCases");
+  if (linkedPassed !== 0 || linkedFailed !== 0) {
+    throw new Error(`Dashboard linked pass/fail mismatch: passed=${linkedPassed}, failed=${linkedFailed}`);
+  }
 }
 
 function cellText(value) {

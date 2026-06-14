@@ -2062,6 +2062,104 @@ body.is-column-resizing * {
     min-width: 0;
 }
 
+.defect-dashboard-panel {
+    margin-top: 16px;
+}
+
+.defect-dashboard-body {
+    display: grid;
+    gap: 14px;
+}
+
+.defect-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.defect-kpi-card {
+    min-height: 86px;
+    padding: 13px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: #ffffff;
+    display: grid;
+    align-content: space-between;
+    gap: 10px;
+}
+
+.defect-kpi-card span {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 850;
+}
+
+.defect-kpi-card strong {
+    color: #111827;
+    font-size: 26px;
+    line-height: 30px;
+}
+
+.defect-kpi-card.green {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+}
+
+.defect-kpi-card.blue {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.defect-kpi-card.yellow {
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+
+.defect-kpi-card.red {
+    background: #fff7f7;
+    border-color: #fecaca;
+}
+
+.defect-matrix-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+}
+
+.defect-matrix {
+    width: 100%;
+    min-width: 880px;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.defect-matrix th,
+.defect-matrix td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    text-align: right;
+    white-space: nowrap;
+}
+
+.defect-matrix th:first-child,
+.defect-matrix td:first-child {
+    text-align: left;
+    font-weight: 850;
+}
+
+.defect-matrix th {
+    background: #f8fafc;
+    color: #334155;
+    font-size: 12px;
+    text-transform: uppercase;
+}
+
+.defect-matrix tr:last-child td {
+    border-bottom: 0;
+    background: #f8fafc;
+    font-weight: 900;
+}
+
 .uat-owner-list {
     display: grid;
     gap: 10px;
@@ -3566,6 +3664,10 @@ body.is-column-resizing * {
         grid-template-columns: 1fr;
     }
 
+    .defect-kpi-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .record-form-layout {
         grid-template-columns: 1fr;
     }
@@ -3849,6 +3951,15 @@ body.is-column-resizing * {
 
     .panel-body {
         padding: 12px;
+    }
+
+    .defect-kpi-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .defect-kpi-card strong {
+        font-size: 22px;
+        line-height: 26px;
     }
 
     .floating-hub.chat-open,
