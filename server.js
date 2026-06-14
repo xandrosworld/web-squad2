@@ -597,6 +597,11 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
   const message = normalizeAiMessage(req.body.message || req.body.body);
   const history = normalizeAiHistory(req.body.history);
   const state = await readState(getPool(), req.user);
+  const shortcutAnswer = tryAnswerAiShortcut(message, state);
+  if (shortcutAnswer) {
+    res.json({ answer: shortcutAnswer });
+    return;
+  }
   const context = buildAiDataContext(state);
   const answer = await askGeminiUatAssistant({ message, history, context, user: req.user });
   res.json({ answer });
@@ -754,7 +759,9 @@ module.exports = {
   parseWorkbookImportState,
   applyWorkbookRules,
   buildExcelWorkbook,
-  excelSheets
+  excelSheets,
+  tryAnswerAiShortcut,
+  summarizeTesterAssignments
 };
 
 function getPool() {
@@ -2396,6 +2403,106 @@ function normalizeAiHistory(history) {
     .filter((item) => item.body);
 }
 
+function tryAnswerAiShortcut(message, state) {
+  const query = normalizeAiQuery(message);
+  if (isTesterShortageQuestion(query)) return formatTesterShortageAnswer(state);
+  return "";
+}
+
+function normalizeAiQuery(value) {
+  return normalizeImportedText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLocaleLowerCase("vi");
+}
+
+function isTesterShortageQuestion(query) {
+  return (
+    query.includes("thieu tester")
+    || query.includes("thieu nguoi test")
+    || query.includes("thieu nguoi kiem thu")
+    || query.includes("chua phan cong tester")
+    || query.includes("chua co tester")
+  ) && (query.includes("sprint") || query.includes("phan cong") || query.includes("tester"));
+}
+
+function formatTesterShortageAnswer(state) {
+  const summary = summarizeTesterAssignments(state);
+  if (!summary.shortageRows.length) {
+    return [
+      "Hiện tại chưa có Sprint nào đang thiếu tester.",
+      "",
+      `Đã kiểm trên PhanCong_UAT: ${summary.totalRows} dòng phân công, ${summary.rowsWithCases} dòng có testcase, tổng ${summary.totalCases} testcase.`,
+      "Tiêu chí kiểm: dòng có testcase nhưng dưới 2 tester T1-T6, hoặc tổng testcase phân bổ cho T1-T6 nhỏ hơn Tổng Testcase.",
+      `Kết quả: 0 dòng thiếu tester theo tiêu chí này.${summary.rowsWithoutCasesAndTester ? ` Có ${summary.rowsWithoutCasesAndTester} dòng chưa có số tester nhưng Tổng Testcase = 0 nên chưa tính là thiếu tester.` : ""}`
+    ].join("\n");
+  }
+
+  const lines = summary.shortageBySprint.map((row) => {
+    const examples = row.examples.length ? ` Ví dụ: ${row.examples.join("; ")}.` : "";
+    return `- ${row.sprint}: ${row.storyCount} story, ${row.totalCases} testcase cần rà tester.${examples}`;
+  });
+  return [
+    `Có ${summary.shortageBySprint.length} Sprint đang thiếu tester trong PhanCong_UAT:`,
+    ...lines,
+    "",
+    `Tổng cộng ${summary.shortageRows.length}/${summary.rowsWithCases} dòng có testcase cần rà lại phân công tester.`
+  ].join("\n");
+}
+
+function summarizeTesterAssignments(state) {
+  const rows = Array.isArray(state?.plans) ? state.plans : [];
+  const rowsWithCases = rows.filter((row) => Number(row.totalCases || 0) > 0);
+  const shortageRows = rowsWithCases
+    .map((row) => {
+      const testerValues = testerKeys.map((key) => Number(row[key] || 0)).filter((value) => Number.isFinite(value) && value > 0);
+      const testerCaseTotal = testerValues.reduce((total, value) => total + value, 0);
+      const totalCases = Number(row.totalCases || 0);
+      return {
+        row,
+        totalCases,
+        testerSlotCount: testerValues.length,
+        testerCaseTotal,
+        isShortage: testerValues.length < 2 || testerCaseTotal < totalCases
+      };
+    })
+    .filter((item) => item.isShortage);
+  const bySprint = new Map();
+  shortageRows.forEach((item) => {
+    const sprint = normalizeImportedText(item.row.sprint) || "Chưa gán Sprint";
+    if (!bySprint.has(sprint)) bySprint.set(sprint, { sprint, storyCount: 0, totalCases: 0, examples: [] });
+    const bucket = bySprint.get(sprint);
+    bucket.storyCount += 1;
+    bucket.totalCases += item.totalCases;
+    if (bucket.examples.length < 3) {
+      bucket.examples.push(`${item.row.jiraCode || item.row.code || "Chưa có mã"} - ${item.row.feature || "Chưa có tên"}`);
+    }
+  });
+  return {
+    totalRows: rows.length,
+    rowsWithCases: rowsWithCases.length,
+    totalCases: rowsWithCases.reduce((total, row) => total + Number(row.totalCases || 0), 0),
+    rowsWithoutCasesAndTester: rows.filter((row) => Number(row.totalCases || 0) <= 0 && testerKeys.every((key) => Number(row[key] || 0) <= 0)).length,
+    shortageRows,
+    shortageBySprint: [...bySprint.values()].sort((a, b) => a.sprint.localeCompare(b.sprint, "vi", { numeric: true }))
+  };
+}
+
+function summarizeTesterAssignmentsForAi(state) {
+  const summary = summarizeTesterAssignments(state);
+  return {
+    totalRows: summary.totalRows,
+    rowsWithCases: summary.rowsWithCases,
+    totalCases: summary.totalCases,
+    rowsWithoutCasesAndTester: summary.rowsWithoutCasesAndTester,
+    shortageStoryCount: summary.shortageRows.length,
+    shortageSprintCount: summary.shortageBySprint.length,
+    shortageBySprint: summary.shortageBySprint
+  };
+}
+
 function buildAiDataContext(state) {
   const metrics = calculateWorkbookMetrics(state);
   const totalCases = sumBy(state.plans || [], "totalCases");
@@ -2421,6 +2528,7 @@ function buildAiDataContext(state) {
       squadProgress: metrics.squadProgress,
       successRate: metrics.successRate
     },
+    testerAssignment: summarizeTesterAssignmentsForAi(state),
     ownerSummary: summarizeAiOwners(state),
     sprintSummary: summarizeAiSprints(state),
     fieldLegend: aiFieldLegend(),
@@ -2606,7 +2714,10 @@ async function askGeminiUatAssistant({ message, history, context, user }) {
               "Bạn là trợ lý AI cho web Squad 2 UAT Dashboard.",
               "Luôn trả lời bằng tiếng Việt, ngắn gọn, rõ số liệu.",
               "Chỉ dùng dữ liệu JSON được cung cấp. Nếu dữ liệu không có, nói rõ là chưa có dữ liệu thay vì suy đoán.",
+              "Không dùng backtick hoặc tên field kỹ thuật nếu không cần; hãy nói bằng tên cột tiếng Việt mà người dùng nhìn thấy trên web.",
               "Khi người dùng hỏi nghiệp vụ, hãy liên hệ đúng sheet/module như DM_ChucNang, Lich_BG_US, PhanCong_UAT, DieuHanh_Ngay, DEFECT_LOG, ChatLuong_Tuan, TongKet_Sprint, NangSuat_Tester.",
+              "Với câu hỏi thiếu tester/phân công tester, ưu tiên trường testerAssignment trong JSON; không dùng Trạng thái UAT để kết luận thiếu tester.",
+              "Nếu câu trả lời là không có vấn đề, vẫn nêu rõ đã kiểm bao nhiêu dòng và tiêu chí kiểm là gì.",
               `Người đang hỏi: ${user?.name || user?.email || user?.username || "người dùng"}.`
             ].join("\n")
           }]
