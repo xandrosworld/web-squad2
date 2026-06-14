@@ -1078,6 +1078,7 @@ function handoffSectionRowType(row) {
 function parsePlanSheet(worksheet) {
   if (!worksheet) return [];
   return parseRows(worksheet, 4, (row) => {
+    if (rowHasStrikethrough(row, 21)) return null;
     const code = cellTextAt(row, 1);
     const jiraCode = cellTextAt(row, 2);
     const group = cellTextAt(row, 3);
@@ -1291,6 +1292,13 @@ function parseRows(worksheet, startRow, mapper) {
     if (record) records.push(record);
   }
   return records;
+}
+
+function rowHasStrikethrough(row, maxColumns = row.cellCount || 0) {
+  for (let column = 1; column <= maxColumns; column += 1) {
+    if (row.getCell(column).font?.strike) return true;
+  }
+  return false;
 }
 
 function unwrapExcelCellValue(value) {

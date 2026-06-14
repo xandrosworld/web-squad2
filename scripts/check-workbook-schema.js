@@ -44,7 +44,7 @@ async function main() {
   const deliveredStories = state.handoffs.filter((row) => row.uatHandoff).length;
   if (state.features.length !== 77) throw new Error(`Expected 77 DM_ChucNang rows, got ${state.features.length}`);
   if (state.handoffs.length !== 77) throw new Error(`Expected 77 Lich_BG_US rows, got ${state.handoffs.length}`);
-  if (state.plans.length !== 77) throw new Error(`Expected 77 PhanCong_UAT rows, got ${state.plans.length}`);
+  if (state.plans.length !== 57) throw new Error(`Expected 57 visible PhanCong_UAT rows, got ${state.plans.length}`);
   if (state.daily.length !== 6) throw new Error(`Expected 6 DieuHanh_Ngay rows, got ${state.daily.length}`);
   if (state.defects.length !== 11) throw new Error(`Expected 11 DEFECT_LOG rows, got ${state.defects.length}`);
   if (state.weekly.length !== 16) throw new Error(`Expected 16 ChatLuong_Tuan rows, got ${state.weekly.length}`);
@@ -116,20 +116,20 @@ function assertUpdatedWorkbookCalculations(state) {
   if (firstReadiness.sprint !== "Sprint 1&2" || firstReadiness.deliveredStories !== 1 || firstReadiness.coverageRate !== 100) {
     throw new Error(`TongKet_Sprint first row mismatch: ${JSON.stringify(firstReadiness)}`);
   }
-  const notedPlan = state.plans.find((row) => row.jiraCode === "SQ02_CN010_006");
-  if (!notedPlan || notedPlan.note !== "Kỹ thuật") {
-    throw new Error(`PhanCong_UAT note column was not imported correctly: ${JSON.stringify(notedPlan)}`);
-  }
   const mergedMasterPlan = state.plans.find((row) => row.jiraCode === "SQ02_CN001_004");
   if (!mergedMasterPlan || mergedMasterPlan.t1 !== 64 || mergedMasterPlan.t5 !== 64 || mergedMasterPlan.totalCases !== 320) {
     throw new Error(`PhanCong_UAT merged testcase master row mismatch: ${JSON.stringify(mergedMasterPlan)}`);
   }
-  ["SQ02_CN001_005", "SQ02_CN001_006", "SQ02_CN001_010"].forEach((jiraCode) => {
+  ["SQ02_CN001_005", "SQ02_CN001_006"].forEach((jiraCode) => {
     const plan = state.plans.find((row) => row.jiraCode === jiraCode);
     const testerValues = ["t1", "t2", "t3", "t4", "t5", "t6"].map((key) => plan?.[key]).filter((value) => value !== "" && value != null);
     if (!plan || testerValues.length || Number(plan.totalCases || 0) !== 0) {
       throw new Error(`PhanCong_UAT blank testcase row was imported with data: ${jiraCode} ${JSON.stringify(plan)}`);
     }
+  });
+  ["SQ02_CN001_007", "SQ02_CN001_010", "SQ02_CN010_006"].forEach((jiraCode) => {
+    const plan = state.plans.find((row) => row.jiraCode === jiraCode);
+    if (plan) throw new Error(`PhanCong_UAT hidden/struck row was imported: ${jiraCode} ${JSON.stringify(plan)}`);
   });
   const matrixParticipation = sum(state.matrix, "totalParticipation");
   if (matrixParticipation !== 162) {
