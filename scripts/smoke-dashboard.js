@@ -186,7 +186,7 @@ async function assertSprintSummaryRecomputes(payload) {
     if (Number(afterCreate?.totalStories || 0) !== expectedStories || Number(afterCreate?.totalCases || 0) !== expectedCases) {
       throw new Error(`Sprint summary did not recompute from PhanCong_UAT: expected ${expectedStories} story/${expectedCases} TC, got ${afterCreate?.totalStories}/${afterCreate?.totalCases}`);
     }
-    await assertDashboardSprintRow(targetSprint, beforeStories + 1, expectedCases);
+    await assertDashboardSprintRow(targetSprint, expectedStories, expectedCases);
   } finally {
     if (createdPlanId) {
       await apiJson(`/api/records/plans/${encodeURIComponent(createdPlanId)}`, { method: "DELETE" });
@@ -223,7 +223,7 @@ async function assertDashboardSprintRow(sprint, expectedStories, expectedCases) 
     const actualStories = Number((cells[1] || "").replace(/\D+/g, ""));
     const actualCases = Number((cells[3] || "").replace(/\D+/g, ""));
     if (actualStories !== expectedStories || actualCases !== expectedCases) {
-      throw new Error(`Dashboard sprint row ${sprint} expected ${expectedStories} story/${expectedCases} TC, got ${cells[1]}/${cells[2]}`);
+      throw new Error(`Dashboard sprint row ${sprint} expected ${expectedStories} story/${expectedCases} TC, got ${cells[1]}/${cells[3]}`);
     }
   } finally {
     await browser.close();
