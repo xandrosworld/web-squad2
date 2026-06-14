@@ -120,6 +120,21 @@ function assertUpdatedWorkbookCalculations(state) {
   if (!notedPlan || notedPlan.note !== "Kỹ thuật") {
     throw new Error(`PhanCong_UAT note column was not imported correctly: ${JSON.stringify(notedPlan)}`);
   }
+  const mergedMasterPlan = state.plans.find((row) => row.jiraCode === "SQ02_CN001_004");
+  if (!mergedMasterPlan || mergedMasterPlan.t1 !== 64 || mergedMasterPlan.t5 !== 64 || mergedMasterPlan.totalCases !== 320) {
+    throw new Error(`PhanCong_UAT merged testcase master row mismatch: ${JSON.stringify(mergedMasterPlan)}`);
+  }
+  ["SQ02_CN001_005", "SQ02_CN001_006", "SQ02_CN001_010"].forEach((jiraCode) => {
+    const plan = state.plans.find((row) => row.jiraCode === jiraCode);
+    const testerValues = ["t1", "t2", "t3", "t4", "t5", "t6"].map((key) => plan?.[key]).filter((value) => value !== "" && value != null);
+    if (!plan || testerValues.length || Number(plan.totalCases || 0) !== 0) {
+      throw new Error(`PhanCong_UAT blank testcase row was imported with data: ${jiraCode} ${JSON.stringify(plan)}`);
+    }
+  });
+  const matrixParticipation = sum(state.matrix, "totalParticipation");
+  if (matrixParticipation !== 162) {
+    throw new Error(`NangSuat_Tester formula results were overwritten: totalParticipation=${matrixParticipation}`);
+  }
   const linkedPassed = sum(state.features, "passedCases");
   const linkedFailed = sum(state.features, "failedCases");
   if (linkedPassed !== 0 || linkedFailed !== 0) {

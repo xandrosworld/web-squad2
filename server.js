@@ -1306,6 +1306,7 @@ function unwrapExcelCellValue(value) {
 
 function cellValueAt(row, column) {
   const cell = row.getCell(column);
+  if (cell.isMerged && cell.master && cell.master.address !== cell.address) return "";
   const value = unwrapExcelCellValue(cell.value);
   const displayText = typeof cell.text === "string" ? cell.text.trim() : "";
   if (value instanceof Date && /^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/.test(displayText)) return displayText;
@@ -1488,11 +1489,10 @@ function applyWorkbookRules(state) {
   });
 
   matrix.forEach((row) => {
-    testerKeys.forEach((testerKey) => {
-      row[testerKey] = plans.filter((plan) => sameLookup(plan.group, row.group) && excelNumeric(plan[testerKey]) > 0).length;
-    });
-    row.totalParticipation = testerKeys.reduce((total, testerKey) => total + Number(row[testerKey] || 0), 0);
-    row.warning = Number(row.totalParticipation || 0) < Number(row.target || 0) ? "Chưa đủ luân chuyển" : "Đạt";
+    if (row.totalParticipation === "" || row.totalParticipation == null) {
+      row.totalParticipation = testerKeys.reduce((total, testerKey) => total + Number(row[testerKey] || 0), 0);
+    }
+    row.warning = row.warning || (Number(row.totalParticipation || 0) < Number(row.target || 0) ? "Chưa đủ luân chuyển" : "Đạt");
   });
 
   return state;
