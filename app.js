@@ -746,6 +746,7 @@ let authState = {
     error: null
 };
 let lastRenderedTab = null;
+let pendingActiveTabScroll = "auto";
 let ui = {
     activeTab: getInitialTab(),
     query: "",
@@ -1039,6 +1040,35 @@ function render() {
         if (openedFilter) requestAnimationFrame(() => openedFilter.focus());
     }
     restorePageScroll(pageScroll);
+    if (pendingActiveTabScroll) {
+        const behavior = pendingActiveTabScroll;
+        pendingActiveTabScroll = null;
+        requestAnimationFrame(() => syncActiveTabScroll(behavior));
+    }
+}
+
+function requestActiveTabScroll(behavior = "smooth") {
+    pendingActiveTabScroll = behavior;
+}
+
+function syncActiveTabScroll(behavior = "auto") {
+    const tabbar = document.querySelector(".tabbar");
+    const activeTab = tabbar?.querySelector(".tab-btn.active");
+    if (!tabbar || !activeTab) return;
+
+    const maxScrollLeft = Math.max(0, tabbar.scrollWidth - tabbar.clientWidth);
+    if (!maxScrollLeft) return;
+
+    const tabbarRect = tabbar.getBoundingClientRect();
+    const activeRect = activeTab.getBoundingClientRect();
+    const activeCenter = activeRect.left - tabbarRect.left + tabbar.scrollLeft + (activeRect.width / 2);
+    const targetLeft = activeCenter - (tabbar.clientWidth / 2);
+    const nextLeft = Math.min(Math.max(0, Math.round(targetLeft)), maxScrollLeft);
+
+    tabbar.scrollTo({
+        left: nextLeft,
+        behavior: behavior === "smooth" ? "smooth" : "auto"
+    });
 }
 
 function stateDataSignature(state) {
@@ -3312,6 +3342,7 @@ function bindEvents() {
             ui.query = "";
             ui.openColumnFilter = null;
             history.replaceState(null, "", `#${ui.activeTab}`);
+            requestActiveTabScroll("smooth");
             render();
         });
     });
@@ -5025,6 +5056,7 @@ window.addEventListener("hashchange", () => {
     ui.activeTab = getInitialTab();
     ui.query = "";
     ui.openColumnFilter = null;
+    requestActiveTabScroll("smooth");
     render();
 });
 
