@@ -6,6 +6,7 @@ require("dotenv").config();
 const express = require("express");
 const ExcelJS = require("exceljs");
 const { Pool } = require("pg");
+const { computedFieldsByCollection } = require("./excel-formula-contract");
 
 const app = express();
 let server = null;
@@ -860,12 +861,16 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
   const collection = requireCollection(req.params.collection);
   const record = normalizeRecord(req.body.record || req.body);
   await ensureSchema();
+  if (computedCollections.has(collection)) {
+    throw httpError(403, "Phan he nay duoc tinh tu dong, khong cho sua truc tiep.");
+  }
   if (planningCollections.includes(collection) && !canCreateWorkPlanRecord(req.user)) {
     throw httpError(403, "Chỉ admin được tạo kế hoạch công việc.");
   }
   const client = await getPool().connect();
   try {
     await client.query("begin");
+    stripComputedFields(collection, record);
     await applyRecordDefaults(client, collection, record);
     validateRecordForCollection(collection, record);
     const saved = await createRecord(client, collection, record, req.user);
@@ -885,6 +890,9 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
   const collection = requireCollection(req.params.collection);
   let record = normalizeRecord({ ...(req.body.record || req.body), id: req.params.id }, req.params.id);
   await ensureSchema();
+  if (computedCollections.has(collection)) {
+    throw httpError(403, "Phan he nay duoc tinh tu dong, khong cho sua truc tiep.");
+  }
   const client = await getPool().connect();
   try {
     await client.query("begin");
@@ -896,6 +904,7 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     if (collection === "workItems" && !canFullyManageWorkItem(req.user, current)) {
       record = mergeWorkItemProgressUpdate(current.data, record);
     }
+    stripComputedFields(collection, record);
     record.createdAt = current.data?.createdAt || current.created_at?.toISOString?.() || record.createdAt;
     record.updatedAt = new Date().toISOString();
     await applyRecordDefaults(client, collection, record);
@@ -992,6 +1001,8 @@ module.exports = {
   app,
   parseWorkbookImportState,
   applyWorkbookRules,
+  computedFieldsByCollection,
+  isComputedRecordField,
   buildExcelWorkbook,
   excelSheets,
   tryAnswerAiShortcut,
@@ -1801,17 +1812,18 @@ function applyWorkbookRules(state) {
 
   applyScheduleRules(schedule);
 
+  const featureByJira = lookupBy(features, "jiraCode");
+  const featureByName = lookupBy(features, "name");
   const scheduleBySprint = lookupBy(schedule, "sprint");
   handoffs.forEach((row) => {
-    row.uatStart = row.uatStart || row.uatHandoff || "";
-    row.uatEnd = row.uatEnd || (row.uatHandoff ? addDays(row.uatHandoff, 4) : "");
+    const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.name));
+    row.uatStart = row.uatHandoff || "";
+    row.uatEnd = row.uatHandoff ? addDays(row.uatHandoff, 4) : "";
     row.handoffStatus = row.handoffStatus || (row.uatHandoff ? "✅ Đã bàn giao" : "⏯️Chưa bàn giao");
-    row.uatStatus = row.uatStatus || row.note || "";
+    row.uatStatus = feature?.status || row.uatStatus || row.note || "";
     delete row.note;
   });
 
-  const featureByJira = lookupBy(features, "jiraCode");
-  const featureByName = lookupBy(features, "name");
   const handoffByJira = lookupBy(handoffs, "jiraCode");
   const handoffByFeatureName = lookupBy(handoffs, "name");
   const userStoryByIssueKey = lookupBy(userStories, "issueKey");
@@ -1842,22 +1854,23 @@ function applyWorkbookRules(state) {
     const handoff = handoffByJira.get(lookupKey(row.jiraCode)) || handoffByFeatureName.get(lookupKey(row.feature));
     row.feature = feature?.name || row.feature || "";
     row.group = feature?.group || row.group || "";
-    row.sprint = row.sprint || handoff?.sprint || feature?.sprint || "";
+    row.sprint = feature?.sprint || handoff?.sprint || "";
     row.featureSprint = row.sprint;
-    row.uatHandoff = handoff?.uatHandoff || row.uatHandoff || "";
-    row.owner = row.owner || feature?.owner || "";
-    row.totalCases = row.totalCases === "" || row.totalCases == null ? 0 : Number(row.totalCases || 0);
-    row.executedCases = sumWhere(daily, (item) => sameLookup(item.jiraCode, row.jiraCode), "executedCases");
-    row.progress = percent(row.executedCases, row.totalCases);
+    row.uatHandoff = handoff?.uatHandoff || "";
+    row.owner = feature?.owner || "";
+    row.totalCases = sumPlanAssignments(row);
+    row.executedCases = sumWhere(daily, (item) => sameLookup(item.jiraCode, row.code), "totalCases");
+    row.progress = percent(row.executedCases, sumWhere(daily, (item) => sameLookup(item.jiraCode, row.code), "tester", true));
     row.testStatus = row.testStatus || inferTestStatus(row.executedCases, row.totalCases);
     row.uatStatus = row.uatStatus || inferUatStatus(row.executedCases, row.totalCases);
-    row.devStatus = row.devStatus || handoff?.uatStatus || "";
-    row.priority = row.priority === "" || row.priority == null ? inferUatPriority(row.devStatus) : row.priority;
+    row.devStatus = feature?.status || "";
+    row.priority = inferUatPriority(row.devStatus);
   });
 
   daily.forEach((row) => {
     const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.feature));
     row.code = feature?.code || row.code || "";
+    row.jiraCode = feature?.jiraCode || "";
     row.sprint = row.sprint || feature?.sprint || "";
     row.feature = row.feature || feature?.name || "";
     row.executedCases = Number(row.executedCases || 0) || Number(row.passedCases || 0) + Number(row.failedCases || 0);
@@ -1877,7 +1890,7 @@ function applyWorkbookRules(state) {
     row.storyName = row.storyName || row.featureName || "";
     row.sprint = row.sprint || feature?.sprint || "";
     row.owner = row.owner || feature?.owner || "";
-    row.aging = row.aging === "" || row.aging == null ? calculateDefectAging(row.foundDate, row.resolvedDate) : row.aging;
+    row.aging = calculateDefectAging(row.foundDate, row.resolvedDate);
   });
 
   features.forEach((row) => {
@@ -1885,7 +1898,7 @@ function applyWorkbookRules(state) {
     const handoff = handoffByJira.get(lookupKey(row.jiraCode)) || handoffByFeatureName.get(lookupKey(row.name));
     const planRows = plans.filter((plan) => sameLookup(plan.jiraCode, row.jiraCode) || sameLookup(plan.feature, row.name));
     const dailyRows = daily.filter((item) => sameLookup(item.jiraCode, row.jiraCode) || sameLookup(item.feature, row.name));
-    const defectRows = defects.filter((item) => defectMatchesFeature(item, row, story) && isOpenBugStatus(item.status));
+    const defectRows = defects.filter((item) => sameLookup(item.linkedUsKey, row.jiraCode) && isOpenBugStatus(item.status));
     row.usKey = story?.issueKey || row.usKey || "";
     row.usStatus = story?.status || row.usStatus || "";
     row.assignee = story?.assignee || row.assignee || "";
@@ -1893,17 +1906,16 @@ function applyWorkbookRules(state) {
     row.uatStart = handoff?.uatStart || "";
     row.uatEnd = handoff?.uatEnd || "";
     row.handoffStatus = handoff?.handoffStatus || "";
-    row.sprint = handoff?.sprint || row.sprint || planRows[0]?.sprint || "";
+    row.sprint = handoff?.sprint || "";
     row.owner = row.owner || planRows[0]?.owner || "";
-    row.status = handoff?.uatStatus || row.status || planRows[0]?.devStatus || "";
-    row.totalCases = sumWhere(planRows, () => true, "totalCases");
+    row.totalCases = sumWhere(dailyRows, () => true, "totalCases");
     row.passedCases = sumWhere(dailyRows, () => true, "passedCases");
     row.failedCases = sumWhere(dailyRows, () => true, "failedCases");
-    row.blockedCases = dailyRows.filter((item) => normalizeImportedText(item.blocker)).length;
+    row.blockedCases = sumWhere(dailyRows, () => true, "bugStatus", true);
     row.defectOpen = defectRows.length;
     row.blockerOpen = defectRows.filter((item) => isSeverity(item.severity, "Blocker")).length;
     row.criticalOpen = defectRows.filter((item) => isSeverity(item.severity, "Critical")).length;
-    row.completionRate = percent(row.passedCases, row.totalCases);
+    row.completionRate = percent(sumWhere(planRows, () => true, "t6"), sumWhere(planRows, () => true, "t5"));
     row.uatResult = inferFeatureUatResult(row);
     row.openBugs = row.defectOpen;
     row.uatWarning = row.defectOpen > 0 ? "Có lỗi mở" : (Number(row.completionRate || 0) < 100 ? "Chưa hoàn thành TC" : "Đạt");
@@ -1932,12 +1944,12 @@ function applyWorkbookRules(state) {
       return;
     }
     row.totalStories = features.filter((feature) => sprintMatches(feature.sprint, sprintKey)).length;
-    row.storyTested = plans.filter((plan) => sprintMatches(plan.sprint, sprintKey) && Number(plan.executedCases || 0) > 0).length;
-    row.totalCases = sumWhere(plans, (plan) => sprintMatches(plan.sprint, sprintKey), "totalCases");
-    row.executedCases = sumWhere(plans, (plan) => sprintMatches(plan.sprint, sprintKey), "executedCases");
+    row.storyTested = features.filter((feature) => sprintMatches(feature.sprint, sprintKey) && Number(feature.totalCases || 0) > 0).length;
+    row.totalCases = sumWhere(features, (feature) => sprintMatches(feature.sprint, sprintKey), "totalCases");
+    row.executedCases = row.totalCases;
     row.coverageRate = percent(row.storyTested, row.totalStories);
-    row.passedCases = sumWhere(daily, (item) => sprintMatches(item.sprint, sprintKey) && hasDailyFeatureLink(item), "passedCases");
-    row.successRate = percent(row.passedCases, row.executedCases || row.totalCases);
+    row.passedCases = sumWhere(features, (feature) => sprintMatches(feature.sprint, sprintKey), "passedCases");
+    row.successRate = percent(row.passedCases, row.totalCases);
     const openDefects = defects.filter((item) => sprintMatches(item.sprint, sprintKey) && isOpenBugStatus(item.status));
     row.blockerBugs = openDefects.filter((item) => isSeverity(item.severity, "Blocker")).length;
     row.criticalBugs = openDefects.filter((item) => isSeverity(item.severity, "Critical")).length;
@@ -1954,11 +1966,11 @@ function applyWorkbookRules(state) {
     row.handoffDate = scheduleRow?.handoffDate || "";
     row.totalStories = features.filter((feature) => sprintMatches(feature.sprint, row.sprint)).length;
     row.deliveredStories = handoffs.filter((handoff) => sprintMatches(handoff.sprint, row.sprint) && normalizeImportedText(handoff.uatHandoff)).length;
-    row.totalCases = sumWhere(plans, (plan) => sprintMatches(plan.sprint, row.sprint), "totalCases");
-    row.executedCases = sumWhere(plans, (plan) => sprintMatches(plan.sprint, row.sprint), "executedCases");
+    row.totalCases = sumWhere(features, (feature) => sprintMatches(feature.sprint, row.sprint), "totalCases");
+    row.executedCases = row.totalCases;
     row.coverageRate = percent(row.deliveredStories, row.totalStories);
-    row.passedCases = sumWhere(daily, (item) => sprintMatches(item.sprint, row.sprint) && hasDailyFeatureLink(item), "passedCases");
-    row.successRate = percent(row.passedCases, row.executedCases || row.totalCases);
+    row.passedCases = sumWhere(features, (feature) => sprintMatches(feature.sprint, row.sprint), "passedCases");
+    row.successRate = percent(row.passedCases, row.totalCases);
     const openDefects = defects.filter((item) => sprintMatches(item.sprint, row.sprint) && isOpenBugStatus(item.status));
     row.openBlockerBugs = openDefects.filter((item) => isSeverity(item.severity, "Blocker")).length;
     row.openCriticalBugs = openDefects.filter((item) => isSeverity(item.severity, "Critical")).length;
@@ -1972,10 +1984,8 @@ function applyWorkbookRules(state) {
   });
 
   matrix.forEach((row) => {
-    if (row.totalParticipation === "" || row.totalParticipation == null) {
-      row.totalParticipation = testerKeys.reduce((total, testerKey) => total + Number(row[testerKey] || 0), 0);
-    }
-    row.warning = row.warning || (Number(row.totalParticipation || 0) < Number(row.target || 0) ? "Chưa đủ luân chuyển" : "Đạt");
+    row.totalParticipation = testerKeys.reduce((total, testerKey) => total + Number(row[testerKey] || 0), 0);
+    row.warning = Number(row.totalParticipation || 0) < Number(row.target || 0) ? "Chưa đủ luân chuyển" : "Đạt";
   });
 
   return state;
@@ -3228,6 +3238,20 @@ function normalizeRecord(input, forcedId) {
     createdAt: isValidDateString(recordData.createdAt) ? recordData.createdAt : now,
     updatedAt: isValidDateString(recordData.updatedAt) ? recordData.updatedAt : now
   };
+}
+
+function isComputedRecordField(collection, field) {
+  const fields = computedFieldsByCollection[collection] || [];
+  return fields.includes("*") || fields.includes(field);
+}
+
+function stripComputedFields(collection, record) {
+  const fields = computedFieldsByCollection[collection] || [];
+  if (!fields.length || fields.includes("*")) return record;
+  for (const field of fields) {
+    delete record[field];
+  }
+  return record;
 }
 
 async function applyRecordDefaults(client, collection, record) {

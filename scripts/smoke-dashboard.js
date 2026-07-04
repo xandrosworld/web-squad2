@@ -69,7 +69,7 @@ let createdPlanId = "";
     }
   }
 
-  await assertSprintSummaryRecomputes(await apiGet("/api/state"));
+  await assertPlanDashboardRecomputes(await apiGet("/api/state"));
 
   console.log(`Dashboard smoke passed: ${baseUrl}`);
 })().catch((error) => {
@@ -150,6 +150,51 @@ async function assertDashboardMetric(tabId, label, expectedValue) {
     throw new Error(`Dashboard metric ${label} expected ${expectedValue}, got ${actualValue}`);
   } finally {
     await browser.close();
+  }
+}
+
+async function assertPlanDashboardRecomputes(payload) {
+  const state = payload.state || payload;
+  const beforeTotalCases = sumRows(state.plans || [], "totalCases");
+  const testCases = 7;
+  const stamp = Date.now();
+  const planRecord = {
+    id: `dashboard-plan-smoke-${stamp}`,
+    code: "SMOKE",
+    jiraCode: `SMOKE_DASHBOARD_${stamp}`,
+    group: "Dashboard smoke",
+    feature: `Dashboard plan smoke ${stamp}`,
+    nv: 0,
+    t1: testCases,
+    t2: 0,
+    t3: 0,
+    t4: 0,
+    t5: 0,
+    t6: 0
+  };
+
+  try {
+    const created = await apiJson("/api/records/plans", {
+      method: "POST",
+      body: JSON.stringify({ record: planRecord })
+    });
+    createdPlanId = created.record?.id || planRecord.id;
+    const expectedTotalCases = beforeTotalCases + testCases;
+    const afterTotalCases = sumRows(created.state.plans || [], "totalCases");
+    if (afterTotalCases !== expectedTotalCases) {
+      throw new Error(`Dashboard plan total did not recompute from PhanCong_UAT: expected ${expectedTotalCases}, got ${afterTotalCases}`);
+    }
+    await assertDashboardMetric("dashboard", "Tá»•ng Testcase", expectedTotalCases);
+  } finally {
+    if (createdPlanId) {
+      await apiJson(`/api/records/plans/${encodeURIComponent(createdPlanId)}`, { method: "DELETE" });
+      createdPlanId = "";
+      const afterDelete = await apiGet("/api/state");
+      const restoredTotalCases = sumRows(afterDelete.state.plans || [], "totalCases");
+      if (restoredTotalCases !== beforeTotalCases) {
+        throw new Error(`Dashboard plan cleanup did not restore total cases: expected ${beforeTotalCases}, got ${restoredTotalCases}`);
+      }
+    }
   }
 }
 

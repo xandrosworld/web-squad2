@@ -19,6 +19,36 @@ const TABLE_VIEWPORT_GUTTER = 104;
 const COLUMN_HEADER_CONTROL_WIDTH = 58;
 const COLUMN_HEADER_FIT_BUFFER = 8;
 
+const computedFieldsByCollection = {
+    features: [
+        "sprint",
+        "uatHandoff",
+        "handoffStatus",
+        "totalCases",
+        "passedCases",
+        "failedCases",
+        "blockedCases",
+        "defectOpen",
+        "blockerOpen",
+        "criticalOpen",
+        "uatResult",
+        "openBugs",
+        "completionRate",
+        "uatWarning"
+    ],
+    schedule: ["devEnd", "handoffDate", "startDate", "endDate"],
+    handoffs: ["uatStart", "uatEnd", "uatStatus"],
+    plans: ["sprint", "uatHandoff", "owner", "totalCases", "progress", "devStatus", "priority"],
+    daily: ["jiraCode", "executedCases", "criticalBugs", "highBugs"],
+    defects: ["featureJiraCode", "sprint", "aging"],
+    userStories: ["squadSummary", "jiraCode"],
+    bugSources: ["tester", "featureJiraCode", "jiraCode", "featureName"],
+    defectSummary: ["*"],
+    weekly: ["totalStories", "storyTested", "coverageRate", "successRate", "blockerBugs", "criticalBugs", "reopenRate", "assessment", "gateResult"],
+    readiness: ["totalStories", "deliveredStories", "coverageRate", "successRate", "openBlockerBugs", "openCriticalBugs", "openMajorBugs", "openHighBugs", "reopenRate", "readinessLevel", "decision", "handoffDate"],
+    matrix: ["totalParticipation", "warning"]
+};
+
 const e = (value) => String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -3016,10 +3046,12 @@ function renderTableHeaderCell(mod, col, meta) {
     const key = columnFilterKey(mod, col);
     const value = ui.columnFilters[key] || "";
     const isOpen = ui.openColumnFilter === key;
+    const computed = isComputedField(mod.collection, col.key);
     return `
         <th${tableCellAttrs(meta, isOpen ? "filter-open" : "")}>
             <div class="th-control" data-column-filter-shell="${e(key)}">
                 <span class="th-label" title="${e(col.label)}">${e(col.label)}</span>
+                ${computed ? `<span class="computed-chip" title="Tự tính theo công thức Excel">Tự tính</span>` : ""}
                 <button type="button" class="th-filter-btn ${value ? "active" : ""}" data-action="toggle-column-filter" data-column-key="${e(col.key)}" title="Lọc ${e(col.label)}" aria-label="Lọc ${e(col.label)}">
                     <i class="fa-solid fa-filter"></i>
                 </button>
@@ -3366,7 +3398,9 @@ function renderModal() {
         ? appState[mod.collection].find((item) => item.id === ui.modal.id)
         : null;
     const title = row ? `Sửa ${mod.shortLabel}` : `Thêm ${mod.shortLabel}`;
-    const requiredFields = mod.fields.filter((field) => field.required);
+    const editableFields = getEditableFields(mod);
+    const computedCount = Math.max(0, mod.fields.length - editableFields.length);
+    const requiredFields = editableFields.filter((field) => field.required);
     return `
         <div class="modal-backdrop open" id="recordModal" role="dialog" aria-modal="true">
             <form class="modal" id="recordForm">
@@ -3385,7 +3419,7 @@ function renderModal() {
                 <div class="modal-body">
                     <div class="record-form-layout">
                         <div class="form-grid">
-                            ${mod.fields.map((field) => renderField(field, row)).join("")}
+                            ${editableFields.map((field) => renderField(field, row)).join("")}
                         </div>
                         <aside class="record-rail">
                             <div class="rail-card">
@@ -3397,6 +3431,13 @@ function renderModal() {
                                 <strong>${e(requiredFields.length)}</strong>
                                 <small>${requiredFields.map((field) => e(field.label)).join(", ") || "Không có"}</small>
                             </div>
+                            ${computedCount ? `
+                                <div class="rail-card">
+                                    <span>Tự tính</span>
+                                    <strong>${e(computedCount)}</strong>
+                                    <small>Backend cập nhật theo công thức Excel sau khi lưu.</small>
+                                </div>
+                            ` : ""}
                             ${row ? `
                                 <div class="rail-card">
                                     <span>Cập nhật</span>
@@ -4841,7 +4882,7 @@ async function handleSubmit(event) {
     const form = event.currentTarget;
     const saveMode = event.submitter?.dataset.saveMode || "close";
     const payload = {};
-    for (const field of mod.fields) {
+    for (const field of getEditableFields(mod)) {
         const input = form.elements[field.key];
         let value = input?.value ?? "";
         if (typeof value === "string") value = value.trim();
@@ -5241,6 +5282,16 @@ function getFieldForColumn(mod, col) {
     return mod.fields.find((field) => field.key === col.key);
 }
 
+function isComputedField(collection, key) {
+    const fields = computedFieldsByCollection[collection] || [];
+    return fields.includes("*") || fields.includes(key);
+}
+
+function getEditableFields(mod) {
+    if (!mod?.fields) return [];
+    return mod.fields.filter((field) => !isComputedField(mod.collection, field.key));
+}
+
 function getColumnFilterOptions(mod, col, field) {
     const fieldOptions = getFieldOptions(field);
     if (field?.type === "select" && fieldOptions.length) return fieldOptions.map(optionValue);
@@ -5358,7 +5409,7 @@ function getColumnRawValue(row, col) {
 
 function validateRecord(mod, payload) {
     const errors = [];
-    const percentFields = mod.fields.filter((field) => field.type === "percent");
+    const percentFields = getEditableFields(mod).filter((field) => field.type === "percent");
     percentFields.forEach((field) => {
         const value = payload[field.key];
         if (value !== "" && (Number(value) < 0 || Number(value) > 100)) {

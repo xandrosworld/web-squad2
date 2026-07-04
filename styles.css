@@ -1755,6 +1755,18 @@ body.is-column-resizing * {
     white-space: nowrap;
 }
 
+.computed-chip {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    padding: 2px 6px;
+    background: #e6f7f5;
+    color: var(--bidv-teal);
+    font-size: 9px;
+    font-weight: 850;
+    line-height: 14px;
+    text-transform: none;
+}
+
 .th-filter-btn {
     position: relative;
     width: 24px;

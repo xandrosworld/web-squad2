@@ -91,8 +91,11 @@ async function main() {
   if (!state.guide.some((row) => row.category === "Blocker" && row.note)) throw new Error("HD_UAT priority convention column was not imported.");
   if (!state.daily.some((row) => Array.isArray(row.blockerLinks) && row.blockerLinks.length)) throw new Error("DieuHanh_Ngay blocker hyperlinks were not imported.");
   if (deliveredStories !== 47) throw new Error(`Expected 47 delivered stories, got ${deliveredStories}`);
-  if (totalCases !== 2704 || featureTotalCases !== 2704) {
-    throw new Error(`Expected total testcase 2704, got plans=${totalCases}, features=${featureTotalCases}`);
+  if (totalCases !== 2704) {
+    throw new Error(`Expected PhanCong_UAT total testcase 2704, got plans=${totalCases}`);
+  }
+  if (featureTotalCases !== 186) {
+    throw new Error(`Expected DM_ChucNang daily-driven total testcase 186, got features=${featureTotalCases}`);
   }
   assertUpdatedWorkbookCalculations(state);
   assertHandoffSections(state.handoffs);
