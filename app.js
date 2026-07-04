@@ -746,7 +746,7 @@ let authState = {
     error: null
 };
 let lastRenderedTab = null;
-let pendingActiveTabScroll = "auto";
+let pendingActiveTabScroll = null;
 let ui = {
     activeTab: getInitialTab(),
     query: "",
@@ -1040,11 +1040,9 @@ function render() {
         if (openedFilter) requestAnimationFrame(() => openedFilter.focus());
     }
     restorePageScroll(pageScroll);
-    if (pendingActiveTabScroll) {
-        const behavior = pendingActiveTabScroll;
-        pendingActiveTabScroll = null;
-        requestAnimationFrame(() => syncActiveTabScroll(behavior));
-    }
+    const tabScrollBehavior = pendingActiveTabScroll || "auto";
+    pendingActiveTabScroll = null;
+    requestAnimationFrame(() => syncActiveTabScroll(tabScrollBehavior));
 }
 
 function requestActiveTabScroll(behavior = "smooth") {
@@ -1061,6 +1059,10 @@ function syncActiveTabScroll(behavior = "auto") {
 
     const tabbarRect = tabbar.getBoundingClientRect();
     const activeRect = activeTab.getBoundingClientRect();
+    const edgePadding = 8;
+    const isVisible = activeRect.left >= tabbarRect.left + edgePadding && activeRect.right <= tabbarRect.right - edgePadding;
+    if (isVisible && behavior !== "smooth") return;
+
     const activeCenter = activeRect.left - tabbarRect.left + tabbar.scrollLeft + (activeRect.width / 2);
     const targetLeft = activeCenter - (tabbar.clientWidth / 2);
     const nextLeft = Math.min(Math.max(0, Math.round(targetLeft)), maxScrollLeft);
