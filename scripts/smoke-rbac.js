@@ -245,6 +245,8 @@ function emptyState() {
     weekly: [],
     readiness: [],
     matrix: [],
-    guide: []
+    guide: [],
+    workCategories: [],
+    workItems: []
   };
 }

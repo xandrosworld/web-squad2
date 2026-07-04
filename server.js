@@ -43,7 +43,7 @@ const defaultUsers = [
 ];
 const adminIdentities = ["yenuth@bidv.com.vn", "thanhmt@bidv.com.vn", "huyng@bidv.com.vn"];
 
-const collections = [
+const workbookCollections = [
   "features",
   "personnel",
   "schedule",
@@ -59,6 +59,8 @@ const collections = [
   "matrix",
   "guide"
 ];
+const planningCollections = ["workCategories", "workItems"];
+const collections = [...workbookCollections, ...planningCollections];
 const collectionSet = new Set(collections);
 const computedCollections = new Set(["defectSummary"]);
 const functionGroups = [
@@ -91,6 +93,9 @@ const planStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Hoàn th
 const testStatusOptions = ["Chưa Test", "Đang Test", "Passed", "Failed"];
 const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopen", "Reopened", "Resolved", "SIT Pass", "SIT Fail"];
 const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
+const workCategoryStatusOptions = ["Đang theo dõi", "Tạm dừng", "Hoàn thành"];
+const workStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Chờ phản hồi", "Tạm dừng", "Hoàn thành", "Quá hạn", "Hủy"];
+const workPriorityOptions = ["Cao", "Trung bình", "Thấp"];
 const collectionRules = {
   features: {
     required: ["code", "name"],
@@ -199,6 +204,23 @@ const collectionRules = {
     numbers: ["index"],
     percents: [],
     enums: {}
+  },
+  workCategories: {
+    required: ["name"],
+    numbers: ["sortOrder"],
+    percents: [],
+    enums: {
+      status: workCategoryStatusOptions
+    }
+  },
+  workItems: {
+    required: ["title"],
+    numbers: ["sortOrder"],
+    percents: ["progress"],
+    enums: {
+      status: workStatusOptions,
+      priority: workPriorityOptions
+    }
   }
 };
 const excelSheets = [
@@ -701,18 +723,18 @@ app.post("/api/import/excel", requireAdmin, express.raw({
   }
 
   const importState = await parseWorkbookImportState(req.body);
-  if (!stateRecordTotal(importState)) {
+  if (!stateRecordTotal(importState, workbookCollections)) {
     throw httpError(400, "Không tìm thấy dữ liệu UAT hợp lệ trong file Excel.");
   }
-  for (const collection of collections) {
+  for (const collection of workbookCollections) {
     importState[collection].forEach((record) => validateRecordForCollection(collection, record));
   }
 
   const client = await getPool().connect();
   try {
     await client.query("begin");
-    await client.query("delete from uat_records where collection = any($1)", [collections]);
-    for (const collection of collections) {
+    await client.query("delete from uat_records where collection = any($1)", [workbookCollections]);
+    for (const collection of workbookCollections) {
       for (const record of importState[collection]) {
         await createRecord(client, collection, record, req.user);
       }
@@ -720,7 +742,7 @@ app.post("/api/import/excel", requireAdmin, express.raw({
     await touchMeta(client);
     const state = await readState(client, req.user);
     await client.query("commit");
-    res.json({ state, imported: summarizeImportState(importState) });
+    res.json({ state, imported: summarizeImportState(importState, workbookCollections) });
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -844,7 +866,6 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
 app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
   const collection = requireCollection(req.params.collection);
   const record = normalizeRecord({ ...(req.body.record || req.body), id: req.params.id }, req.params.id);
-  validateRecordForCollection(collection, record);
   await ensureSchema();
   const client = await getPool().connect();
   try {
@@ -853,6 +874,8 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     assertCanModifyRecord(req.user, current);
     record.createdAt = current.data?.createdAt || current.created_at?.toISOString?.() || record.createdAt;
     record.updatedAt = new Date().toISOString();
+    await applyRecordDefaults(client, collection, record);
+    validateRecordForCollection(collection, record);
     const saved = await updateRecord(client, collection, record, req.user.id, current);
     const { state, updatedAt } = await recomputeAndPersistWorkbookRules(client, req.user.id, req.user);
     const savedRecord = state[collection].find((item) => item.id === saved.data?.id) || decorateRecord(saved, req.user);
@@ -2209,12 +2232,12 @@ function importId(collection, ...parts) {
     .digest("hex");
 }
 
-function stateRecordTotal(state) {
-  return collections.reduce((total, collection) => total + (Array.isArray(state?.[collection]) ? state[collection].length : 0), 0);
+function stateRecordTotal(state, targetCollections = collections) {
+  return targetCollections.reduce((total, collection) => total + (Array.isArray(state?.[collection]) ? state[collection].length : 0), 0);
 }
 
-function summarizeImportState(state) {
-  return collections.reduce((summary, collection) => {
+function summarizeImportState(state, targetCollections = collections) {
+  return targetCollections.reduce((summary, collection) => {
     summary[collection] = Array.isArray(state?.[collection]) ? state[collection].length : 0;
     return summary;
   }, {});
@@ -2289,7 +2312,131 @@ function buildExcelWorkbook(state) {
       }
     });
   }
+  addWorkPlanWorksheet(workbook, state);
   return workbook;
+}
+
+function addWorkPlanWorksheet(workbook, state) {
+  const worksheet = workbook.addWorksheet("KeHoach_CongViec", {
+    views: [{ state: "frozen", ySplit: 12, xSplit: 2 }]
+  });
+  const columns = [
+    ["recordType", "Loại dòng", 12],
+    ["sortOrder", "STT", 8, "number"],
+    ["categoryName", "Nhóm công việc", 28],
+    ["title", "Tên công việc", 34],
+    ["description", "Mô tả", 42],
+    ["assignee", "Người phụ trách", 22],
+    ["assigneeEmail", "Email phụ trách", 28],
+    ["collaborators", "Người phối hợp", 26],
+    ["status", "Trạng thái", 18],
+    ["progress", "% hoàn thành", 14, "number"],
+    ["priority", "Ưu tiên", 14],
+    ["startDate", "Ngày bắt đầu", 16, "date"],
+    ["dueDate", "Deadline", 16, "date"],
+    ["completedDate", "Ngày hoàn thành", 18, "date"],
+    ["warning", "Cảnh báo", 18],
+    ["documentUrl", "Link tài liệu", 38],
+    ["note", "Vướng mắc/Ghi chú", 44],
+    ["updatedAt", "Cập nhật", 20, "date"]
+  ];
+
+  worksheet.columns = columns.map(([, , width]) => ({ width }));
+  writeDashboardTitle(worksheet, "A1:R1", "KẾ HOẠCH CÔNG VIỆC SQUAD 2");
+  writeDashboardTable(worksheet, 3, 1, ["Chỉ số", "Giá trị"], getWorkPlanKpiRows(state));
+
+  const headerRow = worksheet.getRow(12);
+  columns.forEach(([, header], index) => {
+    const cell = headerRow.getCell(index + 1);
+    cell.value = header;
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF009C95" } };
+    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+    cell.border = { bottom: { style: "thin", color: { argb: "FF00736F" } } };
+  });
+  worksheet.autoFilter = {
+    from: { row: 12, column: 1 },
+    to: { row: 12, column: columns.length }
+  };
+
+  const categories = collectionRows(state, "workCategories").sort(compareStateRecords);
+  const categoryMap = new Map(categories.map((category) => [String(category.id), category]));
+  const itemsByCategory = new Map();
+  collectionRows(state, "workItems").sort(compareStateRecords).forEach((item) => {
+    const key = String(item.categoryId || "");
+    if (!itemsByCategory.has(key)) itemsByCategory.set(key, []);
+    itemsByCategory.get(key).push(item);
+  });
+
+  const rows = [];
+  categories.forEach((category) => {
+    rows.push({
+      recordType: "Nhóm",
+      sortOrder: category.sortOrder || "",
+      categoryName: category.name || "",
+      title: category.name || "",
+      description: category.description || "",
+      assignee: category.owner || "",
+      status: category.status || "",
+      dueDate: category.targetDate || "",
+      note: category.note || "",
+      updatedAt: category.updatedAt || category.createdAt || ""
+    });
+    (itemsByCategory.get(String(category.id)) || []).forEach((item) => {
+      rows.push(workPlanExportRow(item, categoryMap));
+    });
+    itemsByCategory.delete(String(category.id));
+  });
+  for (const ungroupedItems of itemsByCategory.values()) {
+    ungroupedItems.forEach((item) => rows.push(workPlanExportRow(item, categoryMap)));
+  }
+
+  rows.forEach((rowData, index) => {
+    const row = worksheet.addRow(columns.map(([key, , , type]) => excelCellValue(rowData[key], type)));
+    row.alignment = { vertical: "top", wrapText: true };
+    if (rowData.recordType === "Nhóm") {
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF12BDB8" } };
+      });
+    } else if (index % 2 === 1) {
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F8F7" } };
+      });
+    }
+    columns.forEach(([key, , , type], columnIndex) => {
+      const cell = row.getCell(columnIndex + 1);
+      if (type === "date") cell.numFmt = "dd/mm/yyyy";
+      if (type === "number") cell.numFmt = "0.##";
+      if (key === "documentUrl" && rowData.documentUrl && /^https?:\/\//i.test(String(rowData.documentUrl))) {
+        cell.value = { text: String(rowData.documentUrl), hyperlink: String(rowData.documentUrl) };
+        cell.font = { color: { argb: "FF0563C1" }, underline: true };
+      }
+    });
+  });
+}
+
+function workPlanExportRow(item, categoryMap) {
+  return {
+    recordType: "Công việc",
+    sortOrder: item.sortOrder || "",
+    categoryName: categoryMap.get(String(item.categoryId || ""))?.name || item.categoryName || "Chưa phân nhóm",
+    title: item.title || "",
+    description: item.description || "",
+    assignee: item.assignee || "",
+    assigneeEmail: item.assigneeEmail || "",
+    collaborators: item.collaborators || "",
+    status: item.status || "",
+    progress: item.progress || 0,
+    priority: item.priority || "",
+    startDate: item.startDate || "",
+    dueDate: item.dueDate || "",
+    completedDate: item.completedDate || "",
+    warning: getWorkItemWarning(item),
+    documentUrl: item.documentUrl || "",
+    note: item.note || item.blocker || "",
+    updatedAt: item.updatedAt || item.createdAt || ""
+  };
 }
 
 function addExcelSectionRow(worksheet, sheetConfig, section) {
@@ -2549,6 +2696,39 @@ function getDefectPrioritySummaryRows(state) {
   ]);
 }
 
+function getWorkPlanKpiRows(state) {
+  const items = collectionRows(state, "workItems");
+  const done = items.filter((row) => row.status === "Hoàn thành").length;
+  const overdue = items.filter((row) => getWorkItemWarning(row) === "Quá hạn").length;
+  const dueSoon = items.filter((row) => getWorkItemWarning(row) === "Sắp đến hạn").length;
+  const progress = items.length ? Math.round(items.reduce((total, row) => total + Number(row.progress || 0), 0) / items.length) : 0;
+  return [
+    ["Nhóm công việc", collectionRows(state, "workCategories").length],
+    ["Tổng đầu việc", items.length],
+    ["Đã hoàn thành", done],
+    ["Đang mở", Math.max(0, items.length - done)],
+    ["Quá hạn", overdue],
+    ["Sắp đến hạn", dueSoon],
+    ["Tiến độ trung bình", `${progress}%`]
+  ];
+}
+
+function getWorkItemWarning(row) {
+  const status = String(row?.status || "").trim();
+  if (status === "Hoàn thành") return "Đã xong";
+  if (status === "Hủy") return "Đã hủy";
+  if (status === "Quá hạn") return "Quá hạn";
+  const dueDate = parseImportDateOnly(row?.dueDate);
+  if (!dueDate) return Number(row?.progress || 0) >= 80 ? "Ổn" : "Đang theo dõi";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  dueDate.setHours(0, 0, 0, 0);
+  const remainingDays = Math.round((dueDate.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+  if (remainingDays < 0) return "Quá hạn";
+  if (remainingDays <= 3) return "Sắp đến hạn";
+  return Number(row?.progress || 0) >= 80 ? "Ổn" : "Đang theo dõi";
+}
+
 function excelRecordValue(record, key) {
   if (key === "progress") return percent(record.executedCases, record.totalCases);
   if (key === "uatHandoff") return record.uatHandoff || record.handoffDate;
@@ -2694,8 +2874,8 @@ function compareStateRecords(a, b) {
   if (Number.isFinite(numericA) && Number.isFinite(numericB) && numericA !== numericB) {
     return numericA - numericB;
   }
-  return String(a?.sprint || a?.code || a?.jiraCode || a?.name || a?.topic || "")
-    .localeCompare(String(b?.sprint || b?.code || b?.jiraCode || b?.name || b?.topic || ""), "vi", { numeric: true });
+  return String(a?.sprint || a?.code || a?.jiraCode || a?.name || a?.title || a?.topic || "")
+    .localeCompare(String(b?.sprint || b?.code || b?.jiraCode || b?.name || b?.title || b?.topic || ""), "vi", { numeric: true });
 }
 
 async function createRecord(client, collection, record, actor) {
@@ -2800,6 +2980,14 @@ function decorateRecord(row, viewer) {
 }
 
 function ownerAccountLinkForRecord(record) {
+  const assigneeEmail = String(record?.assigneeEmail || "").trim().toLowerCase();
+  if (assigneeEmail) {
+    return {
+      code: "",
+      label: record?.assignee || assigneeEmail,
+      email: assigneeEmail
+    };
+  }
   const code = ownerCodeFromValue(record?.owner);
   return ownerAccountLinks.find((link) => link.code === code) || null;
 }
@@ -2955,6 +3143,8 @@ function emptyState() {
     readiness: [],
     matrix: [],
     guide: [],
+    workCategories: [],
+    workItems: [],
     updatedAt: null
   };
 }
@@ -2992,6 +3182,20 @@ async function applyRecordDefaults(client, collection, record) {
   if (collection === "features" && isBlank(record.stt)) {
     record.stt = await getNextFeatureStt(client);
   }
+  if (collection === "workCategories") {
+    if (isBlank(record.sortOrder)) record.sortOrder = await getNextCollectionSortOrder(client, collection);
+    if (isBlank(record.status)) record.status = "Đang theo dõi";
+  }
+  if (collection === "workItems") {
+    if (isBlank(record.sortOrder)) record.sortOrder = await getNextCollectionSortOrder(client, collection);
+    if (isBlank(record.status)) record.status = "Chưa bắt đầu";
+    if (isBlank(record.priority)) record.priority = "Trung bình";
+    if (isBlank(record.progress)) record.progress = 0;
+    if (record.status === "Hoàn thành") {
+      record.progress = 100;
+      if (isBlank(record.completedDate)) record.completedDate = localDateString(new Date());
+    }
+  }
 }
 
 async function getNextFeatureStt(client) {
@@ -3002,6 +3206,24 @@ async function getNextFeatureStt(client) {
       and (data->>'stt') ~ '^[0-9]+$'
   `, ["features"]);
   return Number(result.rows[0]?.max_stt || 0) + 1;
+}
+
+async function getNextCollectionSortOrder(client, collection) {
+  const result = await client.query(`
+    select coalesce(max((data->>'sortOrder')::numeric), 0) as max_sort_order
+    from uat_records
+    where collection = $1
+      and (data->>'sortOrder') ~ '^[0-9]+(\\.[0-9]+)?$'
+  `, [collection]);
+  return Math.trunc(Number(result.rows[0]?.max_sort_order || 0)) + 1;
+}
+
+function localDateString(date) {
+  const safeDate = date instanceof Date ? date : new Date();
+  const year = safeDate.getFullYear();
+  const month = String(safeDate.getMonth() + 1).padStart(2, "0");
+  const day = String(safeDate.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function requireCollection(collection) {

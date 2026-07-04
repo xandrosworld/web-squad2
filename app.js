@@ -79,6 +79,9 @@ const legacyStatusOptions = [
 const priorityOptions = ["Critical", "Cao", "Trung bình", "Thấp"];
 const decisionOptions = ["Chưa quyết định", "Sẵn sàng", "Có điều kiện", "Chưa sẵn sàng"];
 const assessmentOptions = ["Tốt", "Cần theo dõi", "Rủi ro", "Blocker"];
+const workCategoryStatusOptions = ["Đang theo dõi", "Tạm dừng", "Hoàn thành"];
+const workStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Chờ phản hồi", "Tạm dừng", "Hoàn thành", "Quá hạn", "Hủy"];
+const workPriorityOptions = ["Cao", "Trung bình", "Thấp"];
 
 const modules = {
     features: {
@@ -142,6 +145,85 @@ const modules = {
             { key: "status", label: "Trạng thái UAT", width: "140px", render: (row) => renderStatus(row.status) },
             { key: "completionRate", label: "% Hoàn thành TC", width: "150px", render: (row) => progressCell(row.completionRate) },
             { key: "uatWarning", label: "Cảnh báo UAT", width: "150px", render: (row) => renderStatus(row.uatWarning) }
+        ]
+    },
+    workItems: {
+        label: "Kế hoạch công việc",
+        shortLabel: "Kế hoạch",
+        icon: "fa-clipboard-list",
+        collection: "workItems",
+        compactTable: true,
+        description: "Lập kế hoạch, giao người phụ trách và theo dõi tiến độ các đầu việc ngoài luồng UAT Excel.",
+        emptyIcon: "fa-list-check",
+        emptyTitle: "Chưa có đầu việc",
+        emptyText: "Thêm nhóm công việc hoặc tạo đầu việc để bắt đầu theo dõi tiến độ.",
+        fields: [
+            { key: "sortOrder", label: "STT", type: "number", defaultValue: getNextWorkItemSortOrder },
+            { key: "categoryId", label: "Nhóm công việc", type: "select", options: () => getWorkCategorySelectOptions(), full: true },
+            { key: "title", label: "Tên công việc", type: "text", required: true, full: true },
+            { key: "description", label: "Mô tả", type: "textarea", full: true },
+            { key: "assignee", label: "Người phụ trách", type: "text" },
+            { key: "assigneeEmail", label: "Email phụ trách", type: "text" },
+            { key: "collaborators", label: "Người phối hợp", type: "text", full: true },
+            { key: "status", label: "Trạng thái", type: "select", options: workStatusOptions, defaultValue: "Chưa bắt đầu" },
+            { key: "progress", label: "% hoàn thành", type: "percent", defaultValue: 0 },
+            { key: "priority", label: "Ưu tiên", type: "select", options: workPriorityOptions, defaultValue: "Trung bình" },
+            { key: "startDate", label: "Ngày bắt đầu", type: "date" },
+            { key: "dueDate", label: "Deadline", type: "date" },
+            { key: "completedDate", label: "Ngày hoàn thành thực tế", type: "date" },
+            { key: "documentUrl", label: "Link tài liệu", type: "text", full: true },
+            { key: "note", label: "Vướng mắc/Ghi chú", type: "textarea", full: true }
+        ],
+        filters: [
+            { key: "categoryId", label: "Nhóm" },
+            { key: "status", label: "Trạng thái" },
+            { key: "priority", label: "Ưu tiên" },
+            { key: "assignee", label: "Phụ trách" }
+        ],
+        columns: [
+            { key: "sortOrder", label: "STT", width: "58px" },
+            { key: "categoryName", label: "Nhóm công việc", width: "180px", render: (row) => tag(row.categoryName, "teal") },
+            { key: "title", label: "Tên công việc", width: "300px", render: renderWorkTitleCell },
+            { key: "assignee", label: "Người phụ trách", width: "180px", render: (row) => strongText(row.assignee || "-", row.assigneeEmail) },
+            { key: "status", label: "Trạng thái", width: "140px", render: (row) => renderWorkStatus(row.status) },
+            { key: "progress", label: "% hoàn thành", width: "150px", render: (row) => progressCell(row.progress) },
+            { key: "priority", label: "Ưu tiên", width: "110px", render: (row) => renderWorkPriority(row.priority) },
+            { key: "startDate", label: "Ngày bắt đầu", width: "120px", render: (row) => formatDate(row.startDate) },
+            { key: "dueDate", label: "Deadline", width: "120px", render: (row) => formatDate(row.dueDate) },
+            { key: "completedDate", label: "Hoàn thành", width: "126px", render: (row) => formatDate(row.completedDate) },
+            { key: "warning", label: "Cảnh báo", width: "130px", render: (row) => renderWorkWarning(row.warning) },
+            { key: "documentUrl", label: "Link tài liệu", width: "180px", render: (row) => row.documentUrl ? renderExternalLink(row.documentUrl, "Mở link") : `<span style="color:#9ca3af">-</span>` },
+            { key: "note", label: "Ghi chú", width: "240px", render: (row) => renderLinkedText(row.note) }
+        ]
+    },
+    workCategories: {
+        label: "Nhóm công việc",
+        shortLabel: "Nhóm công việc",
+        icon: "fa-folder-tree",
+        collection: "workCategories",
+        description: "Quản lý các nhóm kế hoạch như Xây dựng HDSD, Quy trình tác nghiệp hoặc các nhóm mới.",
+        emptyIcon: "fa-folder-plus",
+        emptyTitle: "Chưa có nhóm công việc",
+        emptyText: "Thêm nhóm để phân loại kế hoạch công việc.",
+        fields: [
+            { key: "sortOrder", label: "STT", type: "number", defaultValue: getNextWorkCategorySortOrder },
+            { key: "name", label: "Tên nhóm", type: "text", required: true, full: true },
+            { key: "description", label: "Mô tả", type: "textarea", full: true },
+            { key: "owner", label: "Người phụ trách nhóm", type: "text" },
+            { key: "targetDate", label: "Mốc hoàn thành", type: "date" },
+            { key: "status", label: "Trạng thái", type: "select", options: workCategoryStatusOptions, defaultValue: "Đang theo dõi" },
+            { key: "note", label: "Ghi chú", type: "textarea", full: true }
+        ],
+        filters: [
+            { key: "status", label: "Trạng thái" }
+        ],
+        columns: [
+            { key: "sortOrder", label: "STT", width: "70px" },
+            { key: "name", label: "Tên nhóm", width: "260px", render: (row) => strongText(row.name, row.description) },
+            { key: "owner", label: "Phụ trách", width: "180px" },
+            { key: "targetDate", label: "Mốc hoàn thành", width: "150px", render: (row) => formatDate(row.targetDate) },
+            { key: "status", label: "Trạng thái", width: "140px", render: (row) => renderStatus(row.status) },
+            { key: "note", label: "Ghi chú", width: "260px" }
         ]
     },
     personnel: {
@@ -695,6 +777,7 @@ const modules = {
 
 const tabs = [
     { id: "dashboard", label: "Dashboard_UAT", icon: "fa-gauge-high" },
+    { id: "workItems", label: "KeHoach_CongViec", icon: modules.workItems.icon },
     { id: "defectDashboard", label: "DEFECT_Dashboard", icon: "fa-bug" },
     { id: "personnel", label: "NhanSu_UAT", icon: modules.personnel.icon },
     { id: "guide", label: "HD_UAT", icon: modules.guide.icon },
@@ -743,6 +826,8 @@ const emptyState = () => ({
     readiness: [],
     matrix: [],
     guide: [],
+    workCategories: [],
+    workItems: [],
     updatedAt: null
 });
 
@@ -1018,7 +1103,7 @@ function render() {
                     ${renderCommandBand()}
                     ${renderKpis()}
                     ${renderTabs()}
-                    ${ui.activeTab === "dashboard" ? renderDashboard() : ui.activeTab === "defectDashboard" ? renderDefectDashboardPage() : renderModule(modules[ui.activeTab])}
+                    ${ui.activeTab === "dashboard" ? renderDashboard() : ui.activeTab === "defectDashboard" ? renderDefectDashboardPage() : ui.activeTab === "workItems" ? renderWorkPlanModule() : renderModule(modules[ui.activeTab])}
                 </section>
             </main>
         </div>
@@ -2169,6 +2254,237 @@ function getRecentActivities(limit = 8) {
         .slice(0, limit);
 }
 
+function renderWorkPlanModule() {
+    const mod = modules.workItems;
+    const rows = getFilteredWorkRows();
+    const total = appState.workItems.length;
+    const activeFilters = countActiveFilters(mod);
+    return `
+        <div class="work-plan-page">
+            <section class="work-plan-summary">
+                ${renderWorkMetric("Nhóm công việc", appState.workCategories.length, "fa-folder-tree", "teal")}
+                ${renderWorkMetric("Tổng đầu việc", total, "fa-list-check", "blue")}
+                ${renderWorkMetric("Đã hoàn thành", getWorkPlanStats().done, "fa-circle-check", "green")}
+                ${renderWorkMetric("Quá hạn", getWorkPlanStats().overdue, "fa-triangle-exclamation", "red")}
+                ${renderWorkMetric("Tiến độ TB", `${getWorkPlanStats().averageProgress}%`, "fa-chart-simple", "yellow")}
+            </section>
+
+            <div class="content-grid work-plan-layout">
+                ${renderWorkCategoryPanel()}
+                <section class="panel work-items-panel">
+                    <div class="panel-head">
+                        <div class="panel-title">
+                            <i class="fa-solid ${mod.icon}"></i>
+                            <div>
+                                <h2>${e(mod.label)}</h2>
+                                <span>${e(total)} đầu việc · ${e(rows.length)} đang hiển thị</span>
+                            </div>
+                        </div>
+                        <div class="panel-actions">
+                            ${activeFilters ? `
+                                <button class="ghost-btn compact-reset-btn" data-action="reset-filters" title="Xóa toàn bộ lọc">
+                                    <i class="fa-solid fa-filter-circle-xmark"></i><span>${e(activeFilters)} lọc</span>
+                                </button>
+                            ` : ""}
+                            <button class="primary-btn" data-action="open-create">
+                                <i class="fa-solid fa-plus"></i><span>Thêm đầu việc</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="panel-body">
+                        ${renderWorkPlanFilterBar()}
+                        ${renderTable(mod, rows)}
+                    </div>
+                </section>
+            </div>
+        </div>
+    `;
+}
+
+function renderWorkMetric(label, value, icon, tone) {
+    return `
+        <article class="work-metric ${e(tone)}">
+            <i class="fa-solid ${e(icon)}"></i>
+            <div>
+                <span>${e(label)}</span>
+                <strong>${e(value)}</strong>
+            </div>
+        </article>
+    `;
+}
+
+function renderWorkCategoryPanel() {
+    const categories = getWorkCategories();
+    return `
+        <section class="panel work-category-panel">
+            <div class="panel-head">
+                <div class="panel-title">
+                    <i class="fa-solid fa-folder-tree"></i>
+                    <div>
+                        <h2>Nhóm công việc</h2>
+                        <span>${e(categories.length)} nhóm · sếp có thể thêm/sửa</span>
+                    </div>
+                </div>
+                <div class="panel-actions">
+                    <button class="primary-btn compact-primary" data-action="open-category-create">
+                        <i class="fa-solid fa-plus"></i><span>Thêm nhóm</span>
+                    </button>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="work-category-tabs">
+                    <button class="work-category-tab ${!ui.filters["workItems:categoryId"] ? "active" : ""}" data-action="set-work-category" data-id="">
+                        Tất cả
+                    </button>
+                    ${categories.map((category) => `
+                        <button class="work-category-tab ${ui.filters["workItems:categoryId"] === category.id ? "active" : ""}" data-action="set-work-category" data-id="${e(category.id)}">
+                            ${e(category.name)}
+                        </button>
+                    `).join("")}
+                </div>
+                <div class="work-category-list">
+                    ${categories.length ? categories.map(renderWorkCategoryRow).join("") : `
+                        <div class="work-empty-note">
+                            <i class="fa-solid fa-folder-plus"></i>
+                            <strong>Chưa có nhóm công việc</strong>
+                            <span>Tạo nhóm như HDSD, Quy trình tác nghiệp, hoặc nhóm mới theo nhu cầu.</span>
+                            <button class="primary-btn" data-action="open-category-create">
+                                <i class="fa-solid fa-plus"></i><span>Thêm nhóm</span>
+                            </button>
+                        </div>
+                    `}
+                </div>
+            </div>
+        </section>
+    `;
+}
+
+function renderWorkCategoryRow(category) {
+    const items = appState.workItems.filter((item) => String(item.categoryId || "") === String(category.id));
+    const done = items.filter((item) => item.status === "Hoàn thành").length;
+    const progress = items.length ? Math.round(items.reduce((total, item) => total + Number(item.progress || 0), 0) / items.length) : 0;
+    const canEdit = canModifyRecord(category);
+    const canDelete = canDeleteRecord(category);
+    return `
+        <article class="work-category-row">
+            <button class="work-category-main" data-action="set-work-category" data-id="${e(category.id)}">
+                <strong>${e(category.name)}</strong>
+                <span>${e(items.length)} đầu việc · ${e(done)} hoàn thành</span>
+                <div class="work-category-progress">
+                    <span style="width:${e(clamp(progress))}%"></span>
+                </div>
+            </button>
+            <div class="work-category-meta">
+                ${renderStatus(category.status || "Đang theo dõi")}
+                ${category.targetDate ? `<span>${e(formatDate(category.targetDate))}</span>` : ""}
+            </div>
+            <div class="row-actions work-category-actions">
+                ${canEdit ? `
+                    <button class="icon-btn" data-action="open-category-edit" data-id="${e(category.id)}" title="Sửa nhóm" aria-label="Sửa nhóm">
+                        <i class="fa-solid fa-pen"></i>
+                    </button>
+                ` : ""}
+                ${canDelete ? `
+                    <button class="icon-btn" data-action="delete-category" data-id="${e(category.id)}" title="Xóa nhóm" aria-label="Xóa nhóm">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                ` : ""}
+            </div>
+        </article>
+    `;
+}
+
+function renderWorkPlanFilterBar() {
+    const categoryOptions = getWorkCategorySelectOptions();
+    const assignees = uniqueTextValues(appState.workItems.map((row) => row.assignee));
+    return `
+        <div class="work-filter-bar">
+            <label>
+                <span>Nhóm</span>
+                <select class="field-select" data-filter-key="categoryId">
+                    <option value="">Tất cả nhóm</option>
+                    ${categoryOptions.map((option) => `<option value="${e(optionValue(option))}" ${ui.filters["workItems:categoryId"] === optionValue(option) ? "selected" : ""}>${e(optionLabel(option))}</option>`).join("")}
+                </select>
+            </label>
+            <label>
+                <span>Trạng thái</span>
+                <select class="field-select" data-filter-key="status">
+                    <option value="">Tất cả trạng thái</option>
+                    ${workStatusOptions.map((option) => `<option value="${e(option)}" ${ui.filters["workItems:status"] === option ? "selected" : ""}>${e(option)}</option>`).join("")}
+                </select>
+            </label>
+            <label>
+                <span>Ưu tiên</span>
+                <select class="field-select" data-filter-key="priority">
+                    <option value="">Tất cả ưu tiên</option>
+                    ${workPriorityOptions.map((option) => `<option value="${e(option)}" ${ui.filters["workItems:priority"] === option ? "selected" : ""}>${e(option)}</option>`).join("")}
+                </select>
+            </label>
+            <label>
+                <span>Phụ trách</span>
+                <select class="field-select" data-filter-key="assignee">
+                    <option value="">Tất cả người phụ trách</option>
+                    ${assignees.map((option) => `<option value="${e(option)}" ${ui.filters["workItems:assignee"] === option ? "selected" : ""}>${e(option)}</option>`).join("")}
+                </select>
+            </label>
+        </div>
+    `;
+}
+
+function getWorkPlanStats() {
+    const rows = appState.workItems || [];
+    const done = rows.filter((row) => row.status === "Hoàn thành").length;
+    const overdue = rows.filter((row) => getWorkItemWarning(row) === "Quá hạn").length;
+    const averageProgress = rows.length ? Math.round(rows.reduce((total, row) => total + Number(row.progress || 0), 0) / rows.length) : 0;
+    return { done, overdue, averageProgress };
+}
+
+function getFilteredWorkRows() {
+    const mod = modules.workItems;
+    const rows = getWorkRowsForDisplay();
+    const query = ui.query.trim().toLowerCase();
+    return rows.filter((row) => {
+        const matchQuery = !query || Object.values(row).some((value) => String(value ?? "").toLowerCase().includes(query));
+        if (!matchQuery) return false;
+        const matchLegacyFilters = (mod.filters || []).every((filter) => {
+            const selected = ui.filters[`${mod.collection}:${filter.key}`];
+            return !selected || String(row[filter.key] || "") === String(selected);
+        });
+        if (!matchLegacyFilters) return false;
+        return mod.columns.every((col) => {
+            const selected = ui.columnFilters[columnFilterKey(mod, col)];
+            if (!selected) return true;
+            return String(getColumnRawValue(row, col) ?? "").toLowerCase().includes(String(selected).toLowerCase());
+        });
+    });
+}
+
+function getWorkRowsForDisplay() {
+    const categoryById = new Map(getWorkCategories().map((category) => [String(category.id), category]));
+    return getDisplayRows("workItems").map((row) => {
+        const category = categoryById.get(String(row.categoryId || ""));
+        return {
+            ...row,
+            categoryName: category?.name || row.categoryName || "Chưa phân nhóm",
+            warning: getWorkItemWarning(row)
+        };
+    });
+}
+
+function getWorkCategories() {
+    return [...(appState.workCategories || [])]
+        .filter(shouldDisplaySourceRow)
+        .sort(compareBySortOrderThenName);
+}
+
+function compareBySortOrderThenName(a, b) {
+    const sortA = Number(a?.sortOrder);
+    const sortB = Number(b?.sortOrder);
+    if (Number.isFinite(sortA) && Number.isFinite(sortB) && sortA !== sortB) return sortA - sortB;
+    if (Number.isFinite(sortA) !== Number.isFinite(sortB)) return Number.isFinite(sortA) ? -1 : 1;
+    return String(a?.name || a?.title || "").localeCompare(String(b?.name || b?.title || ""), "vi", { numeric: true });
+}
+
 function renderModule(mod) {
     if (mod.collection === "guide") return renderGuideModule(mod);
     const rows = getFilteredRows(mod);
@@ -3305,7 +3621,7 @@ function renderField(field, row) {
             <select class="field-select" name="${e(field.key)}" ${required}>
                 <option value=""></option>
                 ${options.map((option) => `
-                    <option value="${e(option)}" ${option === value ? "selected" : ""}>${e(option)}</option>
+                    <option value="${e(optionValue(option))}" ${String(optionValue(option)) === String(value) ? "selected" : ""}>${e(optionLabel(option))}</option>
                 `).join("")}
             </select>
         `;
@@ -4177,6 +4493,10 @@ function handleAction(event) {
     if (action === "open-create") return openCreate();
     if (action === "open-edit") return openEdit(id);
     if (action === "delete-row") return deleteRow(id);
+    if (action === "open-category-create") return openWorkCategoryCreate();
+    if (action === "open-category-edit") return openWorkCategoryEdit(id);
+    if (action === "delete-category") return deleteWorkCategory(id);
+    if (action === "set-work-category") return setWorkCategoryFilter(id);
     if (action === "close-modal") return closeModal();
     if (action === "reset-filters") return resetFilters();
     if (action === "toggle-column-filter") return toggleColumnFilter(event.currentTarget.dataset.columnKey);
@@ -4228,6 +4548,28 @@ function openEdit(id) {
     render();
 }
 
+function openWorkCategoryCreate() {
+    ui.modal = { tab: "workCategories", id: null };
+    render();
+}
+
+function openWorkCategoryEdit(id) {
+    if (!id) return;
+    const row = appState.workCategories.find((item) => item.id === id);
+    if (!row || !canModifyRecord(row)) {
+        showToast("Bạn chỉ có thể sửa nhóm do chính mình tạo hoặc dùng tài khoản admin.");
+        return;
+    }
+    ui.modal = { tab: "workCategories", id };
+    render();
+}
+
+function setWorkCategoryFilter(id) {
+    ui.filters["workItems:categoryId"] = id || "";
+    ui.openColumnFilter = null;
+    render();
+}
+
 function closeModal() {
     ui.modal = null;
     render();
@@ -4252,6 +4594,15 @@ async function handleSubmit(event) {
     }
     if (mod.collection === "features") {
         payload.owner = normalizeOwnerOption(payload.owner);
+    }
+    if (mod.collection === "workItems") {
+        if (payload.status === "Hoàn thành") {
+            payload.progress = 100;
+            if (!payload.completedDate) payload.completedDate = todayStamp();
+        }
+        if (payload.status === "Chưa bắt đầu" && payload.progress === "") {
+            payload.progress = 0;
+        }
     }
 
     const validationErrors = validateRecord(mod, payload);
@@ -4514,6 +4865,43 @@ function getFilteredRows(mod) {
     });
 }
 
+async function deleteWorkCategory(id) {
+    if (!id || !ensureDbReady() || ui.saving) return;
+    const row = appState.workCategories.find((item) => item.id === id);
+    if (!row) return;
+    if (!canDeleteRecord(row)) {
+        showToast("Bạn chỉ có thể xóa nhóm do chính mình tạo hoặc dùng tài khoản admin.");
+        return;
+    }
+    const linkedItems = appState.workItems.filter((item) => String(item.categoryId || "") === String(id));
+    if (linkedItems.length) {
+        showToast(`Nhóm này đang có ${linkedItems.length} đầu việc. Chuyển/xóa đầu việc trước rồi xóa nhóm.`);
+        return;
+    }
+    if (!confirm(`Xóa nhóm "${row.name || "công việc"}"?`)) return;
+    ui.saving = true;
+    try {
+        const result = await deleteRemoteRecord("workCategories", id);
+        if (result.state) {
+            appState = normalizeState(result.state);
+        } else {
+            appState.workCategories = appState.workCategories.filter((item) => item.id !== id);
+        }
+        if (ui.filters["workItems:categoryId"] === id) ui.filters["workItems:categoryId"] = "";
+        appState.updatedAt = result.updatedAt || new Date().toISOString();
+        setDataStatus("online", "Railway Postgres đang hoạt động");
+        localStorage.setItem(MIGRATION_FLAG_KEY, "active");
+        cacheState();
+        showToast("Đã xóa nhóm công việc khỏi Railway DB.");
+    } catch (error) {
+        setDataStatus("offline", error.message || "Không xóa được nhóm công việc");
+        showToast(`Không xóa được nhóm: ${error.message}`);
+    } finally {
+        ui.saving = false;
+        render();
+    }
+}
+
 function getDisplayRows(collection) {
     return (appState[collection] || []).filter(shouldDisplaySourceRow);
 }
@@ -4542,8 +4930,9 @@ function getFieldForColumn(mod, col) {
 
 function getColumnFilterOptions(mod, col, field) {
     const fieldOptions = getFieldOptions(field);
-    if (field?.type === "select" && fieldOptions.length) return fieldOptions;
-    const values = uniqueValues(getDisplayRows(mod.collection), col.key);
+    if (field?.type === "select" && fieldOptions.length) return fieldOptions.map(optionValue);
+    const sourceRows = mod.collection === "workItems" ? getWorkRowsForDisplay() : getDisplayRows(mod.collection);
+    const values = uniqueValues(sourceRows, col.key);
     if (values.length > 0 && values.length <= 8) return values;
     return [];
 }
@@ -4552,6 +4941,16 @@ function getFieldOptions(field, row = null) {
     if (!field) return [];
     if (typeof field.options === "function") return field.options(row);
     return Array.isArray(field.options) ? field.options : [];
+}
+
+function optionValue(option) {
+    if (option && typeof option === "object") return option.value ?? option.label ?? "";
+    return option ?? "";
+}
+
+function optionLabel(option) {
+    if (option && typeof option === "object") return option.label ?? option.value ?? "";
+    return option ?? "";
 }
 
 function getDefaultFieldValue(field) {
@@ -4566,6 +4965,43 @@ function getNextFeatureStt() {
         return Number.isFinite(stt) ? Math.max(max, Math.trunc(stt)) : max;
     }, 0);
     return maxStt + 1;
+}
+
+function getNextWorkItemSortOrder() {
+    return getNextSortOrder(appState.workItems);
+}
+
+function getNextWorkCategorySortOrder() {
+    return getNextSortOrder(appState.workCategories);
+}
+
+function getNextSortOrder(rows) {
+    const maxSortOrder = (rows || []).reduce((max, row) => {
+        const sortOrder = Number(row?.sortOrder);
+        return Number.isFinite(sortOrder) ? Math.max(max, Math.trunc(sortOrder)) : max;
+    }, 0);
+    return maxSortOrder + 1;
+}
+
+function getWorkCategorySelectOptions() {
+    return getWorkCategories().map((category) => ({
+        value: category.id,
+        label: category.name
+    }));
+}
+
+function getWorkItemWarning(row) {
+    const status = String(row?.status || "").trim();
+    if (status === "Hoàn thành") return "Đã xong";
+    if (status === "Hủy") return "Đã hủy";
+    if (status === "Quá hạn") return "Quá hạn";
+    const dueDate = parseDateOnly(row?.dueDate);
+    if (!dueDate) return Number(row?.progress || 0) >= 80 ? "Ổn" : "Đang theo dõi";
+    const today = getTodayDateOnly();
+    const remainingDays = daysBetween(today, dueDate);
+    if (remainingDays < 0) return "Quá hạn";
+    if (remainingDays <= 3) return "Sắp đến hạn";
+    return Number(row?.progress || 0) >= 80 ? "Ổn" : "Đang theo dõi";
 }
 
 function uniqueTextValues(values) {
@@ -4834,6 +5270,41 @@ function renderPriority(value) {
     return tag(value, tone);
 }
 
+function renderWorkTitleCell(row) {
+    return `
+        <div class="work-title-cell">
+            <strong>${e(row.title || "-")}</strong>
+            ${row.description ? `<span>${e(row.description)}</span>` : ""}
+            ${row.collaborators ? `<small>Phối hợp: ${e(row.collaborators)}</small>` : ""}
+        </div>
+    `;
+}
+
+function renderWorkStatus(value) {
+    const text = String(value || "");
+    const tone = text === "Hoàn thành" ? "green"
+        : text === "Đang thực hiện" ? "blue"
+            : text === "Chờ phản hồi" || text === "Tạm dừng" ? "yellow"
+                : text === "Quá hạn" ? "red"
+                    : text === "Hủy" ? "gray"
+                        : "gray";
+    return tag(value, tone);
+}
+
+function renderWorkPriority(value) {
+    const tone = value === "Cao" ? "red" : value === "Trung bình" ? "yellow" : "gray";
+    return tag(value, tone);
+}
+
+function renderWorkWarning(value) {
+    const tone = value === "Quá hạn" ? "red"
+        : value === "Sắp đến hạn" ? "yellow"
+            : value === "Đã xong" || value === "Ổn" ? "green"
+                : value === "Đã hủy" ? "gray"
+                    : "blue";
+    return tag(value, tone);
+}
+
 function renderStatus(value) {
     const text = String(value || "");
     const tone = text.includes("Đã bàn giao") || value === "Done" || value === "Done UAT" || value === "Hoàn thành" || value === "Đã ký UAT" || value === "Closed" ? "green"
@@ -4921,6 +5392,8 @@ function recordOwnerLabel(row) {
 
 function recordTitle(row, mod) {
     if (mod.collection === "features") return row.name || row.code || mod.shortLabel;
+    if (mod.collection === "workItems") return row.title || mod.shortLabel;
+    if (mod.collection === "workCategories") return row.name || mod.shortLabel;
     if (mod.collection === "plans") return row.feature || row.sprint || mod.shortLabel;
     if (mod.collection === "matrix") return row.group || mod.shortLabel;
     if (mod.collection === "daily") return row.feature || row.date || mod.shortLabel;

@@ -21,6 +21,7 @@ if (!executablePath) {
 }
 
 const moduleTabs = [
+  "workItems",
   "personnel",
   "guide",
   "features",
@@ -129,7 +130,8 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
     "NangSuat_Tester",
     "Tong hop loi",
     "DS_US",
-    "DS.Loi"
+    "DS.Loi",
+    "KeHoach_CongViec"
   ];
   const actualSheets = workbook.worksheets.map((sheet) => sheet.name);
   if (JSON.stringify(actualSheets) !== JSON.stringify(expectedSheets)) {
@@ -184,6 +186,26 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   for (const tab of moduleTabs) {
     await page.locator(`.tabbar button[data-tab="${tab}"]`).click();
     assertReadableText(await page.locator("#app").innerText(), tab);
+    if (tab === "workItems") {
+      await page.waitForSelector(".work-plan-page", { timeout: 5000 });
+      if (await page.locator(".work-category-panel").count() !== 1) {
+        throw new Error("Work plan tab did not render the category panel.");
+      }
+      if (await page.locator('[data-action="open-category-create"]').count() < 1) {
+        throw new Error("Work plan tab is missing category create action.");
+      }
+      await page.locator(".work-items-panel .panel-head button[data-action=\"open-create\"]").click();
+      await page.waitForSelector("#recordForm", { timeout: 5000 });
+      assertReadableText(await page.locator("#recordForm").innerText(), "work plan form");
+      await page.locator("#recordModal .modal-head button[data-action=\"close-modal\"]").click();
+      await page.waitForSelector("#recordForm", { state: "detached", timeout: 5000 });
+      await page.locator('[data-action="open-category-create"]').first().click();
+      await page.waitForSelector("#recordForm", { timeout: 5000 });
+      assertReadableText(await page.locator("#recordForm").innerText(), "work category form");
+      await page.locator("#recordModal .modal-head button[data-action=\"close-modal\"]").click();
+      await page.waitForSelector("#recordForm", { state: "detached", timeout: 5000 });
+      continue;
+    }
     if (tab === "guide") {
       await page.waitForSelector(".guide-page", { timeout: 5000 });
       if (await page.locator(".guide-section").count() < 1) {

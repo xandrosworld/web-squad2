@@ -41,6 +41,7 @@ const expectedWorkbookSheets = [
   "DS_US",
   "DS.Loi"
 ];
+const expectedExportSheets = [...expectedWorkbookSheets, "KeHoach_CongViec"];
 
 main().catch((error) => {
   console.error(error.message || error);
@@ -98,7 +99,7 @@ async function main() {
 
   const exportedWorkbook = buildExcelWorkbook(state);
   const actualExportSheets = exportedWorkbook.worksheets.map((sheet) => sheet.name);
-  assertSameList("exported workbook sheets", expectedWorkbookSheets, actualExportSheets);
+  assertSameList("exported workbook sheets", expectedExportSheets, actualExportSheets);
   if (exportedWorkbook.getWorksheet("Lich_UAT").state !== "hidden") throw new Error("Expected exported Lich_UAT sheet to be hidden.");
   for (const redSheetName of ["DS_US", "DS.Loi"]) {
     const tabColor = exportedWorkbook.getWorksheet(redSheetName).properties?.tabColor?.argb;
@@ -107,6 +108,13 @@ async function main() {
   for (const sheetName of Object.keys(expectedHeaders)) {
     if (!exportedWorkbook.getWorksheet(sheetName)) throw new Error(`Export missing sheet ${sheetName}`);
   }
+  const workPlanSheet = exportedWorkbook.getWorksheet("KeHoach_CongViec");
+  if (!workPlanSheet) throw new Error("Export missing sheet KeHoach_CongViec");
+  assertSameList(
+    "KeHoach_CongViec headers",
+    ["Loại dòng", "STT", "Nhóm công việc", "Tên công việc", "Mô tả", "Người phụ trách", "Email phụ trách", "Người phối hợp", "Trạng thái", "% hoàn thành", "Ưu tiên", "Ngày bắt đầu", "Deadline", "Ngày hoàn thành", "Cảnh báo", "Link tài liệu", "Vướng mắc/Ghi chú", "Cập nhật"],
+    readHeader(workPlanSheet, 12, 18)
+  );
   assertExportCell(exportedWorkbook, "Dashboard_UAT", "B4", 77);
   assertExportCell(exportedWorkbook, "Dashboard_UAT", "B5", 47);
   assertExportCell(exportedWorkbook, "Dashboard_UAT", "B7", "61%");
