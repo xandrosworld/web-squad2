@@ -41,7 +41,7 @@ const defaultUsers = [
   { username: "huyng@bidv.com.vn", email: "huyng@bidv.com.vn", name: "Nguyễn Gia Huy", password: "123456" },
   { username: "tuantd3@bidv.com.vn", email: "tuantd3@bidv.com.vn", name: "Trần Đình Tuấn", password: "123456" }
 ];
-const adminIdentities = ["yenuth@bidv.com.vn", "thanhmt@bidv.com.vn"];
+const adminIdentities = ["yenuth@bidv.com.vn", "thanhmt@bidv.com.vn", "huyng@bidv.com.vn"];
 
 const collections = [
   "features",
