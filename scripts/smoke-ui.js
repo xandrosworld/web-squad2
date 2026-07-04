@@ -13,14 +13,30 @@ const fs = require("fs");
 const baseUrl = process.env.SMOKE_URL || "http://localhost:3000";
 const executablePath = process.env.SMOKE_BROWSER || defaultChromePaths.find((candidate) => fs.existsSync(candidate));
 const requireDb = process.env.SMOKE_REQUIRE_DB === "1";
-const smokeUser = process.env.SMOKE_USER || "";
-const smokePassword = process.env.SMOKE_PASSWORD || "";
+const smokeUser = process.env.SMOKE_USER || process.env.APP_USER || "";
+const smokePassword = process.env.SMOKE_PASSWORD || process.env.APP_PASSWORD || "";
 
 if (!executablePath) {
   throw new Error("No Chrome or Edge executable found. Set SMOKE_BROWSER to a local browser path.");
 }
 
-const moduleTabs = ["features", "personnel", "schedule", "handoffs", "plans", "daily", "defects", "weekly", "readiness", "matrix", "guide"];
+const moduleTabs = [
+  "features",
+  "personnel",
+  "schedule",
+  "handoffs",
+  "plans",
+  "daily",
+  "defects",
+  "defectSummary",
+  "weekly",
+  "readiness",
+  "matrix",
+  "userStories",
+  "bugSources",
+  "guide"
+];
+const readOnlyTabs = new Set(["defectSummary"]);
 const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00bb|\u00c4\u2018|\u00c6[\u00a0-\u00bf]/;
 
 (async () => {
@@ -104,6 +120,9 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
     "PhanCong_UAT",
     "DieuHanh_Ngay",
     "DEFECT_LOG",
+    "DS_US",
+    "DS.Loi",
+    "Tong hop loi",
     "ChatLuong_Tuan",
     "TongKet_Sprint",
     "NangSuat_Tester",
@@ -146,6 +165,10 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   await page.locator("[data-ai-action=\"close\"]").click();
   await page.waitForSelector("#aiChatForm", { state: "detached", timeout: 5000 });
 
+  await page.locator(".tabbar button[data-tab=\"defectDashboard\"]").click();
+  await page.waitForSelector(".defect-dashboard-panel", { timeout: 5000 });
+  assertReadableText(await page.locator(".defect-dashboard-panel").innerText(), "defect dashboard");
+
   for (const tab of moduleTabs) {
     await page.locator(`.tabbar button[data-tab="${tab}"]`).click();
     assertReadableText(await page.locator("#app").innerText(), tab);
@@ -170,10 +193,16 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
       throw new Error(`Module ${tab} did not render compact column filters.`);
     }
 
+    if (readOnlyTabs.has(tab)) {
+      if (await page.locator(".content-grid-single .panel-head button[data-action=\"open-create\"]").count()) {
+        throw new Error(`Read-only module ${tab} still renders create button.`);
+      }
+      continue;
+    }
+
     await page.locator(".content-grid-single .panel-head button[data-action=\"open-create\"]").click();
     await page.waitForSelector("#recordForm", { timeout: 5000 });
     assertReadableText(await page.locator("#recordForm").innerText(), `${tab} form`);
-
     const fields = await page.locator("#recordForm input, #recordForm select, #recordForm textarea").count();
     if (fields < 1) {
       throw new Error(`Module ${tab} opened an empty form.`);

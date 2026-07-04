@@ -47,6 +47,7 @@ const ownerOptions = [
     "NV1 - Bùi Thị Mai Phương",
     "NV2 - Nguyễn Châu Giang",
     "NV3 - Phạm Anh Tuấn",
+    "ALL",
     "BA"
 ];
 const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
@@ -64,7 +65,7 @@ const handoffSectionDefaults = [
 ];
 const planStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Hoàn thành", "Tạm dừng/Blocked", "Chờ sửa lỗi", "Đã ký UAT"];
 const testStatusOptions = ["Chưa Test", "Đang Test", "Passed", "Failed"];
-const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail"];
+const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopen", "Reopened", "Resolved", "SIT Pass", "SIT Fail"];
 const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 const legacyStatusOptions = [
     "Chưa bắt đầu",
@@ -85,7 +86,7 @@ const modules = {
         shortLabel: "Danh mục",
         icon: "fa-layer-group",
         collection: "features",
-        stickyColumns: 4,
+        stickyColumns: 7,
         compactTable: true,
         description: "Quản lý danh mục chức năng theo Story, Jira, Sprint, nghiệp vụ và trạng thái UAT.",
         emptyIcon: "fa-list-check",
@@ -369,6 +370,7 @@ const modules = {
             { key: "failedCases", label: "TC Failed", type: "number" },
             { key: "bugStatus", label: "Trạng thái lỗi", type: "select", options: bugStatusOptions },
             { key: "maxBugSeverity", label: "Mức độ lỗi", type: "select", options: bugSeverityOptions },
+            { key: "bugDetail", label: "Chi tiết lỗi", type: "textarea", full: true },
             { key: "blocker", label: "Vướng mắc/Blocker", type: "textarea", full: true },
             { key: "handler", label: "Người xử lý", type: "text" },
             { key: "dueDate", label: "Thời hạn xử lý", type: "date" }
@@ -388,6 +390,7 @@ const modules = {
             { key: "failedCases", label: "TC Failed", width: "110px", render: (row) => numberText(row.failedCases) },
             { key: "bugStatus", label: "Trạng thái lỗi", width: "150px", render: (row) => renderStatus(row.bugStatus) },
             { key: "maxBugSeverity", label: "Mức độ lỗi", width: "180px", render: (row) => renderStatus(row.maxBugSeverity) },
+            { key: "bugDetail", label: "Chi tiết lỗi", width: "240px" },
             { key: "blocker", label: "Vướng mắc/Blocker", width: "240px" },
             { key: "handler", label: "Người xử lý", width: "150px" },
             { key: "dueDate", label: "Thời hạn xử lý", width: "150px", render: (row) => formatDate(row.dueDate) }
@@ -403,8 +406,10 @@ const modules = {
         emptyTitle: "Chưa có defect",
         emptyText: "Dữ liệu từ sheet DEFECT_LOG sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
+            { key: "stt", label: "STT", type: "number" },
             { key: "bugId", label: "Bug ID", type: "text" },
-            { key: "jiraCode", label: "Mã Jira", type: "text" },
+            { key: "linkedUsKey", label: "Mã US liên kết", type: "text" },
+            { key: "featureJiraCode", label: "Mã Jira chức năng", type: "text" },
             { key: "storyName", label: "Tên Story", type: "text", full: true },
             { key: "sprint", label: "Sprint", type: "text" },
             { key: "severity", label: "Severity", type: "select", options: bugSeverityOptions },
@@ -422,8 +427,10 @@ const modules = {
             { key: "status", label: "Status" }
         ],
         columns: [
+            { key: "stt", label: "STT", width: "58px" },
             { key: "bugId", label: "Bug ID", width: "120px" },
-            { key: "jiraCode", label: "Mã Jira", width: "140px" },
+            { key: "linkedUsKey", label: "Mã US liên kết", width: "140px" },
+            { key: "featureJiraCode", label: "Mã Jira chức năng", width: "150px" },
             { key: "storyName", label: "Tên Story", width: "260px", render: (row) => strongText(row.storyName) },
             { key: "sprint", label: "Sprint", width: "100px" },
             { key: "severity", label: "Severity", width: "110px", render: (row) => renderStatus(row.severity) },
@@ -434,6 +441,151 @@ const modules = {
             { key: "resolvedDate", label: "Ngày xử lý", width: "130px", render: (row) => formatDate(row.resolvedDate) },
             { key: "aging", label: "Aging", width: "90px", render: (row) => numberText(row.aging) },
             { key: "note", label: "Ghi chú", width: "220px" }
+        ]
+    },
+    userStories: {
+        label: "DS_US",
+        shortLabel: "DS_US",
+        icon: "fa-list",
+        collection: "userStories",
+        stickyColumns: 3,
+        compactTable: true,
+        description: "Danh sách User Story nguồn từ Jira, thay cho vùng paste DS_US trong Excel.",
+        emptyIcon: "fa-list",
+        emptyTitle: "Chưa có DS_US",
+        emptyText: "Dữ liệu User Story từ Jira sẽ hiển thị tại đây sau khi nhập Excel hoặc thêm trên web.",
+        fields: [
+            { key: "issueType", label: "Issue Type", type: "text" },
+            { key: "issueKey", label: "Issue key", type: "text", required: true },
+            { key: "issueId", label: "Issue id", type: "text" },
+            { key: "summary", label: "Summary", type: "textarea", required: true, full: true },
+            { key: "assignee", label: "Assignee", type: "text" },
+            { key: "assigneeId", label: "Assignee Id", type: "text" },
+            { key: "reporter", label: "Reporter", type: "text" },
+            { key: "reporterId", label: "Reporter Id", type: "text" },
+            { key: "priority", label: "Priority", type: "text" },
+            { key: "status", label: "Status", type: "text" },
+            { key: "resolution", label: "Resolution", type: "text" },
+            { key: "created", label: "Created", type: "date" },
+            { key: "updated", label: "Updated", type: "date" },
+            { key: "dueDate", label: "Due date", type: "date" },
+            { key: "squadSummary", label: "SQ2_Summary", type: "text" }
+        ],
+        filters: [
+            { key: "status", label: "Status" },
+            { key: "priority", label: "Priority" }
+        ],
+        columns: [
+            { key: "issueType", label: "Issue Type", width: "100px" },
+            { key: "issueKey", label: "Issue key", width: "130px", render: (row) => tag(row.issueKey, "teal") },
+            { key: "squadSummary", label: "SQ2_Summary", width: "140px" },
+            { key: "summary", label: "Summary", width: "300px", render: (row) => strongText(row.summary) },
+            { key: "assignee", label: "Assignee", width: "210px" },
+            { key: "reporter", label: "Reporter", width: "210px" },
+            { key: "priority", label: "Priority", width: "100px", render: (row) => renderStatus(row.priority) },
+            { key: "status", label: "Status", width: "100px", render: (row) => renderStatus(row.status) },
+            { key: "created", label: "Created", width: "118px", render: (row) => formatDate(row.created) },
+            { key: "updated", label: "Updated", width: "118px", render: (row) => formatDate(row.updated) },
+            { key: "dueDate", label: "Due date", width: "118px", render: (row) => formatDate(row.dueDate) },
+            { key: "issueId", label: "Issue id", width: "100px" }
+        ]
+    },
+    bugSources: {
+        label: "DS.Loi",
+        shortLabel: "DS.Loi",
+        icon: "fa-bugs",
+        collection: "bugSources",
+        stickyColumns: 4,
+        compactTable: true,
+        description: "Danh sách bug nguồn từ Jira, thay cho vùng paste DS.Loi trong Excel.",
+        emptyIcon: "fa-bug-slash",
+        emptyTitle: "Chưa có DS.Loi",
+        emptyText: "Dữ liệu bug Jira sẽ hiển thị tại đây sau khi nhập Excel hoặc thêm trên web.",
+        fields: [
+            { key: "issueType", label: "Issue Type", type: "text" },
+            { key: "issueKey", label: "Issue key", type: "text", required: true },
+            { key: "issueId", label: "Issue id", type: "text" },
+            { key: "summary", label: "Summary", type: "textarea", required: true, full: true },
+            { key: "assignee", label: "Assignee", type: "text" },
+            { key: "reporter", label: "Reporter", type: "text" },
+            { key: "tester", label: "Tester", type: "text" },
+            { key: "priority", label: "Priority", type: "select", options: bugSeverityOptions },
+            { key: "status", label: "Status", type: "select", options: bugStatusOptions },
+            { key: "resolution", label: "Resolution", type: "text" },
+            { key: "created", label: "Created", type: "date" },
+            { key: "updated", label: "Updated", type: "date" },
+            { key: "dueDate", label: "Due date", type: "date" },
+            { key: "actualEnd", label: "Actual end", type: "date" },
+            { key: "linkedUsKey", label: "Parent US", type: "text" },
+            { key: "inwardBlocks", label: "Blocks", type: "text" }
+        ],
+        filters: [
+            { key: "priority", label: "Priority" },
+            { key: "status", label: "Status" },
+            { key: "tester", label: "Tester" }
+        ],
+        columns: [
+            { key: "issueType", label: "Issue Type", width: "92px" },
+            { key: "issueKey", label: "Issue key", width: "130px", render: (row) => tag(row.issueKey, "teal") },
+            { key: "linkedUsKey", label: "Parent US", width: "130px" },
+            { key: "summary", label: "Summary", width: "320px", render: (row) => strongText(row.summary) },
+            { key: "priority", label: "Priority", width: "100px", render: (row) => renderStatus(row.priority) },
+            { key: "status", label: "Status", width: "110px", render: (row) => renderStatus(row.status) },
+            { key: "tester", label: "Tester", width: "140px" },
+            { key: "assignee", label: "Assignee", width: "210px" },
+            { key: "reporter", label: "Reporter", width: "210px" },
+            { key: "created", label: "Created", width: "118px", render: (row) => formatDate(row.created) },
+            { key: "updated", label: "Updated", width: "118px", render: (row) => formatDate(row.updated) },
+            { key: "dueDate", label: "Due date", width: "118px", render: (row) => formatDate(row.dueDate) }
+        ]
+    },
+    defectSummary: {
+        label: "Tong hop loi",
+        shortLabel: "Tổng lỗi",
+        icon: "fa-table-list",
+        collection: "defectSummary",
+        stickyColumns: 7,
+        compactTable: true,
+        readOnly: true,
+        description: "Bảng tổng hợp lỗi theo User Story, được backend tính lại từ DS_US, DS.Loi, DEFECT_LOG và dữ liệu UAT.",
+        emptyIcon: "fa-table-list",
+        emptyTitle: "Chưa có tổng hợp lỗi",
+        emptyText: "Bảng sẽ tự sinh sau khi có DM_ChucNang và dữ liệu bug.",
+        fields: [],
+        filters: [
+            { key: "sprint", label: "Sprint" },
+            { key: "owner", label: "Nghiệp vụ" },
+            { key: "status", label: "Trạng thái UAT" }
+        ],
+        columns: [
+            { key: "stt", label: "STT", width: "58px" },
+            { key: "code", label: "Mã CN", width: "92px", render: (row) => tag(row.code, "teal") },
+            { key: "storyCode", label: "Mã Story", width: "90px" },
+            { key: "jiraCode", label: "Mã Jira", width: "132px" },
+            { key: "usKey", label: "Mã US", width: "130px" },
+            { key: "group", label: "Nhóm chức năng", width: "220px" },
+            { key: "name", label: "Tên chức năng", width: "260px", render: (row) => strongText(row.name) },
+            { key: "sprint", label: "Sprint", width: "100px" },
+            { key: "owner", label: "Đầu mối nghiệp vụ", width: "188px" },
+            { key: "handoffStatus", label: "Trạng thái BG", width: "136px", render: (row) => renderStatus(row.handoffStatus) },
+            { key: "assignee", label: "Assignee", width: "190px" },
+            { key: "usStatus", label: "Trạng thái US", width: "118px", render: (row) => renderStatus(row.usStatus) },
+            { key: "totalCases", label: "Tổng TC", width: "96px", render: (row) => numberText(row.totalCases) },
+            { key: "passedCases", label: "Passed", width: "86px", render: (row) => numberText(row.passedCases) },
+            { key: "failedCases", label: "Failed", width: "86px", render: (row) => numberText(row.failedCases) },
+            { key: "totalBugs", label: "Tổng lỗi", width: "96px", render: (row) => bugTag(row.totalBugs, "blue") },
+            { key: "openBugs", label: "Open", width: "82px", render: (row) => bugTag(row.openBugs) },
+            { key: "inProgressBugs", label: "In Progress", width: "110px", render: (row) => bugTag(row.inProgressBugs, "yellow") },
+            { key: "pendingBugs", label: "Pending", width: "90px", render: (row) => bugTag(row.pendingBugs, "yellow") },
+            { key: "resolvedBugs", label: "Resolved", width: "96px", render: (row) => bugTag(row.resolvedBugs, "blue") },
+            { key: "sitPassBugs", label: "SIT Pass", width: "96px", render: (row) => bugTag(row.sitPassBugs, "green") },
+            { key: "activeBugs", label: "Đang mở", width: "92px", render: (row) => bugTag(row.activeBugs) },
+            { key: "handledBugs", label: "Đã xử lý", width: "92px", render: (row) => bugTag(row.handledBugs, "green") },
+            { key: "handledRate", label: "% xử lý", width: "96px", render: (row) => progressCell(row.handledRate) },
+            { key: "severeBugs", label: "Lỗi nghiêm trọng", width: "130px", render: (row) => bugTag(row.severeBugs, "orange") },
+            { key: "uatResult", label: "Kết quả UAT", width: "130px", render: (row) => renderStatus(row.uatResult) },
+            { key: "status", label: "Trạng thái UAT", width: "130px", render: (row) => renderStatus(row.status) },
+            { key: "completionRate", label: "% Hoàn thành TC", width: "140px", render: (row) => progressCell(row.completionRate) }
         ]
     },
     weekly: {
@@ -543,6 +695,7 @@ const modules = {
 
 const tabs = [
     { id: "dashboard", label: "Dashboard_UAT", icon: "fa-gauge-high" },
+    { id: "defectDashboard", label: "DEFECT_Dashboard", icon: "fa-bug" },
     { id: "personnel", label: "NhanSu_UAT", icon: modules.personnel.icon },
     { id: "guide", label: "HD_UAT", icon: modules.guide.icon },
     { id: "schedule", label: "Lich_UAT", icon: modules.schedule.icon },
@@ -551,13 +704,16 @@ const tabs = [
     { id: "plans", label: "PhanCong_UAT", icon: modules.plans.icon },
     { id: "daily", label: "DieuHanh_Ngay", icon: modules.daily.icon },
     { id: "defects", label: "DEFECT_LOG", icon: modules.defects.icon },
+    { id: "defectSummary", label: "Tong hop loi", icon: modules.defectSummary.icon },
+    { id: "userStories", label: "DS_US", icon: modules.userStories.icon },
+    { id: "bugSources", label: "DS.Loi", icon: modules.bugSources.icon },
     { id: "weekly", label: "ChatLuong_Tuan", icon: modules.weekly.icon },
     { id: "readiness", label: "TongKet_Sprint", icon: modules.readiness.icon },
     { id: "matrix", label: "NangSuat_Tester", icon: modules.matrix.icon }
 ];
 
 function getDataModuleCount() {
-    return tabs.filter((tab) => tab.id !== "dashboard").length;
+    return tabs.filter((tab) => modules[tab.id]).length;
 }
 
 function getInitialTab() {
@@ -573,6 +729,9 @@ const emptyState = () => ({
     plans: [],
     daily: [],
     defects: [],
+    userStories: [],
+    bugSources: [],
+    defectSummary: [],
     weekly: [],
     readiness: [],
     matrix: [],
@@ -850,7 +1009,7 @@ function render() {
                     ${renderCommandBand()}
                     ${renderKpis()}
                     ${renderTabs()}
-                    ${ui.activeTab === "dashboard" ? renderDashboard() : renderModule(modules[ui.activeTab])}
+                    ${ui.activeTab === "dashboard" ? renderDashboard() : ui.activeTab === "defectDashboard" ? renderDefectDashboardPage() : renderModule(modules[ui.activeTab])}
                 </section>
             </main>
         </div>
@@ -1303,11 +1462,12 @@ function renderDefectDashboardPanel() {
                                 <th>Severity</th>
                                 <th>Open</th>
                                 <th>In Progress</th>
-                                <th>Reopened</th>
+                                <th>Reopen</th>
                                 <th>Resolved</th>
                                 <th>Closed</th>
                                 <th>Cancelled</th>
                                 <th>Pending</th>
+                                <th>SIT Pass</th>
                                 <th>SIT Fail</th>
                                 <th>Tổng</th>
                             </tr>
@@ -1328,6 +1488,14 @@ function renderDefectDashboardPanel() {
     `;
 }
 
+function renderDefectDashboardPage() {
+    return `
+        <div class="content-grid content-grid-single">
+            ${renderDefectDashboardPanel()}
+        </div>
+    `;
+}
+
 function getDefectDashboardRows() {
     const openDefects = appState.defects.filter((row) => isOpenBugStatus(row.status));
     const openSeverity = (severity) => openDefects.filter((row) => normalizeWorkbookFormulaText(row.severity) === normalizeWorkbookFormulaText(severity)).length;
@@ -1342,7 +1510,7 @@ function getDefectDashboardRows() {
 }
 
 function getDefectSeverityStatusRows() {
-    const statuses = ["Open", "In Progress", "Reopened", "Resolved", "Closed", "Cancelled", "Pending", "SIT Fail"];
+    const statuses = ["Open", "In Progress", "Reopen", "Resolved", "Closed", "Cancelled", "Pending", "SIT Pass", "SIT Fail"];
     const severities = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
     const rows = severities.map((severity) => {
         const statusCounts = statuses.map((status) => countDefectsBySeverityStatus(severity, status));
@@ -1362,16 +1530,14 @@ function getDefectSeverityStatusRows() {
 }
 
 function countDefectStatus(status) {
-    const target = normalizeWorkbookFormulaText(status);
-    return appState.defects.filter((row) => normalizeWorkbookFormulaText(row.status) === target).length;
+    return appState.defects.filter((row) => isBugStatus(row.status, status)).length;
 }
 
 function countDefectsBySeverityStatus(severity, status) {
     const targetSeverity = normalizeWorkbookFormulaText(severity);
-    const targetStatus = normalizeWorkbookFormulaText(status);
     return appState.defects.filter((row) => (
         normalizeWorkbookFormulaText(row.severity) === targetSeverity
-        && normalizeWorkbookFormulaText(row.status) === targetStatus
+        && isBugStatus(row.status, status)
     )).length;
 }
 
@@ -1979,9 +2145,11 @@ function renderModule(mod) {
                                 <i class="fa-solid fa-filter-circle-xmark"></i><span>${e(activeFilters)} lọc</span>
                             </button>
                         ` : ""}
-                        <button class="primary-btn" data-action="open-create">
-                            <i class="fa-solid fa-plus"></i><span>Thêm bản ghi</span>
-                        </button>
+                        ${mod.readOnly ? "" : `
+                            <button class="primary-btn" data-action="open-create">
+                                <i class="fa-solid fa-plus"></i><span>Thêm bản ghi</span>
+                            </button>
+                        `}
                     </div>
                 </div>
                 <div class="panel-body">
@@ -2140,9 +2308,10 @@ function defaultGuideRows() {
 
 function renderTable(mod, rows) {
     const layout = tableColumnLayout(mod, rows);
+    const includeActions = !mod.readOnly;
     const colgroup = layout.columns.map(({ col, width }) => (
         `<col data-column-key="${e(col.key)}" style="width:${e(`${width}px`)}">`
-    )).join("") + `<col data-column-key="${e(ACTION_COLUMN_KEY)}" style="width:${e(`${layout.actionWidth}px`)}">`;
+    )).join("") + (includeActions ? `<col data-column-key="${e(ACTION_COLUMN_KEY)}" style="width:${e(`${layout.actionWidth}px`)}">` : "");
     const columnMeta = layout.columnMeta;
     const hasGroupedHeaders = mod.columns.some((col) => col.headerTop);
     const tableClass = ["data-table", hasGroupedHeaders ? "has-group-header" : "", mod.compactTable ? "is-compact" : "", mod.stickyColumns ? "has-sticky-columns" : ""]
@@ -2157,13 +2326,13 @@ function renderTable(mod, rows) {
             <table class="${e(tableClass)}" data-resizable-table="${e(mod.collection)}" style="width:${e(`${layout.totalWidth}px`)}; min-width:${e(`${layout.totalWidth}px`)}">
                 <colgroup>${colgroup}</colgroup>
                 <thead>
-                    ${renderTableHeaderRows(mod, columnMeta, hasGroupedHeaders)}
+                    ${renderTableHeaderRows(mod, columnMeta, hasGroupedHeaders, includeActions)}
                 </thead>
                 <tbody>
-                    ${rows.length ? renderTableRows(mod, rows, columnMeta) : `
+                    ${rows.length ? renderTableRows(mod, rows, columnMeta, includeActions) : `
                         <tr>
-                            <td colspan="${mod.columns.length + 1}">
-                                ${renderEmpty(mod.emptyIcon, mod.emptyTitle, mod.emptyText, true, mod)}
+                            <td colspan="${mod.columns.length + (includeActions ? 1 : 0)}">
+                                ${renderEmpty(mod.emptyIcon, mod.emptyTitle, mod.emptyText, true, mod.readOnly ? null : mod)}
                             </td>
                         </tr>
                     `}
@@ -2174,19 +2343,19 @@ function renderTable(mod, rows) {
     `;
 }
 
-function renderTableHeaderRows(mod, columnMeta, hasGroupedHeaders) {
+function renderTableHeaderRows(mod, columnMeta, hasGroupedHeaders, includeActions = true) {
     const labelRowClass = hasGroupedHeaders ? ` class="excel-header-label"` : "";
     const labelRow = `
         <tr${labelRowClass}>
             ${mod.columns.map((col, index) => renderTableHeaderCell(mod, col, columnMeta[index])).join("")}
-            ${renderActionHeaderCell()}
+            ${includeActions ? renderActionHeaderCell() : ""}
         </tr>
     `;
     if (!hasGroupedHeaders) return labelRow;
     return `
         <tr class="excel-header-top">
             ${mod.columns.map((col, index) => renderTableTopHeaderCell(col, columnMeta[index])).join("")}
-            <th class="col-actions excel-header-top-action" aria-hidden="true"></th>
+            ${includeActions ? `<th class="col-actions excel-header-top-action" aria-hidden="true"></th>` : ""}
         </tr>
         ${labelRow}
     `;
@@ -2211,7 +2380,7 @@ function renderActionHeaderCell() {
     `;
 }
 
-function renderTableRows(mod, rows, columnMeta) {
+function renderTableRows(mod, rows, columnMeta, includeActions = true) {
     let currentSection = null;
     let currentSections = [];
     return rows.map((row) => {
@@ -2233,29 +2402,32 @@ function renderTableRows(mod, rows, columnMeta) {
                         const canEdit = canModifyRecord(row);
                         const canDelete = canDeleteRecord(row);
                         const owner = recordOwnerLabel(row);
+        const actionCell = includeActions ? `
+            <td class="col-actions">
+                <div class="row-actions">
+                    ${canEdit ? `
+                        <button class="icon-btn" data-action="open-edit" data-id="${e(row.id)}" title="Sửa" aria-label="Sửa">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                    ` : ""}
+                    ${canDelete ? `
+                        <button class="icon-btn" data-action="delete-row" data-id="${e(row.id)}" title="Xóa" aria-label="Xóa">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    ` : ""}
+                    ${!canEdit && !canDelete ? `
+                        <span class="permission-lock" title="Bản ghi do ${e(owner)} tạo. Chỉ người tạo hoặc admin được sửa.">
+                            <i class="fa-solid fa-lock"></i>
+                        </span>
+                    ` : ""}
+                </div>
+            </td>
+        ` : "";
         return `
             ${sectionMarkup}
                             <tr>
                                 ${mod.columns.map((col, index) => `<td${tableCellAttrs(columnMeta[index])}>${renderCell(row, col)}</td>`).join("")}
-                                <td class="col-actions">
-                                    <div class="row-actions">
-                                        ${canEdit ? `
-                                            <button class="icon-btn" data-action="open-edit" data-id="${e(row.id)}" title="Sửa" aria-label="Sửa">
-                                                <i class="fa-solid fa-pen"></i>
-                                            </button>
-                                        ` : ""}
-                                        ${canDelete ? `
-                                            <button class="icon-btn" data-action="delete-row" data-id="${e(row.id)}" title="Xóa" aria-label="Xóa">
-                                                <i class="fa-solid fa-trash"></i>
-                                            </button>
-                                        ` : ""}
-                                        ${!canEdit && !canDelete ? `
-                                            <span class="permission-lock" title="Bản ghi do ${e(owner)} tạo. Chỉ người tạo hoặc admin được sửa.">
-                                                <i class="fa-solid fa-lock"></i>
-                                            </span>
-                                        ` : ""}
-                                    </div>
-                                </td>
+                                ${actionCell}
                             </tr>
                         `;
     }).join("");
@@ -2311,7 +2483,7 @@ function renderColumnFilterPopover(mod, col) {
 function renderSectionRow(mod, section, level = 1) {
     return `
         <tr class="section-row section-level-${e(level)}">
-            <td class="section-title-cell" colspan="${e(mod.columns.length + 1)}">
+            <td class="section-title-cell" colspan="${e(mod.columns.length + (mod.readOnly ? 0 : 1))}">
                 <strong>${e(section)}</strong>
             </td>
         </tr>
@@ -2323,7 +2495,7 @@ function tableColumnLayout(mod, rows) {
         col,
         ...getResolvedColumnWidth(mod, col, rows)
     }));
-    const actionWidth = getStoredColumnWidth(mod, ACTION_COLUMN_KEY) || ACTION_COLUMN_DEFAULT_WIDTH;
+    const actionWidth = mod.readOnly ? 0 : (getStoredColumnWidth(mod, ACTION_COLUMN_KEY) || ACTION_COLUMN_DEFAULT_WIDTH);
     distributeTableFillWidth(mod, columns, actionWidth);
     const totalWidth = columns.reduce((total, item) => total + item.width, actionWidth);
     return {
@@ -3913,7 +4085,8 @@ function clearColumnFilter(columnKey) {
 }
 
 function openCreate() {
-    if (ui.activeTab === "dashboard") return;
+    const mod = modules[ui.activeTab];
+    if (!mod || mod.readOnly) return;
     ui.modal = { tab: ui.activeTab, id: null };
     render();
 }
@@ -3921,6 +4094,7 @@ function openCreate() {
 function openEdit(id) {
     if (!id) return;
     const mod = modules[ui.activeTab];
+    if (!mod || mod.readOnly) return;
     const row = mod ? appState[mod.collection].find((item) => item.id === id) : null;
     if (!row || !canModifyRecord(row)) {
         showToast("Bạn chỉ có thể sửa bản ghi do chính mình tạo.");
@@ -3939,6 +4113,7 @@ async function handleSubmit(event) {
     event.preventDefault();
     if (!ensureDbReady() || ui.saving) return;
     const mod = modules[ui.modal.tab];
+    if (!mod || mod.readOnly) return;
     const form = event.currentTarget;
     const saveMode = event.submitter?.dataset.saveMode || "close";
     const payload = {};
@@ -4016,7 +4191,7 @@ async function handleSubmit(event) {
 
 async function deleteRow(id) {
     const mod = modules[ui.activeTab];
-    if (!mod || !id || !ensureDbReady() || ui.saving) return;
+    if (!mod || mod.readOnly || !id || !ensureDbReady() || ui.saving) return;
     const row = appState[mod.collection].find((item) => item.id === id);
     if (!row) return;
     if (!canModifyRecord(row)) {
@@ -4368,6 +4543,13 @@ function normalizeWorkbookFormulaText(value) {
         .replace(/[\u0300-\u036f]/g, "");
 }
 
+function isBugStatus(value, target) {
+    if (normalizeWorkbookFormulaText(target) === "reopen") {
+        return ["reopen", "reopened"].includes(normalizeWorkbookFormulaText(value));
+    }
+    return normalizeWorkbookFormulaText(value) === normalizeWorkbookFormulaText(target);
+}
+
 function countDailyOpenSeverity(severity) {
     const target = normalizeWorkbookFormulaText(severity);
     return appState.daily.filter((row) => (
@@ -4477,12 +4659,12 @@ function renderPriority(value) {
 
 function renderStatus(value) {
     const text = String(value || "");
-    const tone = text.includes("Đã bàn giao") || value === "Done UAT" || value === "Hoàn thành" || value === "Đã ký UAT" ? "green"
+    const tone = text.includes("Đã bàn giao") || value === "Done" || value === "Done UAT" || value === "Hoàn thành" || value === "Đã ký UAT" || value === "Closed" ? "green"
         : value === "Đạt" || value === "Xanh" ? "green"
-            : text.includes("Chưa bàn giao") || value === "Vàng" || value === "Đạt có điều kiện" || value === "Chưa hoàn thành TC" || value === "Chưa bắt đầu" || value === "Chờ sửa lỗi" ? "yellow"
-                : value === "Đỏ" || value === "Chưa đạt" || value === "Thiếu tester" || value === "Tạm dừng/Blocked" ? "red"
-                    : value === "Done SIT" || value === "Retest" ? "purple"
-                        : value === "Done DEV" || value === "Đang kiểm thử" ? "blue"
+            : text.includes("Chưa bàn giao") || value === "Vàng" || value === "Đạt có điều kiện" || value === "Chưa hoàn thành TC" || value === "Chưa bắt đầu" || value === "Chờ sửa lỗi" || value === "Pending" || value === "In Progress" || value === "Major" ? "yellow"
+                : value === "Đỏ" || value === "Chưa đạt" || value === "Thiếu tester" || value === "Tạm dừng/Blocked" || value === "Open" || value === "SIT Fail" || value === "Blocker" || value === "Critical" ? "red"
+                    : value === "Done SIT" || value === "Retest" || value === "Reopen" || value === "Reopened" ? "purple"
+                        : value === "Done DEV" || value === "Đang kiểm thử" || value === "Resolved" || value === "SIT Pass" || value === "Minor" ? "blue"
                             : value === "Done RSD" ? "yellow"
                                 : value === "Chờ fix" || value === "Tạm hoãn" ? "red"
                                     : "gray";

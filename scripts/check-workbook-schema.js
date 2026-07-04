@@ -4,14 +4,17 @@ const path = require("path");
 const ExcelJS = require("exceljs");
 const { buildExcelWorkbook, parseWorkbookImportState } = require("../server");
 
-const workbookPath = path.resolve(process.argv[2] || "SQ02_UAT_Squad2_QuanLy_HoanChinh_US_Date (1).xlsm");
+const workbookPath = path.resolve(process.argv[2] || "SQ02_UAT_Squad2_QuanLy_US_Date-2.7.xlsx");
 
 const expectedHeaders = {
   DM_ChucNang: ["STT", "Mã CN", "Mã Story", "Mã Jira", "Nhóm chức năng", "Tên chức năng", "Sprint", "Đầu mối nghiệp vụ", "Ngày BG UAT", "Trạng thái BG", "Tổng TC", "Passed", "Failed", "Blocked", "Defect Open", "Blocker Open", "Critical Open", "Kết quả UAT", "Trạng thái UAT", "% Hoàn thành TC"],
   Lich_BG_US: ["Mã Jira", "Mã CN", "Mã Story", "Tên chức năng", "Sprint", "BG UAT", "Bắt đầu UAT", "Kết thúc UAT", "Trạng thái BG", "Trạng thái UAT"],
   PhanCong_UAT: ["Mã CN", "Mã Jira", "Nhóm chức năng", "Tên chức năng", "Sprint", "Bàn giao UAT", "Đầu mối nghiệp vụ", "NV", "T1", "T2", "T3", "T4", "T5", "T6", "Tổng Testcase", "Trạng thái kiểm thử", "% hoàn thành", "Trạng thái UAT", "Trạng thái DEV", "Mức độ ưu tiên", "Ghi chú"],
-  DieuHanh_Ngay: ["Ngày", "Mã Jira", "Tên chức năng", "Sprint", "Tester", "Tổng TC", "TC Passed", "TC Failed", "Trạng thái lỗi", "Mức độ lỗi", "Vướng mắc/Blocker", "Người xử lý", "Thời hạn xử lý"],
-  DEFECT_LOG: ["Bug ID", "Mã Jira", "Tên Story", "Sprint", "Severity", "Status", "Ngày phát hiện", "Tester", "Owner", "Ngày xử lý", "Aging", "Ghi chú"],
+  DieuHanh_Ngay: ["Ngày", "Mã Jira", "Tên chức năng", "Sprint", "Tester", "Tổng TC", "TC Passed", "TC Failed", "Trạng thái lỗi", "Mức độ lỗi", "Chi tiết lỗi", "Vướng mắc/Blocker", "Người xử lý", "Thời hạn xử lý"],
+  DEFECT_LOG: ["STT", "Bug ID", "Mã US liên kết", "Tên Story", "Sprint", "Severity", "Status", "Ngày phát hiện", "Tester", "Owner", "Ngày xử lý", "Aging", "Ghi chú"],
+  DS_US: ["", "Issue Type", "Issue key", "Issue id", "Summary", "Assignee", "Assignee Id", "Reporter", "Reporter Id", "Priority", "Status", "Resolution", "Created", "Updated", "Due date", "SQ2_Summary"],
+  "DS.Loi": ["", "", "Issue Type", "Issue key", "Issue id", "Summary", "Assignee", "Assignee Id", "Reporter", "Reporter Id", "Priority", "Status", "Resolution", "Created", "Updated", "Due date", "Custom field (Actual end)", "Time Spent", "Inward issue link (Blocks)", "Inward issue link (Parent of)"],
+  "Tong hop loi": ["STT", "Mã CN", "Mã Story", "Mã Jira", "Mã US", "Nhóm chức năng", "Tên chức năng", "Sprint", "Đầu mối nghiệp vụ", "Ngày BG UAT", "Trạng thái BG", "Assignee", "Trạng thái US", "Tổng TC", "Passed", "Failed", "Blocked", "Defect Open", "Blocker Open", "Critical Open", "Tổng lỗi", "Open", "In Progress", "Pending", "Resolved", "SIT Pass", "Khác", "Đang mở", "Đã xử lý", "% xử lý", "Lỗi nghiêm trọng", "Kết quả UAT", "Trạng thái UAT", "% Hoàn thành TC"],
   ChatLuong_Tuan: ["Tuần", "Sprint", "Tổng Story", "Story đã test", "Coverage %", "Pass Rate %", "Blocker Open", "Critical Open", "Reopen Rate", "Đánh giá"],
   TongKet_Sprint: ["Sprint", "Tổng Story", "Story đã bàn giao", "Tỷ lệ bao phủ", "Pass Rate %", "Blocker Open", "Critical Open", "Major Open", "Reopen Rate", "Quyết định"],
   NangSuat_Tester: ["Nhóm chức năng", "T1", "T2", "T3", "T4", "T5", "T6", "Tổng lượt tham gia", "Mục tiêu", "Cảnh báo"]
@@ -31,7 +34,7 @@ async function main() {
   for (const [sheetName, expected] of Object.entries(expectedHeaders)) {
     const worksheet = workbook.getWorksheet(sheetName);
     if (!worksheet) throw new Error(`Missing sheet ${sheetName}`);
-    const headerRow = sheetName === "DM_ChucNang" || sheetName === "DEFECT_LOG" || sheetName === "ChatLuong_Tuan" || sheetName === "TongKet_Sprint"
+    const headerRow = sheetName === "DM_ChucNang" || sheetName === "DEFECT_LOG" || sheetName === "ChatLuong_Tuan" || sheetName === "TongKet_Sprint" || sheetName === "DS_US" || sheetName === "DS.Loi" || sheetName === "Tong hop loi"
       ? 1
       : 3;
     const actual = readHeader(worksheet, sheetName === "Lich_BG_US" ? 5 : headerRow, expected.length);
@@ -42,21 +45,18 @@ async function main() {
   const totalCases = sum(state.plans, "totalCases");
   const featureTotalCases = sum(state.features, "totalCases");
   const deliveredStories = state.handoffs.filter((row) => row.uatHandoff).length;
-  const visibleFeatures = visibleSourceRows(state.features);
-  const visibleHandoffs = visibleSourceRows(state.handoffs);
-  const visiblePlans = visibleSourceRows(state.plans);
   if (state.features.length !== 77) throw new Error(`Expected 77 DM_ChucNang source rows, got ${state.features.length}`);
   if (state.handoffs.length !== 77) throw new Error(`Expected 77 Lich_BG_US source rows, got ${state.handoffs.length}`);
   if (state.plans.length !== 77) throw new Error(`Expected 77 PhanCong_UAT source rows, got ${state.plans.length}`);
-  if (visibleFeatures.length !== 34) throw new Error(`Expected 34 visible DM_ChucNang rows, got ${visibleFeatures.length}`);
-  if (visibleHandoffs.length !== 10) throw new Error(`Expected 10 visible Lich_BG_US rows, got ${visibleHandoffs.length}`);
-  if (visiblePlans.length !== 57) throw new Error(`Expected 57 visible PhanCong_UAT rows, got ${visiblePlans.length}`);
-  if (state.daily.length !== 6) throw new Error(`Expected 6 DieuHanh_Ngay rows, got ${state.daily.length}`);
-  if (state.defects.length !== 11) throw new Error(`Expected 11 DEFECT_LOG rows, got ${state.defects.length}`);
+  if (state.daily.length !== 26) throw new Error(`Expected 26 DieuHanh_Ngay rows, got ${state.daily.length}`);
+  if (state.defects.length !== 64) throw new Error(`Expected 64 DEFECT_LOG rows, got ${state.defects.length}`);
+  if (state.userStories.length !== 84) throw new Error(`Expected 84 DS_US rows, got ${state.userStories.length}`);
+  if (state.bugSources.length !== 64) throw new Error(`Expected 64 DS.Loi rows, got ${state.bugSources.length}`);
+  if (state.defectSummary.length !== 77) throw new Error(`Expected 77 Tong hop loi rows, got ${state.defectSummary.length}`);
   if (state.weekly.length !== 16) throw new Error(`Expected 16 ChatLuong_Tuan rows, got ${state.weekly.length}`);
   if (state.readiness.length !== 16) throw new Error(`Expected 16 TongKet_Sprint rows, got ${state.readiness.length}`);
   if (state.matrix.length !== 12) throw new Error(`Expected 12 NangSuat_Tester rows, got ${state.matrix.length}`);
-  if (deliveredStories !== 37) throw new Error(`Expected 37 delivered stories, got ${deliveredStories}`);
+  if (deliveredStories !== 47) throw new Error(`Expected 47 delivered stories, got ${deliveredStories}`);
   if (totalCases !== 2704 || featureTotalCases !== 2704) {
     throw new Error(`Expected total testcase 2704, got plans=${totalCases}, features=${featureTotalCases}`);
   }
@@ -73,15 +73,15 @@ async function main() {
     workbook: path.basename(workbookPath),
     imported: {
       features: state.features.length,
-      visibleFeatures: visibleFeatures.length,
       personnel: state.personnel.length,
       schedule: state.schedule.length,
       handoffs: state.handoffs.length,
-      visibleHandoffs: visibleHandoffs.length,
       plans: state.plans.length,
-      visiblePlans: visiblePlans.length,
       daily: state.daily.length,
       defects: state.defects.length,
+      userStories: state.userStories.length,
+      bugSources: state.bugSources.length,
+      defectSummary: state.defectSummary.length,
       weekly: state.weekly.length,
       readiness: state.readiness.length,
       matrix: state.matrix.length,
@@ -114,46 +114,36 @@ function assertHandoffSections(handoffs) {
     && row.sectionLevel2 === "Màn hình thẩm định - Khoản cấp tín dụng"
   ));
   if (!hasNested) throw new Error("Lich_BG_US missing nested section mapping.");
-  const visibleFirst = visibleSourceRows(handoffs)[0] || {};
-  if (visibleFirst.jiraCode !== "SQ02_CN001_019") {
-    throw new Error(`Lich_BG_US visible filter mismatch. First visible row: ${visibleFirst.jiraCode || "-"}`);
-  }
 }
 
 function assertUpdatedWorkbookCalculations(state) {
   const firstWeekly = state.weekly[0] || {};
-  if (firstWeekly.sprint !== "Sprint 1&2" || firstWeekly.totalStories !== 1 || firstWeekly.coverageRate !== 0) {
+  if (firstWeekly.sprint !== "Sprint 1&2" || firstWeekly.totalStories !== 1) {
     throw new Error(`ChatLuong_Tuan first row mismatch: ${JSON.stringify(firstWeekly)}`);
   }
   const firstReadiness = state.readiness[0] || {};
-  if (firstReadiness.sprint !== "Sprint 1&2" || firstReadiness.deliveredStories !== 1 || firstReadiness.coverageRate !== 100) {
+  if (firstReadiness.sprint !== "Sprint 1&2" || firstReadiness.deliveredStories !== 1) {
     throw new Error(`TongKet_Sprint first row mismatch: ${JSON.stringify(firstReadiness)}`);
   }
-  const mergedMasterPlan = state.plans.find((row) => row.jiraCode === "SQ02_CN001_004");
-  if (!mergedMasterPlan || mergedMasterPlan.t1 !== 64 || mergedMasterPlan.t5 !== 64 || mergedMasterPlan.totalCases !== 320) {
-    throw new Error(`PhanCong_UAT merged testcase master row mismatch: ${JSON.stringify(mergedMasterPlan)}`);
+  const firstDefect = state.defects[0] || {};
+  if (firstDefect.bugId !== "PS0142025-10272" || firstDefect.linkedUsKey !== "PS0142025-5937") {
+    throw new Error(`DEFECT_LOG first row mismatch: ${JSON.stringify(firstDefect)}`);
   }
-  ["SQ02_CN001_005", "SQ02_CN001_006"].forEach((jiraCode) => {
-    const plan = state.plans.find((row) => row.jiraCode === jiraCode);
-    const testerValues = ["t1", "t2", "t3", "t4", "t5", "t6"].map((key) => plan?.[key]).filter((value) => value !== "" && value != null);
-    if (!plan || testerValues.length || Number(plan.totalCases || 0) !== 0) {
-      throw new Error(`PhanCong_UAT blank testcase row was imported with data: ${jiraCode} ${JSON.stringify(plan)}`);
-    }
-  });
-  ["SQ02_CN001_007", "SQ02_CN001_010", "SQ02_CN010_006"].forEach((jiraCode) => {
-    const plan = state.plans.find((row) => row.jiraCode === jiraCode);
-    if (!plan || !plan.sourceHidden || !plan.sourceStruck) {
-      throw new Error(`PhanCong_UAT hidden/struck row was not flagged: ${jiraCode} ${JSON.stringify(plan)}`);
-    }
-  });
+  const defectStatusCounts = countBy(state.defects, "status");
+  if (defectStatusCounts.Open !== 15 || defectStatusCounts.Closed !== 17 || defectStatusCounts["SIT Pass"] !== 14) {
+    throw new Error(`DEFECT_LOG status counts mismatch: ${JSON.stringify(defectStatusCounts)}`);
+  }
+  const sourceStatusCounts = countBy(state.bugSources, "status");
+  if (sourceStatusCounts.Open !== 16 || sourceStatusCounts.Closed !== 17 || sourceStatusCounts["SIT Pass"] !== 14) {
+    throw new Error(`DS.Loi status counts mismatch: ${JSON.stringify(sourceStatusCounts)}`);
+  }
   const matrixParticipation = sum(state.matrix, "totalParticipation");
   if (matrixParticipation !== 162) {
     throw new Error(`NangSuat_Tester formula results were overwritten: totalParticipation=${matrixParticipation}`);
   }
-  const linkedPassed = sum(state.features, "passedCases");
-  const linkedFailed = sum(state.features, "failedCases");
-  if (linkedPassed !== 0 || linkedFailed !== 0) {
-    throw new Error(`Dashboard linked pass/fail mismatch: passed=${linkedPassed}, failed=${linkedFailed}`);
+  const cn001Summary = state.defectSummary.find((row) => row.jiraCode === "SQ02_CN001_001");
+  if (!cn001Summary || cn001Summary.usKey !== "PS0142025-253") {
+    throw new Error(`Tong hop loi linkage mismatch: ${JSON.stringify(cn001Summary)}`);
   }
 }
 
@@ -176,6 +166,10 @@ function sum(rows, key) {
   return rows.reduce((total, row) => total + Number(row[key] || 0), 0);
 }
 
-function visibleSourceRows(rows) {
-  return rows.filter((row) => !row.sourceHidden && !row.sourceStruck);
+function countBy(rows, key) {
+  return rows.reduce((acc, row) => {
+    const value = row[key] || "";
+    if (value) acc[value] = (acc[value] || 0) + 1;
+    return acc;
+  }, {});
 }

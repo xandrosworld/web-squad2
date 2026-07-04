@@ -9,8 +9,8 @@ const defaultChromePaths = [
 ];
 
 const baseUrl = process.env.SMOKE_URL || "https://squad2-dashboard-qlcv.up.railway.app";
-const smokeUser = process.env.SMOKE_USER || "";
-const smokePassword = process.env.SMOKE_PASSWORD || "";
+const smokeUser = process.env.SMOKE_USER || process.env.APP_USER || "";
+const smokePassword = process.env.SMOKE_PASSWORD || process.env.APP_PASSWORD || "";
 const executablePath = process.env.SMOKE_BROWSER || defaultChromePaths.find((candidate) => fs.existsSync(candidate));
 
 if (!smokeUser || !smokePassword) {

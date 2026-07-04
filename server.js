@@ -51,12 +51,16 @@ const collections = [
   "plans",
   "daily",
   "defects",
+  "userStories",
+  "bugSources",
+  "defectSummary",
   "weekly",
   "readiness",
   "matrix",
   "guide"
 ];
 const collectionSet = new Set(collections);
+const computedCollections = new Set(["defectSummary"]);
 const functionGroups = [
   "Luồng xử lý",
   "Thông tin KH",
@@ -73,6 +77,7 @@ const ownerOptions = [
   "NV1 - Bùi Thị Mai Phương",
   "NV2 - Nguyễn Châu Giang",
   "NV3 - Phạm Anh Tuấn",
+  "ALL",
   "BA"
 ];
 const ownerAccountLinks = [
@@ -84,7 +89,7 @@ const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
 const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Done UAT"];
 const planStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Hoàn thành", "Tạm dừng/Blocked", "Chờ sửa lỗi", "Đã ký UAT"];
 const testStatusOptions = ["Chưa Test", "Đang Test", "Passed", "Failed"];
-const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail"];
+const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopen", "Reopened", "Resolved", "SIT Pass", "SIT Fail"];
 const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 const collectionRules = {
   features: {
@@ -146,6 +151,29 @@ const collectionRules = {
     enums: {
       severity: bugSeverityOptions,
       status: bugStatusOptions
+    }
+  },
+  userStories: {
+    required: ["issueKey"],
+    numbers: [],
+    percents: [],
+    enums: {}
+  },
+  bugSources: {
+    required: ["issueKey"],
+    numbers: [],
+    percents: [],
+    enums: {
+      priority: bugSeverityOptions,
+      status: bugStatusOptions
+    }
+  },
+  defectSummary: {
+    required: ["jiraCode"],
+    numbers: ["stt", "totalCases", "passedCases", "failedCases", "blockedCases", "defectOpen", "blockerOpen", "criticalOpen", "totalBugs", "openBugs", "inProgressBugs", "pendingBugs", "resolvedBugs", "sitPassBugs", "otherBugs", "activeBugs", "handledBugs", "severeBugs"],
+    percents: ["handledRate", "completionRate"],
+    enums: {
+      owner: ownerOptions
     }
   },
   weekly: {
@@ -260,6 +288,7 @@ const excelSheets = [
       ["failedCases", "TC Failed", 12, "number"],
       ["bugStatus", "Trạng thái lỗi", 18],
       ["maxBugSeverity", "Mức độ lỗi", 16],
+      ["bugDetail", "Chi tiết lỗi", 30],
       ["blocker", "Vướng mắc/Blocker", 32],
       ["handler", "Người xử lý", 20],
       ["dueDate", "Thời hạn xử lý", 16, "date"]
@@ -269,8 +298,9 @@ const excelSheets = [
     collection: "defects",
     name: "DEFECT_LOG",
     columns: [
+      ["stt", "STT", 8, "number"],
       ["bugId", "Bug ID", 14],
-      ["jiraCode", "Mã Jira", 20],
+      ["linkedUsKey", "Mã US liên kết", 18],
       ["storyName", "Tên Story", 34],
       ["sprint", "Sprint", 16],
       ["severity", "Severity", 14],
@@ -281,6 +311,94 @@ const excelSheets = [
       ["resolvedDate", "Ngày xử lý", 16, "date"],
       ["aging", "Aging", 10, "number"],
       ["note", "Ghi chú", 30]
+    ]
+  },
+  {
+    collection: "userStories",
+    name: "DS_US",
+    columns: [
+      ["sourceNote", "Ghi chú nguồn", 22],
+      ["issueType", "Issue Type", 14],
+      ["issueKey", "Issue key", 18],
+      ["issueId", "Issue id", 14],
+      ["summary", "Summary", 52],
+      ["assignee", "Assignee", 30],
+      ["assigneeId", "Assignee Id", 24],
+      ["reporter", "Reporter", 30],
+      ["reporterId", "Reporter Id", 24],
+      ["priority", "Priority", 14],
+      ["status", "Status", 14],
+      ["resolution", "Resolution", 16],
+      ["created", "Created", 14, "date"],
+      ["updated", "Updated", 14, "date"],
+      ["dueDate", "Due date", 14, "date"],
+      ["squadSummary", "SQ2_Summary", 20]
+    ]
+  },
+  {
+    collection: "bugSources",
+    name: "DS.Loi",
+    columns: [
+      ["reporterLookup", "Reporter lookup", 26],
+      ["testerLookup", "Tester lookup", 18],
+      ["issueType", "Issue Type", 14],
+      ["issueKey", "Issue key", 18],
+      ["issueId", "Issue id", 14],
+      ["summary", "Summary", 52],
+      ["assignee", "Assignee", 30],
+      ["assigneeId", "Assignee Id", 24],
+      ["reporter", "Reporter", 30],
+      ["reporterId", "Reporter Id", 24],
+      ["priority", "Priority", 14],
+      ["status", "Status", 14],
+      ["resolution", "Resolution", 16],
+      ["created", "Created", 14, "date"],
+      ["updated", "Updated", 14, "date"],
+      ["dueDate", "Due date", 14, "date"],
+      ["actualEnd", "Custom field (Actual end)", 18, "date"],
+      ["timeSpent", "Time Spent", 14],
+      ["inwardBlocks", "Inward issue link (Blocks)", 22],
+      ["linkedUsKey", "Inward issue link (Parent of)", 24]
+    ]
+  },
+  {
+    collection: "defectSummary",
+    name: "Tong hop loi",
+    columns: [
+      ["stt", "STT", 8, "number"],
+      ["code", "Mã CN", 12],
+      ["storyCode", "Mã Story", 12],
+      ["jiraCode", "Mã Jira", 18],
+      ["usKey", "Mã US", 18],
+      ["group", "Nhóm chức năng", 28],
+      ["name", "Tên chức năng", 34],
+      ["sprint", "Sprint", 16],
+      ["owner", "Đầu mối nghiệp vụ", 28],
+      ["uatHandoff", "Ngày BG UAT", 16, "date"],
+      ["handoffStatus", "Trạng thái BG", 18],
+      ["assignee", "Assignee", 28],
+      ["usStatus", "Trạng thái US", 18],
+      ["totalCases", "Tổng TC", 12, "number"],
+      ["passedCases", "Passed", 12, "number"],
+      ["failedCases", "Failed", 12, "number"],
+      ["blockedCases", "Blocked", 12, "number"],
+      ["defectOpen", "Defect Open", 14, "number"],
+      ["blockerOpen", "Blocker Open", 14, "number"],
+      ["criticalOpen", "Critical Open", 14, "number"],
+      ["totalBugs", "Tổng lỗi", 12, "number"],
+      ["openBugs", "Open", 12, "number"],
+      ["inProgressBugs", "In Progress", 14, "number"],
+      ["pendingBugs", "Pending", 12, "number"],
+      ["resolvedBugs", "Resolved", 12, "number"],
+      ["sitPassBugs", "SIT Pass", 12, "number"],
+      ["otherBugs", "Khác", 12, "number"],
+      ["activeBugs", "Đang mở", 12, "number"],
+      ["handledBugs", "Đã xử lý", 12, "number"],
+      ["handledRate", "% xử lý", 12, "number"],
+      ["severeBugs", "Lỗi nghiêm trọng", 16, "number"],
+      ["uatResult", "Kết quả UAT", 18],
+      ["status", "Trạng thái UAT", 18],
+      ["completionRate", "% Hoàn thành TC", 16, "number"]
     ]
   },
   {
@@ -905,6 +1023,20 @@ function normalizeImportedOwner(value) {
   return text;
 }
 
+function normalizeBugStatus(value) {
+  const text = normalizeImportedText(value);
+  if (!text) return "";
+  const normalized = normalizeImportHeader(text);
+  const match = bugStatusOptions.find((option) => normalizeImportHeader(option) === normalized);
+  return match || text;
+}
+
+function deriveSquadSummaryFromUserStorySummary(summary) {
+  const text = normalizeImportedText(summary);
+  const match = text.match(/^(CN\d{3})[_\-\s]?(\d{3})\b/i);
+  return match ? `SQ02_${match[1].toUpperCase()}_${match[2]}` : "";
+}
+
 function normalizeImportedDate(value) {
   if (isBlank(value)) return "";
   if (value instanceof Date) {
@@ -946,7 +1078,10 @@ async function parseWorkbookImportState(buffer) {
   state.handoffs = parseHandoffSheet(workbook.getWorksheet("Lich_BG_US"));
   state.plans = parsePlanSheet(workbook.getWorksheet("PhanCong_UAT"));
   state.daily = parseDailySheet(workbook.getWorksheet("DieuHanh_Ngay"));
+  state.userStories = parseUserStorySheet(workbook.getWorksheet("DS_US"));
+  state.bugSources = parseBugSourceSheet(workbook.getWorksheet("DS.Loi"));
   state.defects = parseDefectSheet(workbook.getWorksheet("DEFECT_LOG"));
+  state.defectSummary = parseDefectSummarySheet(workbook.getWorksheet("Tong hop loi"));
   state.weekly = parseWeeklySheet(workbook.getWorksheet("ChatLuong_Tuan"));
   state.readiness = parseReadinessSheet(workbook.getWorksheet("TongKet_Sprint"));
   state.matrix = parseMatrixSheet(workbook.getWorksheet("NangSuat_Tester"));
@@ -1132,7 +1267,8 @@ function parseDailySheet(worksheet) {
     const totalCases = toImportNumber(cellValueAt(row, 6));
     const passedCases = toImportNumber(cellValueAt(row, 7));
     const failedCases = toImportNumber(cellValueAt(row, 8));
-    const blocker = cellTextAt(row, 11);
+    const bugDetail = cellTextAt(row, 11);
+    const blocker = cellTextAt(row, 12);
     const executedCases = Number(passedCases || 0) + Number(failedCases || 0);
     if (!date && !jiraCode && !tester && !totalCases && !executedCases && !blocker) return null;
     return {
@@ -1149,11 +1285,12 @@ function parseDailySheet(worksheet) {
       failedCases,
       bugStatus: cellTextAt(row, 9),
       maxBugSeverity: cellTextAt(row, 10),
+      bugDetail,
       criticalBugs: normalizeSeverityCount(cellTextAt(row, 10), ["Blocker", "Critical", "Nghiêm trọng"], cellTextAt(row, 9)),
       highBugs: normalizeSeverityCount(cellTextAt(row, 10), ["Major", "Cao"], cellTextAt(row, 9)),
       blocker,
-      handler: cellTextAt(row, 12),
-      dueDate: toImportDate(cellValueAt(row, 13))
+      handler: cellTextAt(row, 13),
+      dueDate: toImportDate(cellValueAt(row, 14))
     };
   });
 }
@@ -1161,26 +1298,161 @@ function parseDailySheet(worksheet) {
 function parseDefectSheet(worksheet) {
   if (!worksheet) return [];
   return parseRows(worksheet, 2, (row) => {
-    const bugId = cellTextAt(row, 1);
-    const jiraCode = cellTextAt(row, 2);
-    const severity = cellTextAt(row, 5);
-    const status = cellTextAt(row, 6);
-    const note = cellTextAt(row, 12);
-    if (!bugId && !jiraCode && !severity && !status && !note) return null;
+    const stt = toImportNumber(cellValueAt(row, 1));
+    const bugId = cellTextAt(row, 2);
+    const linkedUsKey = cellTextAt(row, 3);
+    const severity = cellTextAt(row, 6);
+    const status = normalizeBugStatus(cellTextAt(row, 7));
+    const note = cellTextAt(row, 13);
+    if (!bugId && !linkedUsKey && !severity && !status && !note) return null;
+    if (!bugId) return null;
+    if (!Number.isFinite(Number(stt)) || Number(stt) <= 0) return null;
     return {
-      id: importId("defects", bugId || jiraCode, row.number),
+      id: importId("defects", bugId || linkedUsKey, row.number),
+      stt,
       bugId,
-      jiraCode,
-      storyName: cellTextAt(row, 3),
-      sprint: cellTextAt(row, 4),
+      linkedUsKey,
+      jiraCode: "",
+      featureJiraCode: "",
+      storyName: cellTextAt(row, 4),
+      sprint: cellTextAt(row, 5),
       severity,
       status,
-      foundDate: toImportDate(cellValueAt(row, 7)),
-      tester: cellTextAt(row, 8),
-      owner: normalizeImportedOwner(cellValueAt(row, 9)),
-      resolvedDate: toImportDate(cellValueAt(row, 10)),
-      aging: toImportNumber(cellValueAt(row, 11)),
+      foundDate: toImportDate(cellValueAt(row, 8)),
+      tester: cellTextAt(row, 9),
+      owner: normalizeImportedOwner(cellValueAt(row, 10)),
+      resolvedDate: toImportDate(cellValueAt(row, 11)),
+      aging: toImportNumber(cellValueAt(row, 12)),
       note
+    };
+  });
+}
+
+function parseUserStorySheet(worksheet) {
+  if (!worksheet) return [];
+  return parseRows(worksheet, 2, (row) => {
+    const issueKey = cellTextAt(row, 3);
+    const summary = cellTextAt(row, 5);
+    if (!issueKey && !summary) return null;
+    if (!issueKey) return null;
+    const squadSummary = cellTextAt(row, 16) || deriveSquadSummaryFromUserStorySummary(summary);
+    return {
+      id: importId("userStories", issueKey),
+      sourceNote: cellTextAt(row, 1),
+      issueType: cellTextAt(row, 2),
+      issueKey,
+      issueId: cellTextAt(row, 4),
+      summary,
+      assignee: cellTextAt(row, 6),
+      assigneeId: cellTextAt(row, 7),
+      reporter: cellTextAt(row, 8),
+      reporterId: cellTextAt(row, 9),
+      priority: cellTextAt(row, 10),
+      status: cellTextAt(row, 11),
+      resolution: cellTextAt(row, 12),
+      created: toImportDate(cellValueAt(row, 13)),
+      updated: toImportDate(cellValueAt(row, 14)),
+      dueDate: toImportDate(cellValueAt(row, 15)),
+      squadSummary,
+      jiraCode: squadSummary
+    };
+  });
+}
+
+function parseBugSourceSheet(worksheet) {
+  if (!worksheet) return [];
+  const reporterMap = parseBugReporterMap(worksheet);
+  return parseRows(worksheet, 2, (row) => {
+    const issueKey = cellTextAt(row, 4);
+    const summary = cellTextAt(row, 6);
+    if (!issueKey && !summary) return null;
+    if (!issueKey) return null;
+    const reporter = cellTextAt(row, 9);
+    const linkedUsKey = cellTextAt(row, 20);
+    return {
+      id: importId("bugSources", issueKey),
+      reporterLookup: cellTextAt(row, 1),
+      testerLookup: cellTextAt(row, 2),
+      issueType: cellTextAt(row, 3),
+      issueKey,
+      issueId: cellTextAt(row, 5),
+      summary,
+      assignee: cellTextAt(row, 7),
+      assigneeId: cellTextAt(row, 8),
+      reporter,
+      reporterId: cellTextAt(row, 10),
+      priority: cellTextAt(row, 11),
+      status: normalizeBugStatus(cellTextAt(row, 12)),
+      resolution: cellTextAt(row, 13),
+      created: toImportDate(cellValueAt(row, 14)),
+      updated: toImportDate(cellValueAt(row, 15)),
+      dueDate: toImportDate(cellValueAt(row, 16)),
+      actualEnd: toImportDate(cellValueAt(row, 17)),
+      timeSpent: cellTextAt(row, 18),
+      inwardBlocks: cellTextAt(row, 19),
+      linkedUsKey,
+      tester: reporterMap.get(lookupKey(reporter)) || cellTextAt(row, 2)
+    };
+  });
+}
+
+function parseBugReporterMap(worksheet) {
+  const map = new Map();
+  if (!worksheet) return map;
+  for (let rowNumber = 2; rowNumber <= Math.min(worksheet.rowCount, 30); rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber);
+    const raw = cellTextAt(row, 1);
+    const display = cellTextAt(row, 2);
+    if (!raw || !display) continue;
+    if (raw.includes("paste") || raw.includes("Không xóa")) continue;
+    map.set(lookupKey(raw), display);
+  }
+  return map;
+}
+
+function parseDefectSummarySheet(worksheet) {
+  if (!worksheet) return [];
+  return parseRows(worksheet, 2, (row) => {
+    const jiraCode = cellTextAt(row, 4);
+    const usKey = cellTextAt(row, 5);
+    const name = cellTextAt(row, 7);
+    if (!jiraCode && !usKey && !name) return null;
+    return {
+      id: importId("defectSummary", jiraCode || usKey || name),
+      stt: toImportNumber(cellValueAt(row, 1)),
+      code: cellTextAt(row, 2),
+      storyCode: cellTextAt(row, 3),
+      jiraCode,
+      usKey,
+      group: cellTextAt(row, 6),
+      name,
+      sprint: cellTextAt(row, 8),
+      owner: normalizeImportedOwner(cellValueAt(row, 9)),
+      uatHandoff: toImportDate(cellValueAt(row, 10)),
+      handoffStatus: cellTextAt(row, 11),
+      assignee: cellTextAt(row, 12),
+      usStatus: cellTextAt(row, 13),
+      totalCases: toImportNumber(cellValueAt(row, 14)),
+      passedCases: toImportNumber(cellValueAt(row, 15)),
+      failedCases: toImportNumber(cellValueAt(row, 16)),
+      blockedCases: toImportNumber(cellValueAt(row, 17)),
+      defectOpen: toImportNumber(cellValueAt(row, 18)),
+      blockerOpen: toImportNumber(cellValueAt(row, 19)),
+      criticalOpen: toImportNumber(cellValueAt(row, 20)),
+      totalBugs: toImportNumber(cellValueAt(row, 21)),
+      openBugs: toImportNumber(cellValueAt(row, 22)),
+      inProgressBugs: toImportNumber(cellValueAt(row, 23)),
+      pendingBugs: toImportNumber(cellValueAt(row, 24)),
+      resolvedBugs: toImportNumber(cellValueAt(row, 25)),
+      sitPassBugs: toImportNumber(cellValueAt(row, 26)),
+      otherBugs: toImportNumber(cellValueAt(row, 27)),
+      activeBugs: toImportNumber(cellValueAt(row, 28)),
+      handledBugs: toImportNumber(cellValueAt(row, 29)),
+      handledRate: toImportPercent(cellValueAt(row, 30)),
+      severeBugs: toImportNumber(cellValueAt(row, 31)),
+      uatResult: cellTextAt(row, 32),
+      status: cellTextAt(row, 33),
+      completionRate: toImportPercent(cellValueAt(row, 34))
     };
   });
 }
@@ -1377,6 +1649,8 @@ function applyWorkbookRules(state) {
   const plans = collectionRows(state, "plans");
   const daily = collectionRows(state, "daily");
   const defects = collectionRows(state, "defects");
+  const userStories = collectionRows(state, "userStories");
+  const bugSources = collectionRows(state, "bugSources");
   const weekly = collectionRows(state, "weekly");
   const readiness = collectionRows(state, "readiness");
   const matrix = collectionRows(state, "matrix");
@@ -1396,6 +1670,28 @@ function applyWorkbookRules(state) {
   const featureByName = lookupBy(features, "name");
   const handoffByJira = lookupBy(handoffs, "jiraCode");
   const handoffByFeatureName = lookupBy(handoffs, "name");
+  const userStoryByIssueKey = lookupBy(userStories, "issueKey");
+  const userStoryByJira = lookupBy(userStories, "jiraCode");
+
+  userStories.forEach((row) => {
+    row.squadSummary = row.squadSummary || deriveSquadSummaryFromUserStorySummary(row.summary);
+    row.jiraCode = row.jiraCode || row.squadSummary || "";
+    const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.summary));
+    row.featureName = feature?.name || row.featureName || "";
+    row.group = feature?.group || row.group || "";
+    row.owner = feature?.owner || row.owner || "";
+    row.sprint = feature?.sprint || row.sprint || "";
+  });
+
+  bugSources.forEach((row) => {
+    row.status = normalizeBugStatus(row.status);
+    row.linkedUsKey = row.linkedUsKey || row.parentIssueKey || "";
+    const story = userStoryByIssueKey.get(lookupKey(row.linkedUsKey));
+    row.featureJiraCode = story?.jiraCode || row.featureJiraCode || "";
+    row.jiraCode = row.featureJiraCode || row.jiraCode || "";
+    row.featureName = story?.featureName || row.featureName || "";
+    row.tester = row.tester || "";
+  });
 
   plans.forEach((row) => {
     const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.feature));
@@ -1426,20 +1722,29 @@ function applyWorkbookRules(state) {
   });
 
   defects.forEach((row) => {
-    const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.storyName));
-    row.storyName = row.storyName || feature?.name || "";
+    row.status = normalizeBugStatus(row.status);
+    row.linkedUsKey = row.linkedUsKey || "";
+    const story = userStoryByIssueKey.get(lookupKey(row.linkedUsKey));
+    const featureJiraCode = row.featureJiraCode || row.jiraCode || story?.jiraCode || "";
+    const feature = featureByJira.get(lookupKey(featureJiraCode)) || featureByName.get(lookupKey(row.featureName || row.storyName));
+    row.featureJiraCode = feature?.jiraCode || story?.jiraCode || featureJiraCode || "";
+    row.jiraCode = row.featureJiraCode || row.jiraCode || "";
+    row.featureName = feature?.name || story?.featureName || row.featureName || "";
+    row.storyName = row.storyName || row.featureName || "";
     row.sprint = row.sprint || feature?.sprint || "";
     row.owner = row.owner || feature?.owner || "";
     row.aging = row.aging === "" || row.aging == null ? calculateDefectAging(row.foundDate, row.resolvedDate) : row.aging;
   });
 
   features.forEach((row) => {
+    const story = userStoryByJira.get(lookupKey(row.jiraCode));
     const handoff = handoffByJira.get(lookupKey(row.jiraCode)) || handoffByFeatureName.get(lookupKey(row.name));
     const planRows = plans.filter((plan) => sameLookup(plan.jiraCode, row.jiraCode) || sameLookup(plan.feature, row.name));
     const dailyRows = daily.filter((item) => sameLookup(item.jiraCode, row.jiraCode) || sameLookup(item.feature, row.name));
-    const defectRows = defects.filter((item) => (
-      sameLookup(item.jiraCode, row.jiraCode) || sameLookup(item.storyName, row.name)
-    ) && isOpenBugStatus(item.status));
+    const defectRows = defects.filter((item) => defectMatchesFeature(item, row, story) && isOpenBugStatus(item.status));
+    row.usKey = story?.issueKey || row.usKey || "";
+    row.usStatus = story?.status || row.usStatus || "";
+    row.assignee = story?.assignee || row.assignee || "";
     row.uatHandoff = handoff?.uatHandoff || "";
     row.uatStart = handoff?.uatStart || "";
     row.uatEnd = handoff?.uatEnd || "";
@@ -1459,6 +1764,8 @@ function applyWorkbookRules(state) {
     row.openBugs = row.defectOpen;
     row.uatWarning = row.defectOpen > 0 ? "Có lỗi mở" : (Number(row.completionRate || 0) < 100 ? "Chưa hoàn thành TC" : "Đạt");
   });
+
+  state.defectSummary = buildDefectSummaryRows(state);
 
   weekly.forEach((row) => {
     const sprintKey = row.sprint || (isSprintLabel(row.week) ? row.week : "");
@@ -1493,7 +1800,7 @@ function applyWorkbookRules(state) {
     row.majorBugs = openDefects.filter((item) => isSeverity(item.severity, "Major")).length;
     row.highBugs = row.majorBugs;
     row.totalOpenBugs = row.blockerBugs + row.criticalBugs + row.majorBugs;
-    row.reopenRate = percent(defects.filter((item) => sprintMatches(item.sprint, sprintKey) && isSeverity(item.status, "Reopened")).length, defects.filter((item) => sprintMatches(item.sprint, sprintKey)).length);
+    row.reopenRate = percent(defects.filter((item) => sprintMatches(item.sprint, sprintKey) && isBugStatus(item.status, "Reopen")).length, defects.filter((item) => sprintMatches(item.sprint, sprintKey)).length);
     row.gateResult = row.totalOpenBugs > 0 ? "Chưa đạt" : (Number(row.coverageRate || 0) < 95 || Number(row.successRate || 0) < 90 ? "Đạt có điều kiện" : "Đạt");
     row.assessment = row.gateResult;
   });
@@ -1513,7 +1820,7 @@ function applyWorkbookRules(state) {
     row.openCriticalBugs = openDefects.filter((item) => isSeverity(item.severity, "Critical")).length;
     row.openMajorBugs = openDefects.filter((item) => isSeverity(item.severity, "Major")).length;
     row.openHighBugs = row.openMajorBugs;
-    row.reopenRate = percent(defects.filter((item) => sprintMatches(item.sprint, row.sprint) && isSeverity(item.status, "Reopened")).length, defects.filter((item) => sprintMatches(item.sprint, row.sprint)).length);
+    row.reopenRate = percent(defects.filter((item) => sprintMatches(item.sprint, row.sprint) && isBugStatus(item.status, "Reopen")).length, defects.filter((item) => sprintMatches(item.sprint, row.sprint)).length);
     row.readinessLevel = row.openBlockerBugs || row.openCriticalBugs ? "Đỏ" : (Number(row.coverageRate || 0) < 95 || Number(row.successRate || 0) < 90 ? "Vàng" : "Xanh");
     row.decision = row.openBlockerBugs || row.openCriticalBugs
       ? "NO GO"
@@ -1571,6 +1878,109 @@ function singleSprintNumber(value) {
 
 function hasDailyFeatureLink(row) {
   return Boolean(normalizeImportedText(row?.jiraCode) || normalizeImportedText(row?.feature));
+}
+
+function defectMatchesFeature(defect, feature, userStory = null) {
+  if (!defect || !feature) return false;
+  return sameLookup(defect.featureJiraCode, feature.jiraCode)
+    || sameLookup(defect.jiraCode, feature.jiraCode)
+    || sameLookup(defect.linkedUsKey, userStory?.issueKey)
+    || sameLookup(defect.featureName, feature.name)
+    || sameLookup(defect.storyName, feature.name);
+}
+
+function bugSourceMatchesFeature(bug, feature, userStory = null) {
+  if (!bug || !feature) return false;
+  return sameLookup(bug.featureJiraCode, feature.jiraCode)
+    || sameLookup(bug.jiraCode, feature.jiraCode)
+    || sameLookup(bug.linkedUsKey, userStory?.issueKey);
+}
+
+function buildDefectSummaryRows(state) {
+  const features = collectionRows(state, "features");
+  const handoffs = collectionRows(state, "handoffs");
+  const plans = collectionRows(state, "plans");
+  const daily = collectionRows(state, "daily");
+  const defects = collectionRows(state, "defects");
+  const userStories = collectionRows(state, "userStories");
+  const bugSources = collectionRows(state, "bugSources");
+  const userStoryByJira = lookupBy(userStories, "jiraCode");
+  const handoffByJira = lookupBy(handoffs, "jiraCode");
+  const handoffByFeatureName = lookupBy(handoffs, "name");
+
+  return features.map((feature, index) => {
+    const story = userStoryByJira.get(lookupKey(feature.jiraCode));
+    const handoff = handoffByJira.get(lookupKey(feature.jiraCode)) || handoffByFeatureName.get(lookupKey(feature.name));
+    const planRows = plans.filter((plan) => sameLookup(plan.jiraCode, feature.jiraCode) || sameLookup(plan.feature, feature.name));
+    const dailyRows = daily.filter((item) => sameLookup(item.jiraCode, feature.jiraCode) || sameLookup(item.feature, feature.name));
+    const linkedDefects = defects.filter((defect) => defectMatchesFeature(defect, feature, story));
+    const linkedBugSources = bugSources.filter((bug) => bugSourceMatchesFeature(bug, feature, story));
+    const bugRows = linkedBugSources.length ? linkedBugSources : linkedDefects.map((defect) => ({
+      priority: defect.severity,
+      status: defect.status
+    }));
+    const statusCount = (status) => bugRows.filter((bug) => isBugStatus(bug.status, status)).length;
+    const openBugs = statusCount("Open");
+    const inProgressBugs = statusCount("In Progress");
+    const pendingBugs = statusCount("Pending");
+    const resolvedBugs = statusCount("Resolved");
+    const sitPassBugs = statusCount("SIT Pass");
+    const totalBugs = bugRows.length;
+    const activeBugs = openBugs + inProgressBugs + pendingBugs;
+    const handledBugs = Math.max(0, totalBugs - activeBugs);
+    const blockerOpen = bugRows.filter((bug) => isSeverity(bug.priority || bug.severity, "Blocker") && isOpenBugStatus(bug.status)).length;
+    const criticalOpen = bugRows.filter((bug) => isSeverity(bug.priority || bug.severity, "Critical") && isOpenBugStatus(bug.status)).length;
+    const totalCases = sumWhere(planRows, () => true, "totalCases");
+    const passedCases = sumWhere(dailyRows, () => true, "passedCases");
+    const failedCases = sumWhere(dailyRows, () => true, "failedCases");
+    const blockedCases = dailyRows.filter((item) => normalizeImportedText(item.blocker)).length;
+
+    return {
+      id: importId("defectSummary", feature.jiraCode || story?.issueKey || feature.name),
+      stt: Number(feature.stt || index + 1),
+      code: feature.code || "",
+      storyCode: feature.storyCode || "",
+      jiraCode: feature.jiraCode || "",
+      usKey: story?.issueKey || feature.usKey || "",
+      group: feature.group || "",
+      name: feature.name || "",
+      sprint: feature.sprint || handoff?.sprint || "",
+      owner: feature.owner || "",
+      uatHandoff: handoff?.uatHandoff || feature.uatHandoff || "",
+      handoffStatus: handoff?.handoffStatus || feature.handoffStatus || "",
+      assignee: story?.assignee || feature.assignee || "",
+      usStatus: story?.status || feature.usStatus || "",
+      totalCases,
+      passedCases,
+      failedCases,
+      blockedCases,
+      defectOpen: linkedDefects.filter((defect) => isOpenBugStatus(defect.status)).length,
+      blockerOpen,
+      criticalOpen,
+      totalBugs,
+      openBugs,
+      inProgressBugs,
+      pendingBugs,
+      resolvedBugs,
+      sitPassBugs,
+      otherBugs: Math.max(0, totalBugs - openBugs - inProgressBugs - pendingBugs - resolvedBugs - sitPassBugs),
+      activeBugs,
+      handledBugs,
+      handledRate: totalBugs ? percent(handledBugs, totalBugs) : "",
+      severeBugs: bugRows.filter((bug) => isAnySeverity(bug.priority || bug.severity, ["Blocker", "Critical"])).length,
+      uatResult: inferFeatureUatResult({
+        totalCases,
+        passedCases,
+        failedCases,
+        blockedCases,
+        blockerOpen,
+        criticalOpen,
+        completionRate: percent(passedCases, totalCases)
+      }),
+      status: feature.status || "",
+      completionRate: percent(passedCases, totalCases)
+    };
+  });
 }
 
 function calculateDefectAging(foundDate, resolvedDate) {
@@ -1638,6 +2048,13 @@ function inferFeatureUatResult(row) {
 }
 
 function isSeverity(value, target) {
+  return normalizeImportHeader(value) === normalizeImportHeader(target);
+}
+
+function isBugStatus(value, target) {
+  if (normalizeImportHeader(target) === "reopen") {
+    return ["reopen", "reopened"].includes(normalizeImportHeader(value));
+  }
   return normalizeImportHeader(value) === normalizeImportHeader(target);
 }
 
@@ -2122,9 +2539,13 @@ async function touchMeta(client) {
 async function recomputeAndPersistWorkbookRules(client, actorId, viewer = null) {
   const state = await readState(client);
   const before = new Map();
+  const existingByCollection = new Map();
   for (const collection of collections) {
+    existingByCollection.set(collection, new Set());
     for (const record of state[collection] || []) {
-      before.set(recordKey(collection, record.id), JSON.stringify(record));
+      const key = recordKey(collection, record.id);
+      existingByCollection.get(collection).add(record.id);
+      before.set(key, JSON.stringify(record));
     }
   }
 
@@ -2133,19 +2554,37 @@ async function recomputeAndPersistWorkbookRules(client, actorId, viewer = null) 
 
   const now = new Date();
   const updatedAt = now.toISOString();
+  const upserts = [];
+  const deletesByCollection = new Map();
   for (const collection of collections) {
+    const nextIds = new Set();
     for (const record of state[collection] || []) {
       const key = recordKey(collection, record.id);
+      nextIds.add(record.id);
+      if (!before.has(key)) {
+        if (!computedCollections.has(collection)) continue;
+        record.createdAt = updatedAt;
+        record.updatedAt = updatedAt;
+        upserts.push({ collection, id: record.id, data: record });
+        continue;
+      }
       if (JSON.stringify(record) === before.get(key)) continue;
       record.updatedAt = updatedAt;
-      await client.query(`
-        update uat_records
-        set data = $1::jsonb,
-            updated_by = $2,
-            updated_at = $3
-        where collection = $4 and id = $5
-      `, [JSON.stringify(record), actorId, now, collection, record.id]);
+      upserts.push({ collection, id: record.id, data: record });
     }
+    if (computedCollections.has(collection)) {
+      const deleteIds = [];
+      for (const id of existingByCollection.get(collection) || []) {
+        if (nextIds.has(id)) continue;
+        deleteIds.push(id);
+      }
+      if (deleteIds.length) deletesByCollection.set(collection, deleteIds);
+    }
+  }
+
+  await bulkUpsertRecords(client, upserts, actorId, now);
+  for (const [collection, ids] of deletesByCollection.entries()) {
+    await bulkDeleteRecords(client, collection, ids);
   }
 
   const metaUpdatedAt = await touchMeta(client);
@@ -2153,6 +2592,48 @@ async function recomputeAndPersistWorkbookRules(client, actorId, viewer = null) 
     state: await readState(client, viewer),
     updatedAt: metaUpdatedAt
   };
+}
+
+async function bulkUpsertRecords(client, rows, actorId, now) {
+  if (!rows.length) return;
+  const chunkSize = 500;
+  for (let index = 0; index < rows.length; index += chunkSize) {
+    const chunk = rows.slice(index, index + chunkSize);
+    await client.query(`
+      with payload as (
+        select collection_values.collection,
+               id_values.id,
+               data_values.data
+        from unnest($1::text[]) with ordinality as collection_values(collection, ord)
+        join unnest($2::text[]) with ordinality as id_values(id, ord) using (ord)
+        join jsonb_array_elements($3::jsonb) with ordinality as data_values(data, ord) using (ord)
+      )
+      insert into uat_records (collection, id, data, created_by, updated_by, created_at, updated_at)
+      select collection,
+             id,
+             data,
+             $4::uuid,
+             $4::uuid,
+             $5::timestamptz,
+             $5::timestamptz
+      from payload
+      on conflict (collection, id) do update
+        set data = excluded.data,
+            updated_by = excluded.updated_by,
+            updated_at = excluded.updated_at
+    `, [
+      chunk.map((row) => row.collection),
+      chunk.map((row) => row.id),
+      JSON.stringify(chunk.map((row) => row.data)),
+      actorId || null,
+      now
+    ]);
+  }
+}
+
+async function bulkDeleteRecords(client, collection, ids) {
+  if (!ids.length) return;
+  await client.query("delete from uat_records where collection = $1 and id = any($2::text[])", [collection, ids]);
 }
 
 function recordKey(collection, id) {
@@ -2168,6 +2649,9 @@ function emptyState() {
     plans: [],
     daily: [],
     defects: [],
+    userStories: [],
+    bugSources: [],
+    defectSummary: [],
     weekly: [],
     readiness: [],
     matrix: [],
@@ -2635,6 +3119,9 @@ function aiCollectionName(collection) {
     plans: "PhanCong_UAT",
     daily: "DieuHanh_Ngay",
     defects: "DEFECT_LOG",
+    userStories: "DS_US",
+    bugSources: "DS.Loi",
+    defectSummary: "Tong hop loi",
     weekly: "ChatLuong_Tuan",
     readiness: "TongKet_Sprint",
     matrix: "NangSuat_Tester",
@@ -2649,8 +3136,11 @@ function aiFieldOrder(collection) {
     schedule: ["sprint", "devStart", "devEnd", "handoffDate", "startDate", "endDate", "note"],
     handoffs: ["jiraCode", "code", "storyCode", "sectionLevel1", "sectionLevel2", "name", "sprint", "uatHandoff", "uatStart", "uatEnd", "handoffStatus", "uatStatus"],
     plans: ["code", "jiraCode", "group", "feature", "sprint", "uatHandoff", "owner", "nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "testStatus", "progress", "uatStatus", "devStatus", "priority", "note"],
-    daily: ["date", "jiraCode", "feature", "sprint", "tester", "totalCases", "passedCases", "failedCases", "bugStatus", "maxBugSeverity", "blocker", "handler", "dueDate"],
-    defects: ["bugId", "jiraCode", "storyName", "sprint", "severity", "status", "foundDate", "tester", "owner", "resolvedDate", "aging", "note"],
+    daily: ["date", "jiraCode", "feature", "sprint", "tester", "totalCases", "passedCases", "failedCases", "bugStatus", "maxBugSeverity", "bugDetail", "blocker", "handler", "dueDate"],
+    defects: ["stt", "bugId", "linkedUsKey", "featureJiraCode", "storyName", "sprint", "severity", "status", "foundDate", "tester", "owner", "resolvedDate", "aging", "note"],
+    userStories: ["issueType", "issueKey", "issueId", "summary", "assignee", "reporter", "priority", "status", "resolution", "created", "updated", "dueDate", "squadSummary"],
+    bugSources: ["issueType", "issueKey", "issueId", "summary", "assignee", "reporter", "tester", "priority", "status", "resolution", "created", "updated", "dueDate", "linkedUsKey"],
+    defectSummary: ["stt", "code", "storyCode", "jiraCode", "usKey", "group", "name", "sprint", "owner", "handoffStatus", "assignee", "usStatus", "totalCases", "passedCases", "failedCases", "totalBugs", "openBugs", "inProgressBugs", "pendingBugs", "resolvedBugs", "sitPassBugs", "activeBugs", "handledBugs", "handledRate", "severeBugs", "uatResult", "status", "completionRate"],
     weekly: ["week", "sprint", "totalStories", "storyTested", "coverageRate", "successRate", "blockerBugs", "criticalBugs", "reopenRate", "assessment"],
     readiness: ["sprint", "totalStories", "deliveredStories", "coverageRate", "successRate", "openBlockerBugs", "openCriticalBugs", "openMajorBugs", "reopenRate", "decision"],
     matrix: ["group", "t1", "t2", "t3", "t4", "t5", "t6", "totalParticipation", "target", "warning"],
@@ -2732,7 +3222,7 @@ async function askGeminiUatAssistant({ message, history, context, user }) {
               "Luôn trả lời bằng tiếng Việt, ngắn gọn, rõ số liệu.",
               "Chỉ dùng dữ liệu JSON được cung cấp. Nếu dữ liệu không có, nói rõ là chưa có dữ liệu thay vì suy đoán.",
               "Không dùng backtick hoặc tên field kỹ thuật nếu không cần; hãy nói bằng tên cột tiếng Việt mà người dùng nhìn thấy trên web.",
-              "Khi người dùng hỏi nghiệp vụ, hãy liên hệ đúng sheet/module như DM_ChucNang, Lich_BG_US, PhanCong_UAT, DieuHanh_Ngay, DEFECT_LOG, ChatLuong_Tuan, TongKet_Sprint, NangSuat_Tester.",
+              "Khi người dùng hỏi nghiệp vụ, hãy liên hệ đúng sheet/module như DM_ChucNang, Lich_BG_US, PhanCong_UAT, DieuHanh_Ngay, DEFECT_LOG, DS_US, DS.Loi, Tong hop loi, ChatLuong_Tuan, TongKet_Sprint, NangSuat_Tester.",
               "Với câu hỏi thiếu tester/phân công tester, ưu tiên trường testerAssignment trong JSON; không dùng Trạng thái UAT để kết luận thiếu tester.",
               "Nếu câu trả lời là không có vấn đề, vẫn nêu rõ đã kiểm bao nhiêu dòng và tiêu chí kiểm là gì.",
               `Người đang hỏi: ${user?.name || user?.email || user?.username || "người dùng"}.`

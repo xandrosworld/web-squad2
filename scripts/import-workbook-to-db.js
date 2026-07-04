@@ -9,7 +9,7 @@ const { parseWorkbookImportState } = require("../server");
 
 const workbookPath = path.resolve(process.argv[2] || "SQ02_UAT_Squad2_QuanLy_HoanChinh_US_Date.xlsm");
 const databaseUrl = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
-const collections = ["features", "personnel", "schedule", "handoffs", "plans", "daily", "defects", "weekly", "readiness", "matrix", "guide"];
+const collections = ["features", "personnel", "schedule", "handoffs", "plans", "daily", "defects", "userStories", "bugSources", "defectSummary", "weekly", "readiness", "matrix", "guide"];
 
 main().catch((error) => {
   console.error(error.stack || error.message || error);
