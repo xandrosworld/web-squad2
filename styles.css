@@ -889,6 +889,7 @@ button {
 }
 
 .tab-btn {
+    position: relative;
     height: 38px;
     padding: 0 13px;
     border-radius: 7px;
@@ -911,6 +912,21 @@ button {
 .tab-btn.active {
     color: #ffffff;
     background: var(--bidv-teal);
+}
+
+.tab-btn.sheet-tab-red::after {
+    content: "";
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 4px;
+    height: 2px;
+    border-radius: 999px;
+    background: #ef4444;
+}
+
+.tab-btn.sheet-tab-red.active::after {
+    background: #ffb3b3;
 }
 
 .content-grid {

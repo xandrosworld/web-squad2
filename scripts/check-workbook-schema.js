@@ -23,6 +23,25 @@ const expectedHeaders = {
   NangSuat_Tester: ["Nhóm chức năng", "T1", "T2", "T3", "T4", "T5", "T6", "Tổng lượt tham gia", "Mục tiêu", "Cảnh báo"]
 };
 
+const expectedWorkbookSheets = [
+  "Dashboard_UAT",
+  "DEFECT_Dashboard",
+  "NhanSu_UAT",
+  "HD_UAT",
+  "DM_ChucNang",
+  "Lich_UAT",
+  "Lich_BG_US",
+  "PhanCong_UAT",
+  "DieuHanh_Ngay",
+  "DEFECT_LOG",
+  "ChatLuong_Tuan",
+  "TongKet_Sprint",
+  "NangSuat_Tester",
+  "Tong hop loi",
+  "DS_US",
+  "DS.Loi"
+];
+
 main().catch((error) => {
   console.error(error.message || error);
   process.exit(1);
@@ -33,6 +52,12 @@ async function main() {
 
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(workbookPath);
+  assertSameList("source workbook sheets", expectedWorkbookSheets, workbook.worksheets.map((sheet) => sheet.name));
+  if (workbook.getWorksheet("Lich_UAT").state !== "hidden") throw new Error("Expected source Lich_UAT sheet to be hidden.");
+  for (const redSheetName of ["DS_US", "DS.Loi"]) {
+    const tabColor = workbook.getWorksheet(redSheetName).properties?.tabColor?.argb;
+    if (tabColor !== "FFFF0000") throw new Error(`Expected source ${redSheetName} tab color FFFF0000, got ${tabColor || "none"}.`);
+  }
 
   for (const [sheetName, expected] of Object.entries(expectedHeaders)) {
     const worksheet = workbook.getWorksheet(sheetName);
@@ -72,9 +97,13 @@ async function main() {
   assertHandoffSections(state.handoffs);
 
   const exportedWorkbook = buildExcelWorkbook(state);
-  const expectedExportSheets = ["Dashboard_UAT", "DEFECT_Dashboard", ...Object.keys(expectedHeaders)];
   const actualExportSheets = exportedWorkbook.worksheets.map((sheet) => sheet.name);
-  assertSameList("exported workbook sheets", expectedExportSheets, actualExportSheets);
+  assertSameList("exported workbook sheets", expectedWorkbookSheets, actualExportSheets);
+  if (exportedWorkbook.getWorksheet("Lich_UAT").state !== "hidden") throw new Error("Expected exported Lich_UAT sheet to be hidden.");
+  for (const redSheetName of ["DS_US", "DS.Loi"]) {
+    const tabColor = exportedWorkbook.getWorksheet(redSheetName).properties?.tabColor?.argb;
+    if (tabColor !== "FFFF0000") throw new Error(`Expected exported ${redSheetName} tab color FFFF0000, got ${tabColor || "none"}.`);
+  }
   for (const sheetName of Object.keys(expectedHeaders)) {
     if (!exportedWorkbook.getWorksheet(sheetName)) throw new Error(`Export missing sheet ${sheetName}`);
   }

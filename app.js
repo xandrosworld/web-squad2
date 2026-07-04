@@ -698,18 +698,17 @@ const tabs = [
     { id: "defectDashboard", label: "DEFECT_Dashboard", icon: "fa-bug" },
     { id: "personnel", label: "NhanSu_UAT", icon: modules.personnel.icon },
     { id: "guide", label: "HD_UAT", icon: modules.guide.icon },
-    { id: "schedule", label: "Lich_UAT", icon: modules.schedule.icon },
-    { id: "handoffs", label: "Lich_BG_US", icon: modules.handoffs.icon },
     { id: "features", label: "DM_ChucNang", icon: modules.features.icon },
+    { id: "handoffs", label: "Lich_BG_US", icon: modules.handoffs.icon },
     { id: "plans", label: "PhanCong_UAT", icon: modules.plans.icon },
     { id: "daily", label: "DieuHanh_Ngay", icon: modules.daily.icon },
     { id: "defects", label: "DEFECT_LOG", icon: modules.defects.icon },
-    { id: "defectSummary", label: "Tong hop loi", icon: modules.defectSummary.icon },
-    { id: "userStories", label: "DS_US", icon: modules.userStories.icon },
-    { id: "bugSources", label: "DS.Loi", icon: modules.bugSources.icon },
     { id: "weekly", label: "ChatLuong_Tuan", icon: modules.weekly.icon },
     { id: "readiness", label: "TongKet_Sprint", icon: modules.readiness.icon },
-    { id: "matrix", label: "NangSuat_Tester", icon: modules.matrix.icon }
+    { id: "matrix", label: "NangSuat_Tester", icon: modules.matrix.icon },
+    { id: "defectSummary", label: "Tong hop loi", icon: modules.defectSummary.icon },
+    { id: "userStories", label: "DS_US", icon: modules.userStories.icon, sheetMark: "red" },
+    { id: "bugSources", label: "DS.Loi", icon: modules.bugSources.icon, sheetMark: "red" }
 ];
 
 function getDataModuleCount() {
@@ -719,6 +718,14 @@ function getDataModuleCount() {
 function getInitialTab() {
     const id = (window.location.hash || "").replace("#", "");
     return tabs.some((tab) => tab.id === id) ? id : "dashboard";
+}
+
+function tabButtonClass(tab, baseClass) {
+    return [
+        baseClass,
+        ui.activeTab === tab.id ? "active" : "",
+        tab.sheetMark === "red" ? "sheet-tab-red" : ""
+    ].filter(Boolean).join(" ");
 }
 
 const emptyState = () => ({
@@ -1231,7 +1238,7 @@ function renderSidebar() {
             <div class="sidebar-logo"><i class="fa-solid fa-bars"></i></div>
             <nav class="sidebar-menu">
                 ${tabs.map((tab) => `
-                    <button class="side-btn ${ui.activeTab === tab.id ? "active" : ""}" data-tab="${tab.id}" title="${e(tab.label)}" aria-label="${e(tab.label)}">
+                    <button class="${tabButtonClass(tab, "side-btn")}" data-tab="${tab.id}" title="${e(tab.label)}" aria-label="${e(tab.label)}">
                         <i class="fa-solid ${tab.icon}"></i>
                     </button>
                 `).join("")}
@@ -1301,7 +1308,7 @@ function renderTabs() {
     return `
         <nav class="tabbar" aria-label="Module">
             ${tabs.map((tab) => `
-                <button class="tab-btn ${ui.activeTab === tab.id ? "active" : ""}" data-tab="${tab.id}">
+                <button class="${tabButtonClass(tab, "tab-btn")}" data-tab="${tab.id}">
                     <i class="fa-solid ${tab.icon}"></i>${e(tab.label)}
                 </button>
             `).join("")}

@@ -21,20 +21,19 @@ if (!executablePath) {
 }
 
 const moduleTabs = [
-  "features",
   "personnel",
-  "schedule",
+  "guide",
+  "features",
   "handoffs",
   "plans",
   "daily",
   "defects",
-  "defectSummary",
   "weekly",
   "readiness",
   "matrix",
+  "defectSummary",
   "userStories",
-  "bugSources",
-  "guide"
+  "bugSources"
 ];
 const readOnlyTabs = new Set(["defectSummary"]);
 const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00bb|\u00c4\u2018|\u00c6[\u00a0-\u00bf]/;
@@ -119,22 +118,31 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
     "DEFECT_Dashboard",
     "NhanSu_UAT",
     "HD_UAT",
-    "Lich_UAT",
     "DM_ChucNang",
+    "Lich_UAT",
     "Lich_BG_US",
     "PhanCong_UAT",
     "DieuHanh_Ngay",
     "DEFECT_LOG",
-    "DS_US",
-    "DS.Loi",
-    "Tong hop loi",
     "ChatLuong_Tuan",
     "TongKet_Sprint",
-    "NangSuat_Tester"
+    "NangSuat_Tester",
+    "Tong hop loi",
+    "DS_US",
+    "DS.Loi"
   ];
   const actualSheets = workbook.worksheets.map((sheet) => sheet.name);
   if (JSON.stringify(actualSheets) !== JSON.stringify(expectedSheets)) {
     throw new Error(`Unexpected Excel sheets: ${actualSheets.join(", ")}`);
+  }
+  if (workbook.getWorksheet("Lich_UAT").state !== "hidden") {
+    throw new Error("Exported Lich_UAT sheet should stay hidden like the source workbook.");
+  }
+  for (const redSheetName of ["DS_US", "DS.Loi"]) {
+    const tabColor = workbook.getWorksheet(redSheetName).properties?.tabColor?.argb;
+    if (tabColor !== "FFFF0000") {
+      throw new Error(`Exported ${redSheetName} should keep red tab color, got ${tabColor || "none"}.`);
+    }
   }
   for (const sheet of workbook.worksheets) {
     if (sheet.rowCount < 1 || sheet.columnCount < 1) {

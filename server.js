@@ -233,6 +233,7 @@ const excelSheets = [
   {
     collection: "schedule",
     name: "Lich_UAT",
+    state: "hidden",
     columns: [
       ["sprint", "Sprint", 14],
       ["devStart", "Bắt đầu DEV", 16, "date"],
@@ -357,6 +358,7 @@ const excelSheets = [
   {
     collection: "userStories",
     name: "DS_US",
+    tabColor: "FFFF0000",
     columns: [
       ["sourceNote", "Ghi chú nguồn", 22],
       ["issueType", "Issue Type", 14],
@@ -379,6 +381,7 @@ const excelSheets = [
   {
     collection: "bugSources",
     name: "DS.Loi",
+    tabColor: "FFFF0000",
     columns: [
       ["reporterLookup", "Reporter lookup", 26],
       ["testerLookup", "Tester lookup", 18],
@@ -491,6 +494,28 @@ const excelSheets = [
     ]
   }
 ];
+
+const excelSheetOrder = [
+  "NhanSu_UAT",
+  "HD_UAT",
+  "DM_ChucNang",
+  "Lich_UAT",
+  "Lich_BG_US",
+  "PhanCong_UAT",
+  "DieuHanh_Ngay",
+  "DEFECT_LOG",
+  "ChatLuong_Tuan",
+  "TongKet_Sprint",
+  "NangSuat_Tester",
+  "Tong hop loi",
+  "DS_US",
+  "DS.Loi"
+];
+
+function orderedExcelSheets() {
+  const byName = new Map(excelSheets.map((sheetConfig) => [sheetConfig.name, sheetConfig]));
+  return excelSheetOrder.map((name) => byName.get(name)).filter(Boolean);
+}
 
 let pool;
 let schemaPromise;
@@ -2204,10 +2229,16 @@ function buildExcelWorkbook(state) {
   addDashboardUatWorksheet(workbook, state);
   addDefectDashboardWorksheet(workbook, state);
 
-  for (const sheetConfig of excelSheets) {
-    const worksheet = workbook.addWorksheet(sheetConfig.name, {
+  for (const sheetConfig of orderedExcelSheets()) {
+    const worksheetOptions = {
       views: [{ state: "frozen", ySplit: 1, xSplit: sheetConfig.freezeColumns || 0 }]
-    });
+    };
+    if (sheetConfig.tabColor) {
+      worksheetOptions.properties = { tabColor: { argb: sheetConfig.tabColor } };
+    }
+    const worksheet = workbook.addWorksheet(sheetConfig.name, worksheetOptions);
+    if (sheetConfig.state) worksheet.state = sheetConfig.state;
+    if (sheetConfig.tabColor) worksheet.properties.tabColor = { argb: sheetConfig.tabColor };
     worksheet.columns = sheetConfig.columns.map(([key, header, width]) => ({ key, header, width }));
     worksheet.autoFilter = {
       from: { row: 1, column: 1 },
