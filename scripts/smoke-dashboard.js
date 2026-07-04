@@ -135,14 +135,19 @@ async function assertDashboardMetric(tabId, label, expectedValue) {
     if (tabId && tabId !== "dashboard") {
       await page.locator(`.tabbar [data-tab="${tabId}"]`).click();
     }
+    const expectedHeading = tabId === "defectDashboard" ? "DEFECT_Dashboard" : "Dashboard_UAT";
+    await page.locator(".sheet-dashboard-head", { hasText: expectedHeading }).waitFor({ timeout: 15000 });
     await page.waitForSelector(".sheet-dashboard-table", { timeout: 15000 });
-    const row = page.locator(".sheet-dashboard-table tbody tr", { hasText: label }).first();
-    await row.waitFor({ timeout: 10000 });
-    const cells = await row.locator("td").allInnerTexts();
-    const actualValue = cells[cells.length - 1] || "";
-    if (Number(actualValue.replace(/\D+/g, "")) !== expectedValue) {
-      throw new Error(`Dashboard metric ${label} expected ${expectedValue}, got ${actualValue}`);
+    let actualValue = "";
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const row = page.locator(".sheet-dashboard-table tbody tr", { hasText: label }).first();
+      await row.waitFor({ timeout: 10000 });
+      const cells = await row.locator("td").allInnerTexts();
+      actualValue = cells[cells.length - 1] || "";
+      if (Number(actualValue.replace(/\D+/g, "")) === expectedValue) return;
+      await page.waitForTimeout(500);
     }
+    throw new Error(`Dashboard metric ${label} expected ${expectedValue}, got ${actualValue}`);
   } finally {
     await browser.close();
   }
