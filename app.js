@@ -391,7 +391,7 @@ const modules = {
             { key: "bugStatus", label: "Trạng thái lỗi", width: "150px", render: (row) => renderStatus(row.bugStatus) },
             { key: "maxBugSeverity", label: "Mức độ lỗi", width: "180px", render: (row) => renderStatus(row.maxBugSeverity) },
             { key: "bugDetail", label: "Chi tiết lỗi", width: "240px" },
-            { key: "blocker", label: "Vướng mắc/Blocker", width: "240px" },
+            { key: "blocker", label: "Vướng mắc/Blocker", width: "320px", render: (row) => renderLinkedText(row.blocker, row.blockerLinks) },
             { key: "handler", label: "Người xử lý", width: "150px" },
             { key: "dueDate", label: "Thời hạn xử lý", width: "150px", render: (row) => formatDate(row.dueDate) }
         ]
@@ -2158,8 +2158,10 @@ function renderGuideModule(mod) {
     const handoffRows = rows.filter((row) => ["Cập nhật mới", "Nguyên tắc", "Cột cần nhập", "Cột tự động", "Khóa liên kết"].includes(row.category));
     const handoffMain = handoffRows[0];
     const handoffFacts = handoffRows.slice(1);
-    const priorityRows = rows.filter((row) => row.category.includes("Priority"));
-    const statusRows = rows.filter((row) => row.category.includes("Status"));
+    const priorityRows = rows.filter((row) => bugSeverityOptions.includes(row.category));
+    const statusRows = rows.filter((row) => bugStatusOptions.includes(row.category) || row.category === "Reopened");
+    const flowRows = rows.filter((row) => row.category.includes("Status") && (row.topic.includes("Luồng") || row.topic.includes("Retest")));
+    const devRows = rows.filter((row) => handoffNoteOptions.includes(row.category));
     return `
         <div class="guide-page">
             <section class="guide-hero">
@@ -2224,10 +2226,84 @@ function renderGuideModule(mod) {
             </section>
 
             <div class="guide-reference-grid">
-                ${renderGuideReference("Ý nghĩa các mức độ ưu tiên (Priority)", "Mức độ", priorityRows)}
-                ${renderGuideReference("Ý nghĩa các trạng thái (Status)", "Trạng thái", statusRows)}
+                ${renderGuideTable(
+                    "Ý nghĩa các mức độ ưu tiên (Priority)",
+                    ["Mức độ lỗi", "Màu", "Ý nghĩa", "Quy ước"],
+                    priorityRows.map((row) => [row.category, row.topic, row.content, row.note || ""])
+                )}
+                ${renderGuideTable(
+                    "Ý nghĩa các trạng thái (Status)",
+                    ["Trạng thái lỗi", "Màu", "Ý nghĩa"],
+                    statusRows.map((row) => [row.category, row.topic, row.content])
+                )}
+            </div>
+
+            <section class="guide-section">
+                <div class="guide-section-head">
+                    <i class="fa-solid fa-route"></i>
+                    <div>
+                        <h3>Luồng xử lý Defect</h3>
+                        <span>Các trường hợp chuyển trạng thái lỗi trong UAT</span>
+                    </div>
+                </div>
+                <div class="guide-flow-list">
+                    ${flowRows.map((row) => `
+                        <article>
+                            <strong>${e(row.topic)}</strong>
+                            <span>${e(row.content)}</span>
+                        </article>
+                    `).join("")}
+                </div>
+            </section>
+
+            <div class="guide-reference-grid">
+                ${renderGuideTable(
+                    "Ý nghĩa các Trạng thái Dev",
+                    ["Dev Status", "UAT Priority", "Ý nghĩa"],
+                    devRows.map((row) => [row.category, row.topic, row.content])
+                )}
+                <section class="guide-section guide-priority-order">
+                    <div class="guide-section-head">
+                        <i class="fa-solid fa-arrow-down-1-9"></i>
+                        <div>
+                            <h3>Thứ tự ưu tiên kiểm thử (UAT Priority)</h3>
+                            <span>Theo phần cuối sheet HD_UAT</span>
+                        </div>
+                    </div>
+                    <div class="guide-priority-steps">
+                        <strong>1 = Done SIT</strong>
+                        <i class="fa-solid fa-arrow-down-long"></i>
+                        <strong>2 = Done UAT (Regression Test)</strong>
+                    </div>
+                </section>
             </div>
         </div>
+    `;
+}
+
+function renderGuideTable(title, headers, rows) {
+    return `
+        <section class="guide-section">
+            <div class="guide-section-head">
+                <i class="fa-solid fa-bookmark"></i>
+                <div>
+                    <h3>${e(title)}</h3>
+                    <span>${e(rows.length)} mục tham chiếu</span>
+                </div>
+            </div>
+            <div class="guide-table-wrap">
+                <table class="guide-table">
+                    <thead>
+                        <tr>${headers.map((header) => `<th>${e(header)}</th>`).join("")}</tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map((row) => `
+                            <tr>${row.map((cell) => `<td>${e(cell || "-")}</td>`).join("")}</tr>
+                        `).join("")}
+                    </tbody>
+                </table>
+            </div>
+        </section>
     `;
 }
 
@@ -4608,6 +4684,59 @@ function renderCell(row, col) {
     const value = row[col.key];
     if (value === "" || value == null) return `<span style="color:#9ca3af">-</span>`;
     return e(value);
+}
+
+function renderLinkedText(value, explicitLinks = []) {
+    const text = String(value || "");
+    const links = Array.isArray(explicitLinks) ? explicitLinks.filter(Boolean) : [];
+    if (!text.trim() && !links.length) return `<span style="color:#9ca3af">-</span>`;
+
+    const pieces = [];
+    const pattern = /https?:\/\/[^\s<>"']+/gi;
+    let lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(text))) {
+        const rawUrl = match[0];
+        const url = rawUrl.replace(/[),.;]+$/g, "");
+        const trailing = rawUrl.slice(url.length);
+        if (match.index > lastIndex) pieces.push(e(text.slice(lastIndex, match.index)));
+        pieces.push(renderExternalLink(url));
+        if (trailing) pieces.push(e(trailing));
+        lastIndex = match.index + rawUrl.length;
+    }
+    if (lastIndex < text.length) pieces.push(e(text.slice(lastIndex)));
+
+    const renderedText = pieces.length ? pieces.join("") : e(text);
+    const textUrls = new Set(extractTextUrls(text));
+    const extraLinks = links
+        .map((url) => String(url || "").trim())
+        .filter((url) => url && !textUrls.has(url));
+    return `
+        <div class="linked-text">
+            <span>${renderedText}</span>
+            ${extraLinks.length ? `
+                <div class="linked-text-extra">
+                    ${extraLinks.map((url) => renderExternalLink(url, "Mở link")).join("")}
+                </div>
+            ` : ""}
+        </div>
+    `;
+}
+
+function renderExternalLink(url, label = url) {
+    const safeUrl = String(url || "").trim();
+    if (!/^https?:\/\//i.test(safeUrl)) return e(label);
+    return `<a class="inline-link" href="${e(safeUrl)}" target="_blank" rel="noopener noreferrer">${e(label)}</a>`;
+}
+
+function extractTextUrls(value) {
+    const urls = [];
+    const pattern = /https?:\/\/[^\s<>"']+/gi;
+    let match;
+    while ((match = pattern.exec(String(value || "")))) {
+        urls.push(match[0].replace(/[),.;]+$/g, ""));
+    }
+    return urls;
 }
 
 function tag(value, tone = "gray") {

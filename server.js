@@ -203,6 +203,47 @@ const collectionRules = {
 };
 const excelSheets = [
   {
+    collection: "personnel",
+    name: "NhanSu_UAT",
+    columns: [
+      ["staffCode", "Mã nhân sự", 12],
+      ["name", "Họ tên", 24],
+      ["role", "Vai trò", 28],
+      ["scope", "Phạm vi chính", 42],
+      ["status", "Trạng thái", 18],
+      ["birthYear", "Năm sinh", 12, "number"],
+      ["phone", "SĐT", 16],
+      ["email", "Email", 28],
+      ["unit", "Đơn vị", 22]
+    ]
+  },
+  {
+    collection: "guide",
+    name: "HD_UAT",
+    sectionKey: "category",
+    sectionColumnKey: "topic",
+    columns: [
+      ["category", "Nhóm nội dung", 28],
+      ["index", "STT", 8, "number"],
+      ["topic", "Nội dung", 34],
+      ["content", "Cách sử dụng / Ý nghĩa", 64],
+      ["note", "Quy ước", 44]
+    ]
+  },
+  {
+    collection: "schedule",
+    name: "Lich_UAT",
+    columns: [
+      ["sprint", "Sprint", 14],
+      ["devStart", "Bắt đầu DEV", 16, "date"],
+      ["devEnd", "Kết thúc DEV", 16, "date"],
+      ["handoffDate", "Bàn giao UAT", 16, "date"],
+      ["startDate", "Bắt đầu UAT", 16, "date"],
+      ["endDate", "Kết thúc UAT", 16, "date"],
+      ["note", "Ghi chú", 44]
+    ]
+  },
+  {
     collection: "features",
     name: "DM_ChucNang",
     freezeColumns: 4,
@@ -1269,6 +1310,7 @@ function parseDailySheet(worksheet) {
     const failedCases = toImportNumber(cellValueAt(row, 8));
     const bugDetail = cellTextAt(row, 11);
     const blocker = cellTextAt(row, 12);
+    const blockerLinks = cellLinksAt(row, 12);
     const executedCases = Number(passedCases || 0) + Number(failedCases || 0);
     if (!date && !jiraCode && !tester && !totalCases && !executedCases && !blocker) return null;
     return {
@@ -1289,6 +1331,7 @@ function parseDailySheet(worksheet) {
       criticalBugs: normalizeSeverityCount(cellTextAt(row, 10), ["Blocker", "Critical", "Nghiêm trọng"], cellTextAt(row, 9)),
       highBugs: normalizeSeverityCount(cellTextAt(row, 10), ["Major", "Cao"], cellTextAt(row, 9)),
       blocker,
+      blockerLinks,
       handler: cellTextAt(row, 13),
       dueDate: toImportDate(cellValueAt(row, 14))
     };
@@ -1532,8 +1575,9 @@ function parseGuideSheet(worksheet) {
     const a = cellTextAt(row, 1);
     const b = cellTextAt(row, 2);
     const c = cellTextAt(row, 3);
-    if (!a && !b && !c) continue;
-    if (a && !b && !c) {
+    const d = cellTextAt(row, 4);
+    if (!a && !b && !c && !d) continue;
+    if (a && !b && !c && !d) {
       category = a;
       continue;
     }
@@ -1549,7 +1593,8 @@ function parseGuideSheet(worksheet) {
       category: rowCategory,
       index: isNumbered ? numericIndex : records.length + 1,
       topic,
-      content
+      content,
+      note: d
     }, row));
   }
   return records;
@@ -1619,6 +1664,30 @@ function cellValueAt(row, column) {
 
 function cellTextAt(row, column) {
   return cleanSpreadsheetText(cellValueAt(row, column));
+}
+
+function cellLinksAt(row, column) {
+  const cell = row.getCell(column);
+  const links = [];
+  const addLink = (url) => {
+    const text = String(url || "").trim();
+    if (text && !links.includes(text)) links.push(text);
+  };
+  addLink(cell.hyperlink);
+  addLink(cell.value?.hyperlink);
+  extractUrls(cellTextAt(row, column)).forEach(addLink);
+  return links;
+}
+
+function extractUrls(value) {
+  const text = String(value || "");
+  const urls = [];
+  const pattern = /https?:\/\/[^\s<>"']+/gi;
+  let match;
+  while ((match = pattern.exec(text))) {
+    urls.push(match[0].replace(/[),.;]+$/g, ""));
+  }
+  return urls;
 }
 
 function toImportDate(value) {
@@ -2170,6 +2239,13 @@ function buildExcelWorkbook(state) {
       for (const [key, , , type] of sheetConfig.columns) {
         if (type === "date") row.getCell(key).numFmt = "dd/mm/yyyy";
         if (type === "number") row.getCell(key).numFmt = "0.##";
+        if (key === "blocker") {
+          const links = Array.isArray(record.blockerLinks) ? record.blockerLinks : extractUrls(record.blocker);
+          if (links.length && row.getCell(key).value) {
+            row.getCell(key).value = { text: String(record.blocker || links[0]), hyperlink: links[0] };
+            row.getCell(key).font = { color: { argb: "FF0563C1" }, underline: true };
+          }
+        }
       }
     }
 

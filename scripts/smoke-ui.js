@@ -117,6 +117,9 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   const expectedSheets = [
     "Dashboard_UAT",
     "DEFECT_Dashboard",
+    "NhanSu_UAT",
+    "HD_UAT",
+    "Lich_UAT",
     "DM_ChucNang",
     "Lich_BG_US",
     "PhanCong_UAT",

@@ -7,6 +7,9 @@ const { buildExcelWorkbook, parseWorkbookImportState } = require("../server");
 const workbookPath = path.resolve(process.argv[2] || "SQ02_UAT_Squad2_QuanLy_US_Date-2.7.xlsx");
 
 const expectedHeaders = {
+  NhanSu_UAT: ["Mã nhân sự", "Họ tên", "Vai trò", "Phạm vi chính", "Trạng thái", "Năm sinh", "SĐT", "Email", "Đơn vị"],
+  HD_UAT: ["STT", "Nội dung", "Cách sử dụng"],
+  Lich_UAT: ["Sprint", "Bắt đầu DEV", "Kết thúc DEV", "Bàn giao UAT", "Bắt đầu UAT", "Kết thúc UAT", "Ghi chú"],
   DM_ChucNang: ["STT", "Mã CN", "Mã Story", "Mã Jira", "Nhóm chức năng", "Tên chức năng", "Sprint", "Đầu mối nghiệp vụ", "Ngày BG UAT", "Trạng thái BG", "Tổng TC", "Passed", "Failed", "Blocked", "Defect Open", "Blocker Open", "Critical Open", "Kết quả UAT", "Trạng thái UAT", "% Hoàn thành TC"],
   Lich_BG_US: ["Mã Jira", "Mã CN", "Mã Story", "Tên chức năng", "Sprint", "BG UAT", "Bắt đầu UAT", "Kết thúc UAT", "Trạng thái BG", "Trạng thái UAT"],
   PhanCong_UAT: ["Mã CN", "Mã Jira", "Nhóm chức năng", "Tên chức năng", "Sprint", "Bàn giao UAT", "Đầu mối nghiệp vụ", "NV", "T1", "T2", "T3", "T4", "T5", "T6", "Tổng Testcase", "Trạng thái kiểm thử", "% hoàn thành", "Trạng thái UAT", "Trạng thái DEV", "Mức độ ưu tiên", "Ghi chú"],
@@ -45,6 +48,8 @@ async function main() {
   const totalCases = sum(state.plans, "totalCases");
   const featureTotalCases = sum(state.features, "totalCases");
   const deliveredStories = state.handoffs.filter((row) => row.uatHandoff).length;
+  if (state.personnel.length !== 10) throw new Error(`Expected 10 NhanSu_UAT rows, got ${state.personnel.length}`);
+  if (state.schedule.length !== 17) throw new Error(`Expected 17 Lich_UAT rows, got ${state.schedule.length}`);
   if (state.features.length !== 77) throw new Error(`Expected 77 DM_ChucNang source rows, got ${state.features.length}`);
   if (state.handoffs.length !== 77) throw new Error(`Expected 77 Lich_BG_US source rows, got ${state.handoffs.length}`);
   if (state.plans.length !== 77) throw new Error(`Expected 77 PhanCong_UAT source rows, got ${state.plans.length}`);
@@ -56,6 +61,9 @@ async function main() {
   if (state.weekly.length !== 16) throw new Error(`Expected 16 ChatLuong_Tuan rows, got ${state.weekly.length}`);
   if (state.readiness.length !== 16) throw new Error(`Expected 16 TongKet_Sprint rows, got ${state.readiness.length}`);
   if (state.matrix.length !== 12) throw new Error(`Expected 12 NangSuat_Tester rows, got ${state.matrix.length}`);
+  if (state.guide.length !== 34) throw new Error(`Expected 34 HD_UAT guide rows, got ${state.guide.length}`);
+  if (!state.guide.some((row) => row.category === "Blocker" && row.note)) throw new Error("HD_UAT priority convention column was not imported.");
+  if (!state.daily.some((row) => Array.isArray(row.blockerLinks) && row.blockerLinks.length)) throw new Error("DieuHanh_Ngay blocker hyperlinks were not imported.");
   if (deliveredStories !== 47) throw new Error(`Expected 47 delivered stories, got ${deliveredStories}`);
   if (totalCases !== 2704 || featureTotalCases !== 2704) {
     throw new Error(`Expected total testcase 2704, got plans=${totalCases}, features=${featureTotalCases}`);
