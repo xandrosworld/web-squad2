@@ -1987,6 +1987,189 @@ body.is-column-resizing * {
     text-align: center !important;
 }
 
+.sheet-dashboard {
+    display: grid;
+    gap: 16px;
+}
+
+.sheet-dashboard-panel {
+    overflow: hidden;
+    min-width: 0;
+}
+
+.sheet-dashboard-head {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--line);
+    background:
+        linear-gradient(135deg, rgba(0, 121, 113, 0.08), rgba(31, 78, 120, 0.05)),
+        #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.sheet-dashboard-head span {
+    display: block;
+    color: #00766e;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 950;
+    text-transform: uppercase;
+}
+
+.sheet-dashboard-head h2 {
+    margin-top: 4px;
+    color: #111827;
+    font-size: 19px;
+    line-height: 25px;
+    font-weight: 950;
+    letter-spacing: 0;
+}
+
+.sheet-dashboard-pill {
+    width: fit-content;
+    min-width: max-content;
+    padding: 7px 11px;
+    border-radius: 999px;
+    background: #e6fffb;
+    border: 1px solid #9be2dc;
+    color: #006b68 !important;
+    text-transform: none !important;
+}
+
+.sheet-dashboard-grid,
+.defect-dashboard-layout {
+    padding: 16px;
+    display: grid;
+    grid-template-columns: minmax(260px, 0.52fr) minmax(0, 1.48fr);
+    gap: 14px;
+    align-items: start;
+}
+
+.sheet-dashboard-card {
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.sheet-dashboard-card.sprint-card,
+.sheet-dashboard-card.matrix-card {
+    grid-column: span 1;
+}
+
+.sheet-dashboard-card.owner-card {
+    grid-column: 1 / -1;
+}
+
+.sheet-card-title {
+    min-height: 44px;
+    padding: 11px 13px;
+    border-bottom: 1px solid var(--line);
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.sheet-card-title i {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: #e6fffb;
+    color: #00766e;
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 auto;
+}
+
+.sheet-card-title h3 {
+    color: #172033;
+    font-size: 14px;
+    line-height: 19px;
+    font-weight: 950;
+    letter-spacing: 0;
+}
+
+.sheet-dashboard-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.sheet-dashboard-table {
+    width: 100%;
+    min-width: 520px;
+    border-collapse: collapse;
+    color: #172033;
+    font-size: 13px;
+    line-height: 18px;
+}
+
+.sheet-dashboard-table.compact {
+    min-width: 360px;
+}
+
+.sheet-dashboard-table th,
+.sheet-dashboard-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid #e8edf3;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.sheet-dashboard-table thead th {
+    background: #007f78;
+    color: #ffffff;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 950;
+    text-align: left;
+}
+
+.sheet-dashboard-table tbody tr:nth-child(even) td {
+    background: #fbfdff;
+}
+
+.sheet-dashboard-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.sheet-dashboard-table .label-cell {
+    color: #334155;
+    font-weight: 850;
+}
+
+.sheet-dashboard-table .value-cell {
+    color: #111827;
+    font-weight: 800;
+}
+
+.sheet-dashboard-table.compact .value-cell,
+.matrix-dashboard-table .value-cell,
+.owner-dashboard-table .value-cell,
+.sprint-dashboard-table .value-cell {
+    text-align: right;
+}
+
+.sprint-dashboard-table,
+.matrix-dashboard-table {
+    min-width: 720px;
+}
+
+.owner-dashboard-table {
+    min-width: 760px;
+}
+
+.defect-dashboard-layout {
+    grid-template-columns: minmax(260px, 0.62fr) minmax(0, 1.38fr);
+}
+
+.defect-dashboard-layout .sheet-dashboard-card:nth-child(n + 3) {
+    grid-column: span 1;
+}
+
 .uat-dashboard {
     display: grid;
     gap: 16px;
@@ -3725,6 +3908,18 @@ body.is-column-resizing * {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
+    .sheet-dashboard-grid,
+    .defect-dashboard-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .sheet-dashboard-card.sprint-card,
+    .sheet-dashboard-card.matrix-card,
+    .sheet-dashboard-card.owner-card,
+    .defect-dashboard-layout .sheet-dashboard-card:nth-child(n + 3) {
+        grid-column: 1 / -1;
+    }
+
     .record-form-layout {
         grid-template-columns: 1fr;
     }
@@ -4105,6 +4300,7 @@ body.is-column-resizing * {
 
     .uat-dashboard-hero,
     .guide-hero,
+    .sheet-dashboard-head,
     .uat-owner-main {
         align-items: flex-start;
         flex-direction: column;
@@ -4124,6 +4320,8 @@ body.is-column-resizing * {
 
     .uat-metric-grid,
     .uat-dashboard-grid,
+    .sheet-dashboard-grid,
+    .defect-dashboard-layout,
     .guide-step-grid,
     .guide-handoff-layout,
     .guide-handoff-facts,

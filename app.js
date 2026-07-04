@@ -1290,144 +1290,56 @@ function renderExcelDashboard() {
     const summaryRows = getDashboardSummaryRows();
     const ownerRows = getDashboardOwnerRows();
     const sprintRows = getDashboardSprintRows();
-    const totalStories = summaryRows.find((row) => row.key === "totalStories")?.value || 0;
-    const coverage = summaryRows.find((row) => row.key === "handoffRate")?.numericValue || 0;
-    const trainingReadiness = summaryRows.find((row) => row.key === "trainingReadiness")?.numericValue || 0;
     return `
-        <section class="uat-dashboard">
-            <div class="uat-dashboard-hero">
-                <div>
-                    <span>Dashboard_UAT</span>
-                    <h2>Bảng điều hành UAT Squad 2</h2>
-                    <p>Agile Tester Pool · Tổng hợp từ danh mục, lịch bàn giao, phân công, daily, chất lượng tuần và tổng kết sprint.</p>
+        <section class="sheet-dashboard">
+            <section class="panel sheet-dashboard-panel">
+                <div class="sheet-dashboard-head">
+                    <div>
+                        <span>Dashboard_UAT</span>
+                        <h2>BẢNG ĐIỀU HÀNH UAT SQUAD 2 - PILOT & GO-LIVE</h2>
+                    </div>
+                    <span class="sheet-dashboard-pill">${e(summaryRows[0]?.value || 0)} story</span>
                 </div>
-                <div class="uat-hero-score">
-                    <small>Tỷ lệ bàn giao UAT</small>
-                    <strong>${e(coverage)}%</strong>
-                    <div class="progress progress-${e(getProgressTone(coverage))}"><span style="width:${clamp(coverage)}%"></span></div>
-                </div>
-            </div>
-
-            <div class="uat-metric-grid">
-                ${summaryRows.map((row) => `
-                    <article class="uat-metric-card ${e(row.tone || "neutral")}">
-                        <span>${e(row.label)}</span>
-                        <strong>${e(row.value)}</strong>
+                <div class="sheet-dashboard-grid">
+                    <article class="sheet-dashboard-card summary-card">
+                        <div class="sheet-card-title">
+                            <i class="fa-solid fa-gauge-high"></i>
+                            <h3>Chỉ số</h3>
+                        </div>
+                        ${renderDashboardTable(["Chỉ số", "Giá trị"], summaryRows.map((row) => [
+                            row.label,
+                            row.decision ? { html: renderDecision(row.value) } : { html: renderDashboardValue(row.value, row.type) }
+                        ]), "compact")}
                     </article>
-                `).join("")}
-            </div>
-
-            ${renderDefectDashboardPanel()}
-
-            <div class="uat-dashboard-grid">
-                <section class="panel uat-dashboard-panel">
-                    <div class="panel-head">
-                        <div class="panel-title">
+                    <article class="sheet-dashboard-card sprint-card">
+                        <div class="sheet-card-title">
+                            <i class="fa-solid fa-flag-checkered"></i>
+                            <h3>Sprint</h3>
+                        </div>
+                        ${renderDashboardTable(["Sprint", "Coverage", "Pass Rate", "Blocker", "Critical", "Quyết định"], sprintRows.map((row) => [
+                            row.sprint,
+                            `${row.coverageRate}%`,
+                            `${row.passRate}%`,
+                            row.blocker,
+                            row.critical,
+                            { html: renderDecision(row.decision) }
+                        ]), "sprint-dashboard-table")}
+                    </article>
+                    <article class="sheet-dashboard-card owner-card">
+                        <div class="sheet-card-title">
                             <i class="fa-solid fa-users-gear"></i>
-                            <div>
-                                <h2>Tổng hợp theo Chủ quản UAT</h2>
-                                <span>${e(ownerRows.length)} chủ quản · ${e(totalStories)} story</span>
-                            </div>
+                            <h3>Tổng hợp theo Đầu mối Nghiệp vụ</h3>
                         </div>
-                    </div>
-                    <div class="panel-body">
-                        ${ownerRows.length ? `
-                            <div class="uat-owner-list">
-                                ${ownerRows.map((row) => `
-                                    <article class="uat-owner-card">
-                                        <div class="uat-owner-main">
-                                            <strong>${e(row.owner)}</strong>
-                                            <span>${e(row.storyCount)} story · ${e(row.totalCases)} TC</span>
-                                        </div>
-                                        <div class="uat-owner-progress">
-                                            <div class="progress progress-${e(getProgressTone(row.coverageRate))}">
-                                                <span style="width:${clamp(row.coverageRate)}%"></span>
-                                            </div>
-                                            <b>${e(row.coverageRate)}%</b>
-                                        </div>
-                                        <small>${e(row.executedCases)} TC đã chạy</small>
-                                    </article>
-                                `).join("")}
-                            </div>
-                        ` : renderEmpty("fa-users-gear", "Chưa có dữ liệu chủ quản", "Nhập PhanCong_UAT hoặc DM_ChucNang để tổng hợp theo chủ quản.", true)}
-                    </div>
-                </section>
-
-                <section class="panel uat-dashboard-panel">
-                    <div class="panel-head">
-                        <div class="panel-title">
-                            <i class="fa-solid fa-graduation-cap"></i>
-                            <div>
-                                <h2>Sẵn sàng đào tạo</h2>
-                                <span>Theo NangSuat_Tester</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="panel-body">
-                        <div class="uat-readiness-card ${e(getProgressTone(trainingReadiness))}">
-                            <div>
-                                <span>Mức độ sẵn sàng đào tạo</span>
-                                <strong>${e(trainingReadiness)}%</strong>
-                            </div>
-                            <div class="progress progress-${e(getProgressTone(trainingReadiness))}">
-                                <span style="width:${clamp(trainingReadiness)}%"></span>
-                            </div>
-                        </div>
-                        <div class="uat-readiness-note">
-                            <span>${e(appState.matrix.length)} nhóm chức năng</span>
-                            <span>${e(sum(appState.matrix, "totalParticipation"))} lượt tham gia</span>
-                        </div>
-                    </div>
-                </section>
-            </div>
-
-            <section class="panel uat-dashboard-panel">
-                <div class="panel-head">
-                    <div class="panel-title">
-                        <i class="fa-solid fa-flag-checkered"></i>
-                        <div>
-                            <h2>Tổng hợp theo Sprint</h2>
-                            <span>${e(sprintRows.length)} sprint · quyết định từ TongKet_Sprint</span>
-                        </div>
-                    </div>
+                        ${renderDashboardTable(["ĐMNV", "Số Story", "Tổng TC", "TC đã chạy", "Tỷ lệ bao phủ"], ownerRows.map((row) => [
+                            row.owner,
+                            row.storyCount,
+                            renderNumber(row.totalCases),
+                            renderNumber(row.executedCases),
+                            `${row.coverageRate}%`
+                        ]), "owner-dashboard-table")}
+                    </article>
                 </div>
-                <div class="panel-body">
-                    ${sprintRows.length ? `
-                        <div class="uat-sprint-table-wrap">
-                            <table class="uat-sprint-table">
-                                <thead>
-                                    <tr>
-                                        <th>Sprint</th>
-                                        <th>Tổng Story</th>
-                                        <th>Story đã bàn giao</th>
-                                        <th>Tổng TC</th>
-                                        <th>Tỷ lệ bao phủ</th>
-                                        <th>Quyết định</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${sprintRows.map((row) => `
-                                        <tr>
-                                            <td>${tag(row.sprint, "teal")}</td>
-                                            <td>${e(row.storyCount)}</td>
-                                            <td>${e(row.deliveredStories)}</td>
-                                            <td>${e(row.totalCases)}</td>
-                                            <td>
-                                                <div class="uat-table-progress">
-                                                    <div class="progress progress-${e(getProgressTone(row.coverageRate))}">
-                                                        <span style="width:${clamp(row.coverageRate)}%"></span>
-                                                    </div>
-                                                    <b>${e(row.coverageRate)}%</b>
-                                                </div>
-                                            </td>
-                                            <td>${renderDecision(row.decision)}</td>
-                                        </tr>
-                                    `).join("")}
-                                </tbody>
-                            </table>
-                        </div>
-                    ` : renderEmpty("fa-flag-checkered", "Chưa có dữ liệu sprint", "Nhập PhanCong_UAT hoặc TongKet_Sprint để tổng hợp theo sprint.", true)}
-                </div>
+            </section>
         </section>
     `;
 }
@@ -1435,54 +1347,64 @@ function renderExcelDashboard() {
 function renderDefectDashboardPanel() {
     const rows = getDefectDashboardRows();
     const severityRows = getDefectSeverityStatusRows();
+    const usRows = getDefectUserStoryRows();
+    const statusRows = getDefectStatusRows();
+    const priorityRows = getDefectPriorityRows();
     return `
-        <section class="panel uat-dashboard-panel defect-dashboard-panel">
-            <div class="panel-head">
-                <div class="panel-title">
-                    <i class="fa-solid fa-bug"></i>
-                    <div>
-                        <h2>DEFECT_Dashboard</h2>
-                        <span>Tổng hợp từ DEFECT_LOG</span>
-                    </div>
+        <section class="panel sheet-dashboard-panel defect-dashboard-panel">
+            <div class="sheet-dashboard-head">
+                <div>
+                    <span>DEFECT_Dashboard</span>
+                    <h2>DASHBOARD DEFECT UAT - SQUAD 2</h2>
                 </div>
+                <span class="sheet-dashboard-pill">${e(rows[0]?.value || 0)} defect</span>
             </div>
-            <div class="panel-body defect-dashboard-body">
-                <div class="defect-kpi-grid">
-                    ${rows.map((row) => `
-                        <article class="defect-kpi-card ${e(row.tone)}">
-                            <span>${e(row.label)}</span>
-                            <strong>${e(row.value)}</strong>
-                        </article>
-                    `).join("")}
-                </div>
-                <div class="defect-matrix-wrap">
-                    <table class="defect-matrix">
-                        <thead>
-                            <tr>
-                                <th>Severity</th>
-                                <th>Open</th>
-                                <th>In Progress</th>
-                                <th>Reopen</th>
-                                <th>Resolved</th>
-                                <th>Closed</th>
-                                <th>Cancelled</th>
-                                <th>Pending</th>
-                                <th>SIT Pass</th>
-                                <th>SIT Fail</th>
-                                <th>Tổng</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${severityRows.map((row) => `
-                                <tr>
-                                    <td>${e(row.severity)}</td>
-                                    ${row.statuses.map((value) => `<td>${e(value)}</td>`).join("")}
-                                    <td>${e(row.total)}</td>
-                                </tr>
-                            `).join("")}
-                        </tbody>
-                    </table>
-                </div>
+            <div class="defect-dashboard-layout">
+                <article class="sheet-dashboard-card">
+                    <div class="sheet-card-title">
+                        <i class="fa-solid fa-bug"></i>
+                        <h3>KPI</h3>
+                    </div>
+                    ${renderDashboardTable(["KPI", "Giá trị"], rows.map((row) => [
+                        row.label,
+                        row.type === "percent" ? row.value : renderNumber(row.value)
+                    ]), "compact")}
+                </article>
+                <article class="sheet-dashboard-card matrix-card">
+                    <div class="sheet-card-title">
+                        <i class="fa-solid fa-table-cells"></i>
+                        <h3>Severity/Status</h3>
+                    </div>
+                    ${renderDashboardTable(["Severity/Status", "Open", "In Progress", "Reopen", "Resolved", "Closed", "Cancelled", "Pending", "SIT Pass", "SIT Fail", "Tổng"], severityRows.map((row) => [
+                        row.severity,
+                        ...row.statuses,
+                        row.total
+                    ]), "matrix-dashboard-table")}
+                </article>
+                <article class="sheet-dashboard-card">
+                    <div class="sheet-card-title">
+                        <i class="fa-solid fa-list-check"></i>
+                        <h3>CHỈ SỐ TỔNG QUAN</h3>
+                    </div>
+                    ${renderDashboardTable(["Chỉ số", "Giá trị"], usRows.map((row) => [
+                        row.label,
+                        row.type === "percent" ? row.value : renderNumber(row.value)
+                    ]), "compact")}
+                </article>
+                <article class="sheet-dashboard-card">
+                    <div class="sheet-card-title">
+                        <i class="fa-solid fa-chart-simple"></i>
+                        <h3>Lỗi theo trạng thái</h3>
+                    </div>
+                    ${renderDashboardTable(["Trạng thái", "Số lượng"], statusRows, "compact")}
+                </article>
+                <article class="sheet-dashboard-card">
+                    <div class="sheet-card-title">
+                        <i class="fa-solid fa-layer-group"></i>
+                        <h3>Lỗi theo mức độ</h3>
+                    </div>
+                    ${renderDashboardTable(["Mức độ", "Số lượng"], priorityRows, "compact")}
+                </article>
             </div>
         </section>
     `;
@@ -1490,7 +1412,7 @@ function renderDefectDashboardPanel() {
 
 function renderDefectDashboardPage() {
     return `
-        <div class="content-grid content-grid-single">
+        <div class="sheet-dashboard">
             ${renderDefectDashboardPanel()}
         </div>
     `;
@@ -1499,13 +1421,17 @@ function renderDefectDashboardPage() {
 function getDefectDashboardRows() {
     const openDefects = appState.defects.filter((row) => isOpenBugStatus(row.status));
     const openSeverity = (severity) => openDefects.filter((row) => normalizeWorkbookFormulaText(row.severity) === normalizeWorkbookFormulaText(severity)).length;
+    const reopenRate = appState.defects.length ? (countDefectStatus("Reopen") / 999) * 100 : 0;
     return [
-        { label: "Tổng Defect", value: appState.defects.length, tone: appState.defects.length ? "blue" : "gray" },
-        { label: "Open", value: countDefectStatus("Open"), tone: openDefects.length ? "yellow" : "green" },
-        { label: "Major Open", value: openSeverity("Major"), tone: openSeverity("Major") ? "yellow" : "green" },
-        { label: "Minor Open", value: openSeverity("Minor"), tone: openSeverity("Minor") ? "blue" : "green" },
-        { label: "Blocker Open", value: openSeverity("Blocker"), tone: openSeverity("Blocker") ? "red" : "green" },
-        { label: "Critical Open", value: openSeverity("Critical"), tone: openSeverity("Critical") ? "red" : "green" }
+        { label: "Tổng Defect", value: appState.defects.length },
+        { label: "Open", value: countDefectStatus("Open") },
+        { label: "In Progress", value: countDefectStatus("In Progress") },
+        { label: "Reopen", value: countDefectStatus("Reopen") },
+        { label: "Resolved", value: countDefectStatus("Resolved") },
+        { label: "Closed", value: countDefectStatus("Closed") },
+        { label: "Blocker Open", value: openSeverity("Blocker") },
+        { label: "Critical Open", value: openSeverity("Critical") },
+        { label: "Reopen Rate", value: `${reopenRate.toFixed(2)}%`, type: "percent" }
     ];
 }
 
@@ -1547,83 +1473,149 @@ function getDashboardSummaryRows() {
     const notDeliveredStories = Math.max(0, totalStories - deliveredStories);
     const handoffRate = percent(deliveredStories, totalStories);
     const totalCases = sum(appState.plans, "totalCases");
-    const passedCases = sum(appState.features, "passedCases");
-    const failedCases = sum(appState.features, "failedCases");
-    const blockedCases = sum(appState.features, "blockedCases");
-    const blockerBugs = countOpenDefectSeverity("Blocker");
-    const criticalBugs = countOpenDefectSeverity("Critical");
+    const passedCases = 0;
+    const failedCases = 0;
+    const blockedCases = 0;
+    const blockerBugs = 0;
+    const criticalBugs = 0;
     const pilotReadiness = round(handoffRate * 0.5 + percent(passedCases, totalCases) * 0.5);
-    const trainingReadiness = calculateTrainingReadiness();
     return [
-        { key: "totalStories", label: "Tổng Story", value: totalStories, numericValue: totalStories, tone: "teal" },
-        { key: "deliveredStories", label: "Đã bàn giao UAT", value: deliveredStories, numericValue: deliveredStories, tone: "blue" },
-        { key: "notDeliveredStories", label: "Chưa bàn giao", value: notDeliveredStories, numericValue: notDeliveredStories, tone: "neutral" },
-        { key: "handoffRate", label: "Tỷ lệ bàn giao UAT", value: `${handoffRate}%`, numericValue: handoffRate, tone: getProgressTone(handoffRate) },
-        { key: "totalCases", label: "Tổng Testcase", value: totalCases, numericValue: totalCases, tone: "neutral" },
-        { key: "passedCases", label: "Passed", value: passedCases, numericValue: passedCases, tone: passedCases ? "green" : "neutral" },
-        { key: "failedCases", label: "Failed", value: failedCases, numericValue: failedCases, tone: failedCases ? "red" : "neutral" },
-        { key: "blockedCases", label: "Blocked", value: blockedCases, numericValue: blockedCases, tone: blockedCases ? "yellow" : "neutral" },
-        { key: "blockerBugs", label: "Lỗi Blocker", value: blockerBugs, numericValue: blockerBugs, tone: blockerBugs ? "red" : "green" },
-        { key: "criticalBugs", label: "Lỗi Critical", value: criticalBugs, numericValue: criticalBugs, tone: criticalBugs ? "yellow" : "green" },
-        { key: "pilotReadiness", label: "Pilot Readiness", value: `${pilotReadiness}%`, numericValue: pilotReadiness, tone: getProgressTone(pilotReadiness) },
-        { key: "trainingReadiness", label: "Mức độ sẵn sàng đào tạo", value: `${trainingReadiness}%`, numericValue: trainingReadiness, tone: getProgressTone(trainingReadiness) }
+        { key: "totalStories", label: "Tổng Story", value: totalStories, type: "number" },
+        { key: "deliveredStories", label: "Đã bàn giao UAT", value: deliveredStories, type: "number" },
+        { key: "notDeliveredStories", label: "Chưa bàn giao", value: notDeliveredStories, type: "number" },
+        { key: "handoffRate", label: "Tỷ lệ bàn giao UAT", value: `${handoffRate}%`, type: "percent" },
+        { key: "totalCases", label: "Tổng Testcase", value: totalCases, type: "number" },
+        { key: "passedCases", label: "Passed", value: passedCases, type: "number" },
+        { key: "failedCases", label: "Failed", value: failedCases, type: "number" },
+        { key: "blockedCases", label: "Blocked", value: blockedCases, type: "number" },
+        { key: "blockerBugs", label: "Blocker Open", value: blockerBugs, type: "number" },
+        { key: "criticalBugs", label: "Critical Open", value: criticalBugs, type: "number" },
+        { key: "pilotReadinessPercent", label: "Pilot Readiness", value: `${pilotReadiness}%`, type: "percent" },
+        { key: "pilotReadiness", label: "Pilot Readiness", value: "CONDITIONAL GO", decision: true },
+        { key: "goLiveReadiness", label: "Go-live Readiness", value: "CONDITIONAL GO", decision: true }
     ];
 }
 
 function getDashboardOwnerRows() {
-    const buckets = new Map();
-    appState.plans.forEach((row) => {
-        const owner = String(row.owner || "Chưa gán").trim();
-        if (!buckets.has(owner)) buckets.set(owner, { owner, storyCount: 0, totalCases: 0, executedCases: 0 });
-        const bucket = buckets.get(owner);
-        bucket.storyCount += 1;
-        bucket.totalCases += Number(row.totalCases || 0);
-        bucket.executedCases += Number(row.executedCases || 0);
+    return ownerOptions.slice(0, 3).map((owner) => {
+        const rows = appState.plans.filter((row) => normalizeLookupKey(row.owner) === normalizeLookupKey(owner));
+        const totalCases = sum(rows, "totalCases");
+        const executedCases = 0;
+        return {
+            owner,
+            storyCount: rows.length,
+            totalCases,
+            executedCases,
+            coverageRate: percent(executedCases, totalCases)
+        };
     });
-    if (!buckets.size) {
-        appState.features.forEach((row) => {
-            const owner = String(row.owner || "Chưa gán").trim();
-            if (!buckets.has(owner)) buckets.set(owner, { owner, storyCount: 0, totalCases: 0, executedCases: 0 });
-            buckets.get(owner).storyCount += 1;
-        });
-    }
-    return [...buckets.values()]
-        .map((row) => ({ ...row, coverageRate: percent(row.executedCases, row.totalCases) }))
-        .sort((a, b) => b.storyCount - a.storyCount || a.owner.localeCompare(b.owner, "vi"));
 }
 
 function getDashboardSprintRows() {
-    const buckets = new Map();
-    const ensure = (sprint) => {
-        const key = String(sprint || "Chưa gán Sprint").trim();
-        if (!buckets.has(key)) {
-            buckets.set(key, { sprint: key, storyCount: 0, totalCases: 0, executedCases: 0, decision: "" });
-        }
-        return buckets.get(key);
-    };
-    appState.plans.forEach((row) => {
-        const bucket = ensure(row.sprint);
-        bucket.storyCount += 1;
-        bucket.totalCases += Number(row.totalCases || 0);
-        bucket.executedCases += Number(row.executedCases || 0);
-    });
-    appState.readiness.forEach((row) => {
-        const bucket = ensure(row.sprint);
-        bucket.storyCount = Number(row.totalStories || bucket.storyCount);
-        bucket.deliveredStories = Number(row.deliveredStories || bucket.deliveredStories || 0);
-        bucket.totalCases = Number(row.totalCases || bucket.totalCases);
-        bucket.executedCases = Number(row.executedCases || bucket.executedCases);
-        bucket.coverageRate = Number(row.coverageRate || bucket.coverageRate || 0);
-        bucket.decision = row.decision || bucket.decision;
-    });
-    return [...buckets.values()]
-        .map((row) => ({
-            ...row,
-            deliveredStories: Number(row.deliveredStories || 0),
-            coverageRate: Number(row.coverageRate || percent(row.deliveredStories, row.storyCount)),
-            decision: row.decision || "Chưa quyết định"
-        }))
+    const readinessBySprint = new Map(appState.readiness.map((row) => [normalizeLookupKey(row.sprint), row]));
+    const sourceRows = appState.weekly.length ? appState.weekly : appState.readiness;
+    return sourceRows
+        .map((row) => {
+            const readiness = readinessBySprint.get(normalizeLookupKey(row.sprint)) || {};
+            return {
+                sprint: row.sprint || readiness.sprint || "",
+                coverageRate: 0,
+                passRate: 0,
+                blocker: 0,
+                critical: 0,
+                decision: readiness.decision || row.decision || "CONDITIONAL GO"
+            };
+        })
         .sort((a, b) => a.sprint.localeCompare(b.sprint, "vi", { numeric: true }));
+}
+
+function getDefectUserStoryRows() {
+    const validBugSources = getValidLinkedBugSources();
+    const hasBugSourceSheet = appState.bugSources.length > 0;
+    const totalUs = appState.features.length || appState.defectSummary.length;
+    const usWithBugs = hasBugSourceSheet
+        ? new Set(validBugSources.map((row) => normalizeLookupKey(row.linkedUsKey))).size
+        : appState.defectSummary.filter((row) => Number(row.totalBugs || 0) > 0).length;
+    const totalBugs = appState.bugSources.length || appState.defects.length;
+    const validLinkedBugs = hasBugSourceSheet ? validBugSources.length : sum(appState.defectSummary, "totalBugs");
+    const activeBugs = hasBugSourceSheet
+        ? validBugSources.filter((row) => ["Open", "In Progress", "Pending"].some((status) => isBugStatus(row.status, status))).length
+        : sum(appState.defectSummary, "activeBugs");
+    const handledBugs = hasBugSourceSheet ? Math.max(0, validLinkedBugs - activeBugs) : sum(appState.defectSummary, "handledBugs");
+    const severeBugs = hasBugSourceSheet
+        ? validBugSources.filter((row) => ["Blocker", "Critical"].some((severity) => normalizeWorkbookFormulaText(row.priority) === normalizeWorkbookFormulaText(severity))).length
+        : sum(appState.defectSummary, "severeBugs");
+    return [
+        { label: "Tổng số US", value: totalUs },
+        { label: "Số US có lỗi", value: usWithBugs },
+        { label: "Số US chưa có lỗi", value: Math.max(0, totalUs - usWithBugs) },
+        { label: "Tổng số lỗi (trong sheet)", value: totalBugs },
+        { label: "Lỗi đã gắn US (hợp lệ)", value: validLinkedBugs },
+        { label: "Lỗi CHƯA gắn US / sai mã", value: Math.max(0, totalBugs - validLinkedBugs) },
+        { label: "Lỗi đang mở (chưa xử lý)", value: activeBugs },
+        { label: "Lỗi đã xử lý", value: handledBugs },
+        { label: "% xử lý", value: `${validLinkedBugs ? ((handledBugs / validLinkedBugs) * 100).toFixed(2) : "0.00"}%`, type: "percent" },
+        { label: "Lỗi nghiêm trọng (Blocker/Critical)", value: severeBugs }
+    ];
+}
+
+function getValidLinkedBugSources() {
+    const userStoryKeys = new Set(appState.userStories.map((row) => normalizeLookupKey(row.issueKey)).filter(Boolean));
+    return appState.bugSources.filter((row) => userStoryKeys.has(normalizeLookupKey(row.linkedUsKey)));
+}
+
+function getDefectStatusRows() {
+    const statuses = ["Open", "In Progress", "Pending", "Resolved", "SIT Pass"];
+    const rows = statuses.map((status) => [status, countBugSourceStatus(status)]);
+    const knownTotal = rows.reduce((total, [, value]) => total + value, 0);
+    rows.push(["Khác", Math.max(0, appState.bugSources.length - knownTotal)]);
+    return rows;
+}
+
+function getDefectPriorityRows() {
+    return ["Blocker", "Critical", "Major", "Minor", "Trivial"].map((priority) => [
+        priority,
+        appState.bugSources.filter((row) => normalizeWorkbookFormulaText(row.priority) === normalizeWorkbookFormulaText(priority)).length
+    ]);
+}
+
+function countBugSourceStatus(status) {
+    return appState.bugSources.filter((row) => isBugStatus(row.status, status)).length;
+}
+
+function renderDashboardTable(headers, rows, className = "") {
+    const bodyRows = rows.length ? rows : [[{ html: `<span class="excel-empty-cell">Chưa có dữ liệu</span>` }]];
+    return `
+        <div class="sheet-dashboard-table-wrap">
+            <table class="sheet-dashboard-table ${e(className)}">
+                <thead>
+                    <tr>${headers.map((header) => `<th>${e(header)}</th>`).join("")}</tr>
+                </thead>
+                <tbody>
+                    ${bodyRows.map((row) => `
+                        <tr>
+                            ${row.map((cell, index) => `<td class="${index === 0 ? "label-cell" : "value-cell"}">${renderDashboardCell(cell)}</td>`).join("")}
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function renderDashboardCell(cell) {
+    if (cell && typeof cell === "object" && "html" in cell) return cell.html;
+    return e(cell);
+}
+
+function renderDashboardValue(value, type) {
+    if (type === "number") return renderNumber(value);
+    return e(value);
+}
+
+function renderNumber(value) {
+    const number = Number(value || 0);
+    return Number.isFinite(number) ? e(number.toLocaleString("vi-VN")) : e(value);
 }
 
 function calculateTrainingReadiness() {

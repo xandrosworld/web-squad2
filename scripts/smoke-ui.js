@@ -115,6 +115,8 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.readFile(await download.path());
   const expectedSheets = [
+    "Dashboard_UAT",
+    "DEFECT_Dashboard",
     "DM_ChucNang",
     "Lich_BG_US",
     "PhanCong_UAT",
@@ -125,8 +127,7 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
     "Tong hop loi",
     "ChatLuong_Tuan",
     "TongKet_Sprint",
-    "NangSuat_Tester",
-    "07_Dashboard"
+    "NangSuat_Tester"
   ];
   const actualSheets = workbook.worksheets.map((sheet) => sheet.name);
   if (JSON.stringify(actualSheets) !== JSON.stringify(expectedSheets)) {
@@ -218,7 +219,7 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   }
 
   await page.locator(".tabbar button[data-tab=\"dashboard\"]").click();
-  await page.waitForSelector(".dashboard-shell .uat-dashboard, .dashboard-shell .dashboard-empty-panel", { timeout: 5000 });
+  await page.waitForSelector(".dashboard-shell .sheet-dashboard, .dashboard-shell .dashboard-empty-panel", { timeout: 5000 });
 
   if (errors.length) {
     throw new Error(`Browser errors detected:\n${errors.join("\n")}`);

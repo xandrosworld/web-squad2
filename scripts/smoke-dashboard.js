@@ -57,7 +57,7 @@ let createdPlanId = "";
       throw new Error(`API dashboard blocker count did not update: before ${beforeBlockers}, after ${afterCreateBlockers}`);
     }
 
-    await assertDashboardCard("Lỗi Blocker", afterCreateBlockers);
+    await assertDashboardMetric("defectDashboard", "Blocker Open", afterCreateBlockers);
   } finally {
     if (createdDefectId) {
       await apiJson(`/api/records/defects/${encodeURIComponent(createdDefectId)}`, { method: "DELETE" });
@@ -115,7 +115,7 @@ async function apiJson(path, options = {}) {
   return data;
 }
 
-async function assertDashboardCard(label, expectedValue) {
+async function assertDashboardMetric(tabId, label, expectedValue) {
   const browser = await chromium.launch({ executablePath, headless: true });
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -131,10 +131,17 @@ async function assertDashboardCard(label, expectedValue) {
     }]);
     const page = await context.newPage();
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector(".uat-dashboard", { timeout: 15000 });
-    const actualValue = await page.locator(".uat-metric-card", { hasText: label }).first().locator("strong").innerText();
+    await page.waitForSelector("[data-tab=\"dashboard\"]", { timeout: 15000 });
+    if (tabId && tabId !== "dashboard") {
+      await page.locator(`[data-tab="${tabId}"]`).click();
+    }
+    await page.waitForSelector(".sheet-dashboard-table", { timeout: 15000 });
+    const row = page.locator(".sheet-dashboard-table tbody tr", { hasText: label }).first();
+    await row.waitFor({ timeout: 10000 });
+    const cells = await row.locator("td").allInnerTexts();
+    const actualValue = cells[cells.length - 1] || "";
     if (Number(actualValue.replace(/\D+/g, "")) !== expectedValue) {
-      throw new Error(`Dashboard card ${label} expected ${expectedValue}, got ${actualValue}`);
+      throw new Error(`Dashboard metric ${label} expected ${expectedValue}, got ${actualValue}`);
     }
   } finally {
     await browser.close();
@@ -148,6 +155,7 @@ async function assertSprintSummaryRecomputes(payload) {
   const beforeRow = findReadinessRow(state, targetSprint);
   const beforeStories = Number(beforeRow?.totalStories || 0);
   const beforeCases = Number(beforeRow?.totalCases || 0);
+  const beforeTotalCases = sumRows(state.plans || [], "totalCases");
   const testCases = 7;
   const stamp = Date.now();
   const planRecord = {
@@ -183,10 +191,11 @@ async function assertSprintSummaryRecomputes(payload) {
     const afterCreate = findReadinessRow(created.state, targetSprint);
     const expectedStories = beforeStories;
     const expectedCases = beforeCases + testCases;
+    const expectedTotalCases = beforeTotalCases + testCases;
     if (Number(afterCreate?.totalStories || 0) !== expectedStories || Number(afterCreate?.totalCases || 0) !== expectedCases) {
       throw new Error(`Sprint summary did not recompute from PhanCong_UAT: expected ${expectedStories} story/${expectedCases} TC, got ${afterCreate?.totalStories}/${afterCreate?.totalCases}`);
     }
-    await assertDashboardSprintRow(targetSprint, expectedStories, expectedCases);
+    await assertDashboardMetric("dashboard", "Tổng Testcase", expectedTotalCases);
   } finally {
     if (createdPlanId) {
       await apiJson(`/api/records/plans/${encodeURIComponent(createdPlanId)}`, { method: "DELETE" });
@@ -200,38 +209,12 @@ async function assertSprintSummaryRecomputes(payload) {
   }
 }
 
-async function assertDashboardSprintRow(sprint, expectedStories, expectedCases) {
-  const browser = await chromium.launch({ executablePath, headless: true });
-  try {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    const session = cookieHeader.split("=");
-    await context.addCookies([{
-      name: session[0],
-      value: session.slice(1).join("="),
-      domain: new URL(baseUrl).hostname,
-      path: "/",
-      httpOnly: true,
-      secure: baseUrl.startsWith("https://"),
-      sameSite: "Lax"
-    }]);
-    const page = await context.newPage();
-    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector(".uat-dashboard", { timeout: 15000 });
-    const row = page.locator(".uat-sprint-table tbody tr", { hasText: sprint }).first();
-    await row.waitFor({ timeout: 10000 });
-    const cells = await row.locator("td").allInnerTexts();
-    const actualStories = Number((cells[1] || "").replace(/\D+/g, ""));
-    const actualCases = Number((cells[3] || "").replace(/\D+/g, ""));
-    if (actualStories !== expectedStories || actualCases !== expectedCases) {
-      throw new Error(`Dashboard sprint row ${sprint} expected ${expectedStories} story/${expectedCases} TC, got ${cells[1]}/${cells[3]}`);
-    }
-  } finally {
-    await browser.close();
-  }
-}
-
 function findReadinessRow(state, sprint) {
   return (state.readiness || []).find((row) => normalize(row.sprint) === normalize(sprint));
+}
+
+function sumRows(rows, key) {
+  return (rows || []).reduce((total, row) => total + Number(row?.[key] || 0), 0);
 }
 
 function countOpenSeverity(rows, severity) {

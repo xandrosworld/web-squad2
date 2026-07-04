@@ -64,9 +64,20 @@ async function main() {
   assertHandoffSections(state.handoffs);
 
   const exportedWorkbook = buildExcelWorkbook(state);
+  const expectedExportSheets = ["Dashboard_UAT", "DEFECT_Dashboard", ...Object.keys(expectedHeaders)];
+  const actualExportSheets = exportedWorkbook.worksheets.map((sheet) => sheet.name);
+  assertSameList("exported workbook sheets", expectedExportSheets, actualExportSheets);
   for (const sheetName of Object.keys(expectedHeaders)) {
     if (!exportedWorkbook.getWorksheet(sheetName)) throw new Error(`Export missing sheet ${sheetName}`);
   }
+  assertExportCell(exportedWorkbook, "Dashboard_UAT", "B4", 77);
+  assertExportCell(exportedWorkbook, "Dashboard_UAT", "B5", 47);
+  assertExportCell(exportedWorkbook, "Dashboard_UAT", "B7", "61%");
+  assertExportCell(exportedWorkbook, "Dashboard_UAT", "B14", "31%");
+  assertExportCell(exportedWorkbook, "DEFECT_Dashboard", "B4", 64);
+  assertExportCell(exportedWorkbook, "DEFECT_Dashboard", "B12", "0.10%");
+  assertExportCell(exportedWorkbook, "DEFECT_Dashboard", "B22", 49);
+  assertExportCell(exportedWorkbook, "DEFECT_Dashboard", "B26", "69.39%");
 
   console.log(JSON.stringify({
     ok: true,
@@ -159,6 +170,15 @@ function cellText(value) {
 function assertSameList(label, expected, actual) {
   if (expected.length !== actual.length || expected.some((item, index) => item !== actual[index])) {
     throw new Error(`${label} mismatch.\nExpected: ${JSON.stringify(expected)}\nActual:   ${JSON.stringify(actual)}`);
+  }
+}
+
+function assertExportCell(workbook, sheetName, address, expected) {
+  const worksheet = workbook.getWorksheet(sheetName);
+  if (!worksheet) throw new Error(`Export missing sheet ${sheetName}`);
+  const actual = worksheet.getCell(address).value;
+  if (actual !== expected) {
+    throw new Error(`Export ${sheetName}!${address} expected ${expected}, got ${actual}`);
   }
 }
 

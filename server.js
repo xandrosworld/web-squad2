@@ -2132,6 +2132,9 @@ function buildExcelWorkbook(state) {
   workbook.created = new Date();
   workbook.modified = new Date();
 
+  addDashboardUatWorksheet(workbook, state);
+  addDefectDashboardWorksheet(workbook, state);
+
   for (const sheetConfig of excelSheets) {
     const worksheet = workbook.addWorksheet(sheetConfig.name, {
       views: [{ state: "frozen", ySplit: 1, xSplit: sheetConfig.freezeColumns || 0 }]
@@ -2179,7 +2182,6 @@ function buildExcelWorkbook(state) {
       }
     });
   }
-  addDashboardWorksheet(workbook, state);
   return workbook;
 }
 
@@ -2201,53 +2203,243 @@ function addExcelSectionRow(worksheet, sheetConfig, section) {
   });
 }
 
-function addDashboardWorksheet(workbook, state) {
-  const worksheet = workbook.addWorksheet("07_Dashboard");
-  const metrics = calculateWorkbookMetrics(state);
-  const rows = [
-    ["Tiến độ UAT toàn Squad", `${metrics.squadProgress}%`, "Sheet DM_ChucNang"],
-    ["Tỷ lệ bao phủ kiểm thử", `${metrics.coverage}%`, "Sheet 04-06"],
-    ["Tỷ lệ thành công", `${metrics.successRate}%`, "Sheet 05-06"],
-    ["Lỗi Blocker", metrics.blockerBugs, "Sheet 04-06"],
-    ["Lỗi Critical", metrics.criticalBugs, "Sheet 04-06"],
-    ["Mức độ sẵn sàng đào tạo", `${metrics.trainingReadiness}%`, "Sheet NangSuat_Tester"],
-    ["Mức độ sẵn sàng Pilot/Go-live", `${metrics.pilotReadiness}%`, "Sheet TongKet_Sprint"]
-  ];
-
+function addDashboardUatWorksheet(workbook, state) {
+  const worksheet = workbook.addWorksheet("Dashboard_UAT", {
+    views: [{ state: "frozen", ySplit: 3 }]
+  });
   worksheet.columns = [
-    { key: "metric", width: 34 },
-    { key: "value", width: 18 },
-    { key: "source", width: 28 }
+    { width: 24 },
+    { width: 18 },
+    { width: 5 },
+    { width: 16 },
+    { width: 14 },
+    { width: 14 },
+    { width: 12 },
+    { width: 12 },
+    { width: 22 },
+    { width: 5 },
+    { width: 30 },
+    { width: 12 },
+    { width: 14 },
+    { width: 14 },
+    { width: 16 }
   ];
-  worksheet.mergeCells("A1:C1");
-  worksheet.getCell("A1").value = "BẢNG ĐIỀU HÀNH TỔNG HỢP SQUAD 2";
-  worksheet.getCell("A1").font = { bold: true, size: 14, color: { argb: "FF111827" } };
-  worksheet.getCell("A1").alignment = { vertical: "middle" };
-  worksheet.getRow(1).height = 26;
+  writeDashboardTitle(worksheet, "A1:O1", "BẢNG ĐIỀU HÀNH UAT SQUAD 2 - PILOT & GO-LIVE");
+  writeDashboardTable(worksheet, 3, 1, ["Chỉ số", "Giá trị"], getDashboardUatSummaryRows(state));
+  writeDashboardTable(worksheet, 3, 4, ["Sprint", "Coverage", "Pass Rate", "Blocker", "Critical", "Quyết định"], getDashboardUatSprintRows(state));
+  writeDashboardBand(worksheet, "K3:O3", "Tổng hợp theo Đầu mối Nghiệp vụ");
+  writeDashboardTable(worksheet, 4, 11, ["ĐMNV", "Số Story", "Tổng TC", "TC đã chạy", "Tỷ lệ bao phủ"], getDashboardUatOwnerRows(state));
+}
 
-  worksheet.getRow(2).values = ["Chỉ số", "Giá trị", "Nguồn"];
-  worksheet.getRow(2).height = 22;
-  worksheet.getRow(2).eachCell((cell) => {
+function addDefectDashboardWorksheet(workbook, state) {
+  const worksheet = workbook.addWorksheet("DEFECT_Dashboard", {
+    views: [{ state: "frozen", ySplit: 3 }]
+  });
+  worksheet.columns = [
+    { width: 30 },
+    { width: 16 },
+    { width: 5 },
+    { width: 18 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 },
+    { width: 14 }
+  ];
+  writeDashboardTitle(worksheet, "A1:N1", "DASHBOARD DEFECT UAT - SQUAD 2");
+  writeDashboardTable(worksheet, 3, 1, ["KPI", "Giá trị"], getDefectDashboardKpiRows(state));
+  writeDashboardTable(worksheet, 3, 4, ["Severity/Status", "Open", "In Progress", "Reopen", "Resolved", "Closed", "Cancelled", "Pending", "SIT Pass", "SIT Fail", "Tổng"], getDefectDashboardMatrixRows(state));
+  writeDashboardBand(worksheet, "A15:E15", "DASHBOARD - LỖI THEO USER STORY");
+  writeDashboardTable(worksheet, 17, 1, ["CHỈ SỐ TỔNG QUAN", "Giá trị"], getDefectUserStorySummaryRows(state));
+  writeDashboardTable(worksheet, 17, 4, ["Lỗi theo trạng thái", "Số lượng"], getDefectStatusSummaryRows(state));
+  writeDashboardTable(worksheet, 25, 4, ["Lỗi theo mức độ", "Số lượng"], getDefectPrioritySummaryRows(state));
+}
+
+function writeDashboardTitle(worksheet, range, title) {
+  worksheet.mergeCells(range);
+  const cell = worksheet.getCell(range.split(":")[0]);
+  cell.value = title;
+  cell.font = { bold: true, size: 14, color: { argb: "FFFFFFFF" } };
+  cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF006B68" } };
+  cell.alignment = { vertical: "middle", horizontal: "center" };
+  worksheet.getRow(cell.row).height = 24;
+}
+
+function writeDashboardBand(worksheet, range, title) {
+  worksheet.mergeCells(range);
+  const cell = worksheet.getCell(range.split(":")[0]);
+  cell.value = title;
+  cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF009C95" } };
+  cell.alignment = { vertical: "middle", horizontal: "center" };
+}
+
+function writeDashboardTable(worksheet, startRow, startColumn, headers, rows) {
+  const headerRow = worksheet.getRow(startRow);
+  headers.forEach((header, index) => {
+    const cell = headerRow.getCell(startColumn + index);
+    cell.value = header;
     cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF006B68" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF009C95" } };
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
   });
-
-  rows.forEach(([metric, value, source]) => {
-    const row = worksheet.addRow({ metric, value, source });
-    row.alignment = { vertical: "middle", wrapText: true };
-  });
-
-  worksheet.eachRow((row, rowNumber) => {
-    row.eachCell((cell) => {
-      cell.border = {
-        bottom: { style: "thin", color: { argb: "FFE5E7EB" } }
-      };
-      if (rowNumber > 2 && rowNumber % 2 === 0) {
+  rows.forEach((values, rowIndex) => {
+    const row = worksheet.getRow(startRow + rowIndex + 1);
+    values.forEach((value, colIndex) => {
+      const cell = row.getCell(startColumn + colIndex);
+      cell.value = value;
+      cell.alignment = { vertical: "middle", horizontal: colIndex === 0 ? "left" : "center", wrapText: true };
+      if (rowIndex % 2 === 1) {
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F8F7" } };
       }
     });
   });
+  const endRow = startRow + rows.length;
+  const endColumn = startColumn + headers.length - 1;
+  for (let rowNumber = startRow; rowNumber <= endRow; rowNumber += 1) {
+    for (let columnNumber = startColumn; columnNumber <= endColumn; columnNumber += 1) {
+      worksheet.getCell(rowNumber, columnNumber).border = {
+        top: { style: "thin", color: { argb: "FFD6DBE2" } },
+        left: { style: "thin", color: { argb: "FFD6DBE2" } },
+        bottom: { style: "thin", color: { argb: "FFD6DBE2" } },
+        right: { style: "thin", color: { argb: "FFD6DBE2" } }
+      };
+    }
+  }
+}
+
+function getDashboardUatSummaryRows(state) {
+  const totalStories = collectionRows(state, "features").length;
+  const deliveredStories = collectionRows(state, "handoffs").filter((row) => normalizeImportedText(row.uatHandoff)).length;
+  const totalCases = sumBy(collectionRows(state, "plans"), "totalCases");
+  const handoffRate = percent(deliveredStories, totalStories);
+  const pilotReadiness = round(handoffRate * 0.5);
+  return [
+    ["Tổng Story", totalStories],
+    ["Đã bàn giao UAT", deliveredStories],
+    ["Chưa bàn giao", Math.max(0, totalStories - deliveredStories)],
+    ["Tỷ lệ bàn giao UAT", `${handoffRate}%`],
+    ["Tổng Testcase", totalCases],
+    ["Passed", 0],
+    ["Failed", 0],
+    ["Blocked", 0],
+    ["Blocker Open", 0],
+    ["Critical Open", 0],
+    ["Pilot Readiness", `${pilotReadiness}%`],
+    ["Pilot Readiness", "CONDITIONAL GO"],
+    ["Go-live Readiness", "CONDITIONAL GO"]
+  ];
+}
+
+function getDashboardUatOwnerRows(state) {
+  const plans = collectionRows(state, "plans");
+  return ownerOptions.slice(0, 3).map((owner) => {
+    const rows = plans.filter((row) => lookupKey(row.owner) === lookupKey(owner));
+    const totalCases = sumBy(rows, "totalCases");
+    return [owner, rows.length, totalCases, 0, "0%"];
+  });
+}
+
+function getDashboardUatSprintRows(state) {
+  const readinessBySprint = new Map(collectionRows(state, "readiness").map((row) => [lookupKey(row.sprint), row]));
+  const sourceRows = collectionRows(state, "weekly").length ? collectionRows(state, "weekly") : collectionRows(state, "readiness");
+  return sourceRows
+    .map((row) => {
+      const readiness = readinessBySprint.get(lookupKey(row.sprint)) || {};
+      return [row.sprint || readiness.sprint || "", "0%", "0%", 0, 0, readiness.decision || "CONDITIONAL GO"];
+    })
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0]), "vi", { numeric: true }));
+}
+
+function getDefectDashboardKpiRows(state) {
+  const defects = collectionRows(state, "defects");
+  const openDefects = defects.filter((row) => isOpenBugStatus(row.status));
+  const statusCount = (status) => defects.filter((row) => isBugStatus(row.status, status)).length;
+  const openSeverity = (severity) => openDefects.filter((row) => isSeverity(row.severity, severity)).length;
+  const reopenRate = defects.length ? ((statusCount("Reopen") / 999) * 100).toFixed(2) : "0.00";
+  return [
+    ["Tổng Defect", defects.length],
+    ["Open", statusCount("Open")],
+    ["In Progress", statusCount("In Progress")],
+    ["Reopen", statusCount("Reopen")],
+    ["Resolved", statusCount("Resolved")],
+    ["Closed", statusCount("Closed")],
+    ["Blocker Open", openSeverity("Blocker")],
+    ["Critical Open", openSeverity("Critical")],
+    ["Reopen Rate", `${reopenRate}%`]
+  ];
+}
+
+function getDefectDashboardMatrixRows(state) {
+  const defects = collectionRows(state, "defects");
+  const statuses = ["Open", "In Progress", "Reopen", "Resolved", "Closed", "Cancelled", "Pending", "SIT Pass", "SIT Fail"];
+  const severities = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
+  const rows = severities.map((severity) => {
+    const counts = statuses.map((status) => defects.filter((row) => isSeverity(row.severity, severity) && isBugStatus(row.status, status)).length);
+    return [severity, ...counts, counts.reduce((total, value) => total + value, 0)];
+  });
+  const totals = statuses.map((status) => defects.filter((row) => isBugStatus(row.status, status)).length);
+  rows.push(["Tổng", ...totals, totals.reduce((total, value) => total + value, 0)]);
+  return rows;
+}
+
+function getDefectUserStorySummaryRows(state) {
+  const defectSummary = collectionRows(state, "defectSummary");
+  const bugSources = collectionRows(state, "bugSources");
+  const validBugSources = getValidLinkedBugSources(state);
+  const hasBugSourceSheet = bugSources.length > 0;
+  const totalUs = collectionRows(state, "features").length || defectSummary.length;
+  const usWithBugs = hasBugSourceSheet
+    ? new Set(validBugSources.map((row) => lookupKey(row.linkedUsKey))).size
+    : defectSummary.filter((row) => Number(row.totalBugs || 0) > 0).length;
+  const totalBugs = bugSources.length || collectionRows(state, "defects").length;
+  const validLinkedBugs = hasBugSourceSheet ? validBugSources.length : sumBy(defectSummary, "totalBugs");
+  const activeBugs = hasBugSourceSheet
+    ? validBugSources.filter((row) => ["Open", "In Progress", "Pending"].some((status) => isBugStatus(row.status, status))).length
+    : sumBy(defectSummary, "activeBugs");
+  const handledBugs = hasBugSourceSheet ? Math.max(0, validLinkedBugs - activeBugs) : sumBy(defectSummary, "handledBugs");
+  const severeBugs = hasBugSourceSheet
+    ? validBugSources.filter((row) => isAnySeverity(row.priority, ["Blocker", "Critical"])).length
+    : sumBy(defectSummary, "severeBugs");
+  return [
+    ["Tổng số US", totalUs],
+    ["Số US có lỗi", usWithBugs],
+    ["Số US chưa có lỗi", Math.max(0, totalUs - usWithBugs)],
+    ["Tổng số lỗi (trong sheet)", totalBugs],
+    ["Lỗi đã gắn US (hợp lệ)", validLinkedBugs],
+    ["Lỗi CHƯA gắn US / sai mã", Math.max(0, totalBugs - validLinkedBugs)],
+    ["Lỗi đang mở (chưa xử lý)", activeBugs],
+    ["Lỗi đã xử lý", handledBugs],
+    ["% xử lý", `${validLinkedBugs ? ((handledBugs / validLinkedBugs) * 100).toFixed(2) : "0.00"}%`],
+    ["Lỗi nghiêm trọng (Blocker/Critical)", severeBugs]
+  ];
+}
+
+function getValidLinkedBugSources(state) {
+  const userStoryKeys = new Set(collectionRows(state, "userStories").map((row) => lookupKey(row.issueKey)).filter(Boolean));
+  return collectionRows(state, "bugSources").filter((row) => userStoryKeys.has(lookupKey(row.linkedUsKey)));
+}
+
+function getDefectStatusSummaryRows(state) {
+  const bugSources = collectionRows(state, "bugSources");
+  const statuses = ["Open", "In Progress", "Pending", "Resolved", "SIT Pass"];
+  const rows = statuses.map((status) => [status, bugSources.filter((row) => isBugStatus(row.status, status)).length]);
+  const knownTotal = rows.reduce((total, [, value]) => total + value, 0);
+  rows.push(["Khác", Math.max(0, bugSources.length - knownTotal)]);
+  return rows;
+}
+
+function getDefectPrioritySummaryRows(state) {
+  const bugSources = collectionRows(state, "bugSources");
+  return ["Blocker", "Critical", "Major", "Minor", "Trivial"].map((priority) => [
+    priority,
+    bugSources.filter((row) => isSeverity(row.priority, priority)).length
+  ]);
 }
 
 function excelRecordValue(record, key) {
