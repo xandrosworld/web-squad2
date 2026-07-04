@@ -133,7 +133,7 @@ async function assertDashboardMetric(tabId, label, expectedValue) {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
     await page.waitForSelector("[data-tab=\"dashboard\"]", { timeout: 15000 });
     if (tabId && tabId !== "dashboard") {
-      await page.locator(`[data-tab="${tabId}"]`).click();
+      await page.locator(`.tabbar [data-tab="${tabId}"]`).click();
     }
     await page.waitForSelector(".sheet-dashboard-table", { timeout: 15000 });
     const row = page.locator(".sheet-dashboard-table tbody tr", { hasText: label }).first();
