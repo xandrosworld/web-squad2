@@ -214,7 +214,7 @@ const collectionRules = {
     }
   },
   workItems: {
-    required: ["title"],
+    required: ["title", "categoryId"],
     numbers: ["sortOrder"],
     percents: ["progress"],
     enums: {
@@ -845,6 +845,9 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
   const collection = requireCollection(req.params.collection);
   const record = normalizeRecord(req.body.record || req.body);
   await ensureSchema();
+  if (planningCollections.includes(collection) && !canCreateWorkPlanRecord(req.user)) {
+    throw httpError(403, "Chỉ admin được tạo kế hoạch công việc.");
+  }
   const client = await getPool().connect();
   try {
     await client.query("begin");
@@ -865,13 +868,19 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
 
 app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
   const collection = requireCollection(req.params.collection);
-  const record = normalizeRecord({ ...(req.body.record || req.body), id: req.params.id }, req.params.id);
+  let record = normalizeRecord({ ...(req.body.record || req.body), id: req.params.id }, req.params.id);
   await ensureSchema();
   const client = await getPool().connect();
   try {
     await client.query("begin");
     const current = await getRecordForUpdate(client, collection, req.params.id);
     assertCanModifyRecord(req.user, current);
+    if (collection === "workCategories" && !canCreateWorkPlanRecord(req.user)) {
+      throw httpError(403, "Chỉ admin được sửa nhóm công việc.");
+    }
+    if (collection === "workItems" && !canFullyManageWorkItem(req.user, current)) {
+      record = mergeWorkItemProgressUpdate(current.data, record);
+    }
     record.createdAt = current.data?.createdAt || current.created_at?.toISOString?.() || record.createdAt;
     record.updatedAt = new Date().toISOString();
     await applyRecordDefaults(client, collection, record);
@@ -897,6 +906,9 @@ app.delete("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     await client.query("begin");
     const current = await getRecordForUpdate(client, collection, req.params.id);
     assertCanDeleteRecord(req.user, current);
+    if (planningCollections.includes(collection) && !canCreateWorkPlanRecord(req.user)) {
+      throw httpError(403, "Chỉ admin được xóa kế hoạch công việc.");
+    }
     await client.query("delete from uat_records where collection = $1 and id = $2", [collection, req.params.id]);
     const { state, updatedAt } = await recomputeAndPersistWorkbookRules(client, req.user.id, req.user);
     await client.query("commit");
@@ -2955,6 +2967,31 @@ function canEditRecord(user, record) {
 function canDeleteRecord(user, record) {
   if (!user) return false;
   return user.role === "admin" || Boolean(record.created_by && record.created_by === user.id);
+}
+
+function canFullyManageWorkItem(user, record) {
+  if (!user) return false;
+  return user.role === "admin" || Boolean(record.created_by && record.created_by === user.id);
+}
+
+function canCreateWorkPlanRecord(user) {
+  return user?.role === "admin";
+}
+
+function mergeWorkItemProgressUpdate(existingRecord, inputRecord) {
+  const allowedFields = ["status", "progress", "completedDate", "documentUrl", "note"];
+  const merged = {
+    ...(existingRecord || {})
+  };
+  for (const field of allowedFields) {
+    if (Object.prototype.hasOwnProperty.call(inputRecord, field)) {
+      merged[field] = inputRecord[field];
+    }
+  }
+  merged.id = existingRecord?.id || inputRecord.id;
+  merged.createdAt = existingRecord?.createdAt || inputRecord.createdAt;
+  merged.updatedAt = inputRecord.updatedAt;
+  return merged;
 }
 
 function decorateRecord(row, viewer) {

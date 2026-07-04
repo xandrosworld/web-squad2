@@ -159,7 +159,7 @@ const modules = {
         emptyText: "Thêm nhóm công việc hoặc tạo đầu việc để bắt đầu theo dõi tiến độ.",
         fields: [
             { key: "sortOrder", label: "STT", type: "number", defaultValue: getNextWorkItemSortOrder },
-            { key: "categoryId", label: "Nhóm công việc", type: "select", options: () => getWorkCategorySelectOptions(), full: true },
+            { key: "categoryId", label: "Nhóm công việc", type: "select", options: () => getWorkCategorySelectOptions(), defaultValue: getDefaultWorkCategoryId, required: true, full: true },
             { key: "title", label: "Tên công việc", type: "text", required: true, full: true },
             { key: "description", label: "Mô tả", type: "textarea", full: true },
             { key: "assignee", label: "Người phụ trách", type: "text" },
@@ -777,7 +777,7 @@ const modules = {
 
 const tabs = [
     { id: "dashboard", label: "Dashboard_UAT", icon: "fa-gauge-high" },
-    { id: "workItems", label: "KeHoach_CongViec", icon: modules.workItems.icon },
+    { id: "workItems", label: "Kế hoạch công việc", icon: modules.workItems.icon },
     { id: "defectDashboard", label: "DEFECT_Dashboard", icon: "fa-bug" },
     { id: "personnel", label: "NhanSu_UAT", icon: modules.personnel.icon },
     { id: "guide", label: "HD_UAT", icon: modules.guide.icon },
@@ -854,6 +854,7 @@ let ui = {
     groupChatOpen: false,
     groupChatDraft: "",
     profileAvatarDraft: null,
+    workView: "all",
     profileSaving: false,
     passwordSaving: false,
     toast: null,
@@ -1020,6 +1021,7 @@ async function requestJson(path, options = {}) {
             ui.aiChatDraft = "";
             ui.groupChatOpen = false;
             ui.groupChatDraft = "";
+            ui.workView = "all";
             resetAiChatState();
             resetGroupChatState();
             localStorage.removeItem(STORAGE_KEY);
@@ -2257,17 +2259,22 @@ function getRecentActivities(limit = 8) {
 function renderWorkPlanModule() {
     const mod = modules.workItems;
     const rows = getFilteredWorkRows();
-    const total = appState.workItems.length;
+    const categories = getWorkCategories();
+    const stats = getWorkPlanStats();
+    const total = stats.total;
+    const canManage = canManageWorkPlans();
     const activeFilters = countActiveFilters(mod);
     return `
         <div class="work-plan-page">
             <section class="work-plan-summary">
-                ${renderWorkMetric("Nhóm công việc", appState.workCategories.length, "fa-folder-tree", "teal")}
-                ${renderWorkMetric("Tổng đầu việc", total, "fa-list-check", "blue")}
-                ${renderWorkMetric("Đã hoàn thành", getWorkPlanStats().done, "fa-circle-check", "green")}
-                ${renderWorkMetric("Quá hạn", getWorkPlanStats().overdue, "fa-triangle-exclamation", "red")}
-                ${renderWorkMetric("Tiến độ TB", `${getWorkPlanStats().averageProgress}%`, "fa-chart-simple", "yellow")}
+                ${renderWorkMetric("Việc của tôi", stats.mine, "fa-user-check", "teal")}
+                ${renderWorkMetric("Đang theo dõi", stats.open, "fa-list-check", "blue")}
+                ${renderWorkMetric("Đã hoàn thành", stats.done, "fa-circle-check", "green")}
+                ${renderWorkMetric("Quá hạn", stats.overdue, "fa-triangle-exclamation", "red")}
+                ${renderWorkMetric("Tiến độ TB", `${stats.averageProgress}%`, "fa-chart-simple", "yellow")}
             </section>
+
+            ${renderWorkOnboarding(canManage, categories.length, total)}
 
             <div class="content-grid work-plan-layout">
                 ${renderWorkCategoryPanel()}
@@ -2276,7 +2283,7 @@ function renderWorkPlanModule() {
                         <div class="panel-title">
                             <i class="fa-solid ${mod.icon}"></i>
                             <div>
-                                <h2>${e(mod.label)}</h2>
+                                <h2>Danh sách đầu việc</h2>
                                 <span>${e(total)} đầu việc · ${e(rows.length)} đang hiển thị</span>
                             </div>
                         </div>
@@ -2286,14 +2293,19 @@ function renderWorkPlanModule() {
                                     <i class="fa-solid fa-filter-circle-xmark"></i><span>${e(activeFilters)} lọc</span>
                                 </button>
                             ` : ""}
+                            ${canManage && categories.length ? `
                             <button class="primary-btn" data-action="open-create">
                                 <i class="fa-solid fa-plus"></i><span>Thêm đầu việc</span>
                             </button>
+                            ` : ""}
                         </div>
                     </div>
                     <div class="panel-body">
-                        ${renderWorkPlanFilterBar()}
-                        ${renderTable(mod, rows)}
+                        ${total ? `
+                            ${renderWorkViewTabs(stats)}
+                            ${renderWorkPlanFilterBar()}
+                            ${renderTable(mod, rows)}
+                        ` : renderWorkTaskEmptyState(canManage, categories.length)}
                     </div>
                 </section>
             </div>
@@ -2313,8 +2325,82 @@ function renderWorkMetric(label, value, icon, tone) {
     `;
 }
 
+function renderWorkOnboarding(canManage, categoryCount, totalTasks) {
+    if (categoryCount && totalTasks) return "";
+    if (!canManage) {
+        return `
+            <section class="work-onboarding compact">
+                <div>
+                    <i class="fa-solid fa-circle-info"></i>
+                    <div>
+                        <strong>Chưa có kế hoạch công việc được giao</strong>
+                        <span>Khi sếp tạo nhóm hoặc giao đầu việc, nội dung cần xử lý sẽ hiện tại đây để bạn cập nhật tiến độ.</span>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+    return `
+        <section class="work-onboarding">
+            <div class="work-onboarding-copy">
+                <span>Gợi ý thiết lập</span>
+                <strong>Tạo nhóm trước, sau đó giao từng đầu việc và deadline.</strong>
+                <p>Người phụ trách chỉ cần mở việc được giao để cập nhật trạng thái, % hoàn thành, link tài liệu và vướng mắc.</p>
+            </div>
+            <div class="work-onboarding-steps">
+                <div><b>1</b><span>Tạo nhóm như HDSD, Quy trình tác nghiệp</span></div>
+                <div><b>2</b><span>Thêm đầu việc, người phụ trách và deadline</span></div>
+                <div><b>3</b><span>Theo dõi quá hạn, hoàn thành và tiến độ trung bình</span></div>
+            </div>
+        </section>
+    `;
+}
+
+function renderWorkViewTabs(stats) {
+    const views = [
+        { id: "all", label: "Tất cả", count: stats.total },
+        { id: "mine", label: "Việc của tôi", count: stats.mine },
+        { id: "open", label: "Đang làm", count: stats.open },
+        { id: "overdue", label: "Quá hạn", count: stats.overdue },
+        { id: "done", label: "Hoàn thành", count: stats.done }
+    ];
+    const current = ui.workView || "all";
+    return `
+        <div class="work-view-tabs" role="tablist" aria-label="Chế độ xem kế hoạch">
+            ${views.map((view) => `
+                <button class="work-view-tab ${current === view.id ? "active" : ""}" type="button" data-action="set-work-view" data-work-view="${e(view.id)}">
+                    <span>${e(view.label)}</span><b>${e(view.count)}</b>
+                </button>
+            `).join("")}
+        </div>
+    `;
+}
+
+function renderWorkTaskEmptyState(canManage, categoryCount) {
+    const title = canManage ? "Chưa có đầu việc" : "Chưa có công việc được giao";
+    const text = canManage
+        ? categoryCount
+            ? "Thêm đầu việc đầu tiên để bắt đầu theo dõi tiến độ."
+            : "Tạo nhóm công việc trước, sau đó thêm từng đầu việc."
+        : "Khi có việc được giao, bạn sẽ cập nhật tiến độ trực tiếp tại màn này.";
+    const action = canManage
+        ? categoryCount
+            ? `<button class="primary-btn" data-action="open-create"><i class="fa-solid fa-plus"></i><span>Thêm đầu việc</span></button>`
+            : `<button class="primary-btn" data-action="open-category-create"><i class="fa-solid fa-folder-plus"></i><span>Tạo nhóm công việc</span></button>`
+        : "";
+    return `
+        <div class="work-task-empty">
+            <i class="fa-solid fa-list-check"></i>
+            <strong>${e(title)}</strong>
+            <span>${e(text)}</span>
+            ${action}
+        </div>
+    `;
+}
+
 function renderWorkCategoryPanel() {
     const categories = getWorkCategories();
+    const canManage = canManageWorkPlans();
     return `
         <section class="panel work-category-panel">
             <div class="panel-head">
@@ -2322,13 +2408,15 @@ function renderWorkCategoryPanel() {
                     <i class="fa-solid fa-folder-tree"></i>
                     <div>
                         <h2>Nhóm công việc</h2>
-                        <span>${e(categories.length)} nhóm · sếp có thể thêm/sửa</span>
+                        <span>${e(categories.length)} nhóm · ${canManage ? "tạo/sắp xếp nhóm" : "đang theo dõi"}</span>
                     </div>
                 </div>
                 <div class="panel-actions">
+                    ${canManage ? `
                     <button class="primary-btn compact-primary" data-action="open-category-create">
                         <i class="fa-solid fa-plus"></i><span>Thêm nhóm</span>
                     </button>
+                    ` : ""}
                 </div>
             </div>
             <div class="panel-body">
@@ -2347,10 +2435,7 @@ function renderWorkCategoryPanel() {
                         <div class="work-empty-note">
                             <i class="fa-solid fa-folder-plus"></i>
                             <strong>Chưa có nhóm công việc</strong>
-                            <span>Tạo nhóm như HDSD, Quy trình tác nghiệp, hoặc nhóm mới theo nhu cầu.</span>
-                            <button class="primary-btn" data-action="open-category-create">
-                                <i class="fa-solid fa-plus"></i><span>Thêm nhóm</span>
-                            </button>
+                            <span>${canManage ? "Tạo nhóm như HDSD, Quy trình tác nghiệp, hoặc nhóm mới theo nhu cầu." : "Khi sếp tạo nhóm, danh sách nhóm sẽ hiển thị tại đây."}</span>
                         </div>
                     `}
                 </div>
@@ -2363,8 +2448,8 @@ function renderWorkCategoryRow(category) {
     const items = appState.workItems.filter((item) => String(item.categoryId || "") === String(category.id));
     const done = items.filter((item) => item.status === "Hoàn thành").length;
     const progress = items.length ? Math.round(items.reduce((total, item) => total + Number(item.progress || 0), 0) / items.length) : 0;
-    const canEdit = canModifyRecord(category);
-    const canDelete = canDeleteRecord(category);
+    const canEdit = canManageWorkPlans() && canModifyRecord(category);
+    const canDelete = canManageWorkPlans() && canDeleteRecord(category);
     return `
         <article class="work-category-row">
             <button class="work-category-main" data-action="set-work-category" data-id="${e(category.id)}">
@@ -2435,8 +2520,10 @@ function getWorkPlanStats() {
     const rows = appState.workItems || [];
     const done = rows.filter((row) => row.status === "Hoàn thành").length;
     const overdue = rows.filter((row) => getWorkItemWarning(row) === "Quá hạn").length;
+    const mine = rows.filter(isAssignedWorkItem).length;
+    const open = rows.filter((row) => !["Hoàn thành", "Hủy"].includes(String(row.status || ""))).length;
     const averageProgress = rows.length ? Math.round(rows.reduce((total, row) => total + Number(row.progress || 0), 0) / rows.length) : 0;
-    return { done, overdue, averageProgress };
+    return { total: rows.length, mine, open, done, overdue, averageProgress };
 }
 
 function getFilteredWorkRows() {
@@ -2451,6 +2538,11 @@ function getFilteredWorkRows() {
             return !selected || String(row[filter.key] || "") === String(selected);
         });
         if (!matchLegacyFilters) return false;
+        const view = ui.workView || "all";
+        if (view === "mine" && !isAssignedWorkItem(row)) return false;
+        if (view === "open" && ["Hoàn thành", "Hủy"].includes(String(row.status || ""))) return false;
+        if (view === "overdue" && row.warning !== "Quá hạn") return false;
+        if (view === "done" && String(row.status || "") !== "Hoàn thành") return false;
         return mod.columns.every((col) => {
             const selected = ui.columnFilters[columnFilterKey(mod, col)];
             if (!selected) return true;
@@ -2837,30 +2929,7 @@ function renderTableRows(mod, rows, columnMeta, includeActions = true) {
             sectionMarkup = section && section !== currentSection ? renderSectionRow(mod, section) : "";
         }
         if (section) currentSection = section;
-                        const canEdit = canModifyRecord(row);
-                        const canDelete = canDeleteRecord(row);
-                        const owner = recordOwnerLabel(row);
-        const actionCell = includeActions ? `
-            <td class="col-actions">
-                <div class="row-actions">
-                    ${canEdit ? `
-                        <button class="icon-btn" data-action="open-edit" data-id="${e(row.id)}" title="Sửa" aria-label="Sửa">
-                            <i class="fa-solid fa-pen"></i>
-                        </button>
-                    ` : ""}
-                    ${canDelete ? `
-                        <button class="icon-btn" data-action="delete-row" data-id="${e(row.id)}" title="Xóa" aria-label="Xóa">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
-                    ` : ""}
-                    ${!canEdit && !canDelete ? `
-                        <span class="permission-lock" title="Bản ghi do ${e(owner)} tạo. Chỉ người tạo hoặc admin được sửa.">
-                            <i class="fa-solid fa-lock"></i>
-                        </span>
-                    ` : ""}
-                </div>
-            </td>
-        ` : "";
+        const actionCell = includeActions ? (mod.collection === "workItems" ? renderWorkItemActionCell(row) : renderDefaultActionCell(row)) : "";
         return `
             ${sectionMarkup}
                             <tr>
@@ -2869,6 +2938,66 @@ function renderTableRows(mod, rows, columnMeta, includeActions = true) {
                             </tr>
                         `;
     }).join("");
+}
+
+function renderDefaultActionCell(row) {
+    const canEdit = canModifyRecord(row);
+    const canDelete = canDeleteRecord(row);
+    const owner = recordOwnerLabel(row);
+    return `
+        <td class="col-actions">
+            <div class="row-actions">
+                ${canEdit ? `
+                    <button class="icon-btn" data-action="open-edit" data-id="${e(row.id)}" title="Sửa" aria-label="Sửa">
+                        <i class="fa-solid fa-pen"></i>
+                    </button>
+                ` : ""}
+                ${canDelete ? `
+                    <button class="icon-btn" data-action="delete-row" data-id="${e(row.id)}" title="Xóa" aria-label="Xóa">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                ` : ""}
+                ${!canEdit && !canDelete ? `
+                    <span class="permission-lock" title="Bản ghi do ${e(owner)} tạo. Chỉ người tạo hoặc admin được sửa.">
+                        <i class="fa-solid fa-lock"></i>
+                    </span>
+                ` : ""}
+            </div>
+        </td>
+    `;
+}
+
+function renderWorkItemActionCell(row) {
+    const canManage = canFullyManageWorkItem(row);
+    const canProgress = canUpdateWorkItemProgress(row);
+    const canDelete = canManage && canDeleteRecord(row);
+    const owner = recordOwnerLabel(row);
+    return `
+        <td class="col-actions">
+            <div class="row-actions">
+                ${canManage ? `
+                    <button class="icon-btn" data-action="open-edit" data-id="${e(row.id)}" title="Sửa kế hoạch" aria-label="Sửa kế hoạch">
+                        <i class="fa-solid fa-pen"></i>
+                    </button>
+                ` : ""}
+                ${canProgress ? `
+                    <button class="icon-btn work-progress-btn" data-action="open-work-progress" data-id="${e(row.id)}" title="Cập nhật tiến độ" aria-label="Cập nhật tiến độ">
+                        <i class="fa-solid fa-clipboard-check"></i>
+                    </button>
+                ` : ""}
+                ${canDelete ? `
+                    <button class="icon-btn" data-action="delete-row" data-id="${e(row.id)}" title="Xóa đầu việc" aria-label="Xóa đầu việc">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                ` : ""}
+                ${!canManage && !canProgress ? `
+                    <span class="permission-lock" title="Đầu việc do ${e(owner)} tạo. Bạn chỉ xem được khi không phải người phụ trách.">
+                        <i class="fa-solid fa-lock"></i>
+                    </span>
+                ` : ""}
+            </div>
+        </td>
+    `;
 }
 
 function renderTableHeaderCell(mod, col, meta) {
@@ -3219,6 +3348,7 @@ function renderColumnFilterControl(mod, col, autofocus = false) {
 
 function renderModal() {
     if (!ui.modal) return `<div class="modal-backdrop" id="recordModal"></div>`;
+    if (ui.modal.mode === "work-progress") return renderWorkProgressModal();
     const mod = modules[ui.modal.tab];
     const row = ui.modal.id
         ? appState[mod.collection].find((item) => item.id === ui.modal.id)
@@ -3275,6 +3405,83 @@ function renderModal() {
                     <button class="ghost-btn" type="button" data-action="close-modal">Hủy</button>
                     ${!row ? `<button class="text-btn" type="submit" data-save-mode="add-more"><i class="fa-solid fa-plus"></i><span>Lưu & thêm tiếp</span></button>` : ""}
                     <button class="primary-btn" type="submit" data-save-mode="close"><i class="fa-solid fa-floppy-disk"></i><span>Lưu</span></button>
+                </div>
+            </form>
+        </div>
+    `;
+}
+
+function renderWorkProgressModal() {
+    const row = getWorkRowsForDisplay().find((item) => item.id === ui.modal.id);
+    if (!row) return `<div class="modal-backdrop" id="recordModal"></div>`;
+    const progress = row.progress === "" || row.progress == null ? 0 : clamp(row.progress);
+    return `
+        <div class="modal-backdrop open" id="recordModal" role="dialog" aria-modal="true">
+            <form class="modal work-progress-modal" id="recordForm">
+                <div class="modal-head">
+                    <div class="modal-title">
+                        <span><i class="fa-solid fa-clipboard-check"></i></span>
+                        <div>
+                            <h2>Cập nhật tiến độ</h2>
+                            <p>${e(row.title || "Đầu việc")} · ${e(row.categoryName || "Chưa phân nhóm")}</p>
+                        </div>
+                    </div>
+                    <button class="icon-btn" type="button" data-action="close-modal" title="Đóng" aria-label="Đóng">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="record-form-layout work-progress-layout">
+                        <div class="form-grid work-progress-form">
+                            <div class="field">
+                                <label>Trạng thái</label>
+                                <select class="field-select" name="status">
+                                    ${workStatusOptions.map((option) => `
+                                        <option value="${e(option)}" ${String(option) === String(row.status || "") ? "selected" : ""}>${e(option)}</option>
+                                    `).join("")}
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label>% hoàn thành</label>
+                                <input class="field-input" name="progress" type="number" min="0" max="100" step="1" value="${e(progress)}">
+                            </div>
+                            <div class="field">
+                                <label>Ngày hoàn thành thực tế</label>
+                                <input class="field-input" name="completedDate" type="date" value="${e(row.completedDate || "")}">
+                            </div>
+                            <div class="field full">
+                                <label>Link tài liệu / kết quả</label>
+                                <input class="field-input" name="documentUrl" type="url" value="${e(row.documentUrl || "")}" placeholder="https://...">
+                            </div>
+                            <div class="field full">
+                                <label>Vướng mắc / ghi chú</label>
+                                <textarea class="field-textarea" name="note" placeholder="Ghi vướng mắc, kết quả xử lý hoặc nội dung cần sếp hỗ trợ">${e(row.note || "")}</textarea>
+                            </div>
+                        </div>
+                        <aside class="record-rail">
+                            <div class="rail-card">
+                                <span>Công việc</span>
+                                <strong>${e(row.title || "-")}</strong>
+                                <small>${e(row.description || row.categoryName || "")}</small>
+                            </div>
+                            <div class="rail-card">
+                                <span>Người phụ trách</span>
+                                <strong>${e(row.assignee || "-")}</strong>
+                                <small>${e(row.assigneeEmail || "Không có email")}</small>
+                            </div>
+                            <div class="rail-card ${getWorkItemWarning(row) === "Quá hạn" ? "is-danger" : ""}">
+                                <span>Deadline</span>
+                                <strong>${e(formatDate(row.dueDate) || "-")}</strong>
+                                <small>${e(getWorkItemWarning(row))}</small>
+                            </div>
+                        </aside>
+                    </div>
+                </div>
+                <div class="modal-foot">
+                    <button class="ghost-btn" type="button" data-action="close-modal">Hủy</button>
+                    <button class="primary-btn" type="submit" data-save-mode="close">
+                        <i class="fa-solid fa-floppy-disk"></i><span>Lưu tiến độ</span>
+                    </button>
                 </div>
             </form>
         </div>
@@ -4203,6 +4410,7 @@ async function handleAuthAction(event) {
     ui.aiChatDraft = "";
     ui.groupChatOpen = false;
     ui.groupChatDraft = "";
+    ui.workView = "all";
     ui.profileAvatarDraft = null;
     ui.query = "";
     ui.filters = {};
@@ -4497,6 +4705,8 @@ function handleAction(event) {
     if (action === "open-category-edit") return openWorkCategoryEdit(id);
     if (action === "delete-category") return deleteWorkCategory(id);
     if (action === "set-work-category") return setWorkCategoryFilter(id);
+    if (action === "set-work-view") return setWorkView(event.currentTarget.dataset.workView);
+    if (action === "open-work-progress") return openWorkProgress(id);
     if (action === "close-modal") return closeModal();
     if (action === "reset-filters") return resetFilters();
     if (action === "toggle-column-filter") return toggleColumnFilter(event.currentTarget.dataset.columnKey);
@@ -4531,6 +4741,16 @@ function clearColumnFilter(columnKey) {
 function openCreate() {
     const mod = modules[ui.activeTab];
     if (!mod || mod.readOnly) return;
+    if (mod.collection === "workItems") {
+        if (!canManageWorkPlans()) {
+            showToast("Chỉ admin được tạo đầu việc. Bạn có thể cập nhật tiến độ việc được giao.");
+            return;
+        }
+        if (!getWorkCategories().length) {
+            showToast("Tạo nhóm công việc trước rồi thêm đầu việc.");
+            return;
+        }
+    }
     ui.modal = { tab: ui.activeTab, id: null };
     render();
 }
@@ -4549,6 +4769,10 @@ function openEdit(id) {
 }
 
 function openWorkCategoryCreate() {
+    if (!canManageWorkPlans()) {
+        showToast("Chỉ admin được tạo nhóm công việc.");
+        return;
+    }
     ui.modal = { tab: "workCategories", id: null };
     render();
 }
@@ -4556,7 +4780,7 @@ function openWorkCategoryCreate() {
 function openWorkCategoryEdit(id) {
     if (!id) return;
     const row = appState.workCategories.find((item) => item.id === id);
-    if (!row || !canModifyRecord(row)) {
+    if (!row || !canManageWorkPlans() || !canModifyRecord(row)) {
         showToast("Bạn chỉ có thể sửa nhóm do chính mình tạo hoặc dùng tài khoản admin.");
         return;
     }
@@ -4570,6 +4794,23 @@ function setWorkCategoryFilter(id) {
     render();
 }
 
+function setWorkView(view) {
+    ui.workView = view || "all";
+    ui.openColumnFilter = null;
+    render();
+}
+
+function openWorkProgress(id) {
+    if (!id) return;
+    const row = appState.workItems.find((item) => item.id === id);
+    if (!row || !canUpdateWorkItemProgress(row)) {
+        showToast("Bạn chỉ có thể cập nhật tiến độ công việc được giao.");
+        return;
+    }
+    ui.modal = { tab: "workItems", id, mode: "work-progress" };
+    render();
+}
+
 function closeModal() {
     ui.modal = null;
     render();
@@ -4577,9 +4818,14 @@ function closeModal() {
 
 async function handleSubmit(event) {
     event.preventDefault();
+    if (ui.modal?.mode === "work-progress") return handleWorkProgressSubmit(event);
     if (!ensureDbReady() || ui.saving) return;
     const mod = modules[ui.modal.tab];
     if (!mod || mod.readOnly) return;
+    if (["workCategories", "workItems"].includes(mod.collection) && !canManageWorkPlans()) {
+        showToast("Chỉ admin được tạo hoặc sửa kế hoạch công việc.");
+        return;
+    }
     const form = event.currentTarget;
     const saveMode = event.submitter?.dataset.saveMode || "close";
     const payload = {};
@@ -4634,7 +4880,7 @@ async function handleSubmit(event) {
                 appState[mod.collection] = appState[mod.collection].map((row) => row.id === ui.modal.id ? result.record : row);
             }
             appState.updatedAt = result.updatedAt || now;
-            showToast("Đã cập nhật bản ghi vào Railway DB.");
+            showToast(mod.collection === "workItems" ? "Đã cập nhật kế hoạch công việc." : "Đã cập nhật bản ghi vào Railway DB.");
         } else {
             const record = {
                 id: createId(),
@@ -4649,7 +4895,7 @@ async function handleSubmit(event) {
                 appState[mod.collection].unshift(result.record);
             }
             appState.updatedAt = result.updatedAt || now;
-            showToast("Đã thêm bản ghi vào Railway DB.");
+            showToast(mod.collection === "workCategories" ? "Đã thêm nhóm công việc." : mod.collection === "workItems" ? "Đã thêm đầu việc." : "Đã thêm bản ghi vào Railway DB.");
         }
         setDataStatus("online", "Railway Postgres đang hoạt động");
         localStorage.setItem(MIGRATION_FLAG_KEY, "active");
@@ -4664,12 +4910,66 @@ async function handleSubmit(event) {
     }
 }
 
+async function handleWorkProgressSubmit(event) {
+    if (!ensureDbReady() || ui.saving) return;
+    const current = appState.workItems.find((row) => row.id === ui.modal?.id);
+    if (!current || !canUpdateWorkItemProgress(current)) {
+        showToast("Bạn chỉ có thể cập nhật tiến độ công việc được giao.");
+        return;
+    }
+    const form = event.currentTarget;
+    let progress = form.elements.progress?.value ?? "";
+    if (typeof progress === "string") progress = progress.trim();
+    progress = progress === "" ? 0 : Number(progress);
+    if (!Number.isFinite(progress) || progress < 0 || progress > 100) {
+        showToast("% hoàn thành phải nằm trong khoảng 0-100%.");
+        return;
+    }
+    const now = new Date().toISOString();
+    const status = String(form.elements.status?.value || "").trim();
+    const completedDate = String(form.elements.completedDate?.value || "").trim();
+    const record = {
+        ...current,
+        status,
+        progress,
+        completedDate,
+        documentUrl: String(form.elements.documentUrl?.value || "").trim(),
+        note: String(form.elements.note?.value || "").trim(),
+        updatedAt: now
+    };
+    if (record.status === "Hoàn thành") {
+        record.progress = 100;
+        if (!record.completedDate) record.completedDate = todayStamp();
+    }
+    ui.saving = true;
+    try {
+        const result = await updateRemoteRecord("workItems", current.id, record);
+        if (result.state) {
+            appState = normalizeState(result.state);
+        } else {
+            appState.workItems = appState.workItems.map((row) => row.id === current.id ? result.record : row);
+        }
+        appState.updatedAt = result.updatedAt || now;
+        setDataStatus("online", "Railway Postgres đang hoạt động");
+        localStorage.setItem(MIGRATION_FLAG_KEY, "active");
+        cacheState();
+        ui.modal = null;
+        showToast("Đã cập nhật tiến độ.");
+    } catch (error) {
+        setDataStatus("offline", error.message || "Không lưu được vào Railway DB");
+        showToast(`Không lưu được tiến độ: ${error.message}`);
+    } finally {
+        ui.saving = false;
+        render();
+    }
+}
+
 async function deleteRow(id) {
     const mod = modules[ui.activeTab];
     if (!mod || mod.readOnly || !id || !ensureDbReady() || ui.saving) return;
     const row = appState[mod.collection].find((item) => item.id === id);
     if (!row) return;
-    if (!canModifyRecord(row)) {
+    if (!canDeleteRecord(row)) {
         showToast("Bạn chỉ có thể xóa bản ghi do chính mình tạo.");
         return;
     }
@@ -4700,6 +5000,7 @@ function resetFilters() {
     const mod = modules[ui.activeTab];
     ui.query = "";
     ui.openColumnFilter = null;
+    if (mod?.collection === "workItems") ui.workView = "all";
     if (mod) {
         Object.keys(ui.filters)
             .filter((key) => key.startsWith(`${mod.collection}:`))
@@ -4869,7 +5170,7 @@ async function deleteWorkCategory(id) {
     if (!id || !ensureDbReady() || ui.saving) return;
     const row = appState.workCategories.find((item) => item.id === id);
     if (!row) return;
-    if (!canDeleteRecord(row)) {
+    if (!canManageWorkPlans() || !canDeleteRecord(row)) {
         showToast("Bạn chỉ có thể xóa nhóm do chính mình tạo hoặc dùng tài khoản admin.");
         return;
     }
@@ -4990,6 +5291,11 @@ function getWorkCategorySelectOptions() {
     }));
 }
 
+function getDefaultWorkCategoryId() {
+    const categories = getWorkCategories();
+    return categories.length === 1 ? categories[0].id : "";
+}
+
 function getWorkItemWarning(row) {
     const status = String(row?.status || "").trim();
     if (status === "Hoàn thành") return "Đã xong";
@@ -5031,7 +5337,10 @@ function getHandoffLevel2Options(rowOrLevel1 = null) {
 }
 
 function getColumnRawValue(row, col) {
-    if (col.key === "progress") return percent(row.executedCases, row.totalCases);
+    if (col.key === "progress") {
+        if (row.executedCases !== undefined || row.totalCases !== undefined) return percent(row.executedCases, row.totalCases);
+        return row.progress;
+    }
     return row[col.key];
 }
 
@@ -5384,6 +5693,32 @@ function canModifyRecord(row) {
 function canDeleteRecord(row) {
     if (authState.user?.role === "admin") return true;
     return row?._ownership?.canDelete === true;
+}
+
+function canManageWorkPlans() {
+    return authState.user?.role === "admin";
+}
+
+function canFullyManageWorkItem(row) {
+    return canManageWorkPlans() || row?._ownership?.isOwner === true;
+}
+
+function isAssignedWorkItem(row) {
+    const identities = [authState.user?.email, authState.user?.username]
+        .map((value) => String(value || "").trim().toLowerCase())
+        .filter(Boolean);
+    const assigneeEmail = String(row?.assigneeEmail || "").trim().toLowerCase();
+    const assigneeName = String(row?.assignee || "").trim().toLowerCase();
+    const userName = String(authState.user?.name || "").trim().toLowerCase();
+    return Boolean(
+        row?._ownership?.isLinkedOwner ||
+        (assigneeEmail && identities.includes(assigneeEmail)) ||
+        (assigneeName && userName && assigneeName === userName)
+    );
+}
+
+function canUpdateWorkItemProgress(row) {
+    return canFullyManageWorkItem(row) || isAssignedWorkItem(row) || row?._ownership?.canEdit === true;
 }
 
 function recordOwnerLabel(row) {

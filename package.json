@@ -13,7 +13,8 @@
     "sync:handoff-sections": "node scripts/sync-handoff-sections.js",
     "smoke:dashboard": "node scripts/smoke-dashboard.js",
     "smoke:ui": "node scripts/smoke-ui.js",
-    "smoke:rbac": "node scripts/smoke-rbac.js"
+    "smoke:rbac": "node scripts/smoke-rbac.js",
+    "smoke:workplan": "node scripts/smoke-workplan.js"
   },
   "engines": {
     "node": ">=20"
