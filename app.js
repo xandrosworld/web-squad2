@@ -982,6 +982,7 @@ async function replaceRemoteState(state) {
 
 function render() {
     const pageScroll = lastRenderedTab === ui.activeTab ? capturePageScroll() : null;
+    const previousTabbarScrollLeft = document.querySelector(".tabbar")?.scrollLeft || 0;
     if (authState.status === "checking") {
         lastRenderedTab = null;
         document.getElementById("app").innerHTML = `
@@ -1030,6 +1031,7 @@ function render() {
 
     bindEvents();
     lastRenderedTab = ui.activeTab;
+    restoreTabbarScrollLeft(previousTabbarScrollLeft);
 
     let restoredFocus = false;
     if (focus?.id) {
@@ -1049,10 +1051,18 @@ function render() {
     restorePageScroll(pageScroll);
     const tabScrollBehavior = pendingActiveTabScroll || "auto";
     pendingActiveTabScroll = null;
-    requestAnimationFrame(() => syncActiveTabScroll(tabScrollBehavior));
+    syncActiveTabScroll(tabScrollBehavior);
+    requestAnimationFrame(() => syncActiveTabScroll("auto"));
 }
 
-function requestActiveTabScroll(behavior = "smooth") {
+function restoreTabbarScrollLeft(scrollLeft) {
+    const tabbar = document.querySelector(".tabbar");
+    if (!tabbar) return;
+    const maxScrollLeft = Math.max(0, tabbar.scrollWidth - tabbar.clientWidth);
+    tabbar.scrollLeft = Math.min(Math.max(0, scrollLeft), maxScrollLeft);
+}
+
+function requestActiveTabScroll(behavior = "auto") {
     pendingActiveTabScroll = behavior;
 }
 
@@ -1066,13 +1076,18 @@ function syncActiveTabScroll(behavior = "auto") {
 
     const tabbarRect = tabbar.getBoundingClientRect();
     const activeRect = activeTab.getBoundingClientRect();
-    const edgePadding = 8;
+    const edgePadding = 12;
     const isVisible = activeRect.left >= tabbarRect.left + edgePadding && activeRect.right <= tabbarRect.right - edgePadding;
-    if (isVisible && behavior !== "smooth") return;
+    if (isVisible) return;
 
-    const activeCenter = activeRect.left - tabbarRect.left + tabbar.scrollLeft + (activeRect.width / 2);
-    const targetLeft = activeCenter - (tabbar.clientWidth / 2);
-    const nextLeft = Math.min(Math.max(0, Math.round(targetLeft)), maxScrollLeft);
+    let nextLeft = tabbar.scrollLeft;
+    if (activeRect.left < tabbarRect.left + edgePadding) {
+        nextLeft -= (tabbarRect.left + edgePadding) - activeRect.left;
+    } else if (activeRect.right > tabbarRect.right - edgePadding) {
+        nextLeft += activeRect.right - (tabbarRect.right - edgePadding);
+    }
+    nextLeft = Math.min(Math.max(0, Math.round(nextLeft)), maxScrollLeft);
+    if (Math.abs(tabbar.scrollLeft - nextLeft) < 1) return;
 
     tabbar.scrollTo({
         left: nextLeft,
@@ -3351,7 +3366,7 @@ function bindEvents() {
             ui.query = "";
             ui.openColumnFilter = null;
             history.replaceState(null, "", `#${ui.activeTab}`);
-            requestActiveTabScroll("smooth");
+            requestActiveTabScroll();
             render();
         });
     });
@@ -5065,7 +5080,7 @@ window.addEventListener("hashchange", () => {
     ui.activeTab = getInitialTab();
     ui.query = "";
     ui.openColumnFilter = null;
-    requestActiveTabScroll("smooth");
+    requestActiveTabScroll();
     render();
 });
 
