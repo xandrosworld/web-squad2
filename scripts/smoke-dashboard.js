@@ -39,8 +39,8 @@ let createdPlanId = "";
     severity: "Blocker",
     status: "Open",
     foundDate: new Date().toISOString().slice(0, 10),
-    tester: "Dashboard smoke",
-    owner: "Dashboard smoke",
+    tester: "Mai Tấn Thành",
+    owner: "NV1 - Bùi Thị Mai Phương",
     resolvedDate: "",
     aging: 1,
     note: "Dashboard smoke auto cleanup"

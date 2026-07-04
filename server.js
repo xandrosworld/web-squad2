@@ -82,6 +82,17 @@ const ownerOptions = [
   "ALL",
   "BA"
 ];
+const personnelNameOptions = [
+  "Bùi Thị Mai Phương",
+  "Hoàng Thành Trí",
+  "Huỳnh Công Sinh",
+  "Lê Trần Sơn",
+  "Mai Tấn Thành",
+  "Nguyễn Châu Giang",
+  "Nguyễn Gia Huy",
+  "Phạm Anh Tuấn",
+  "Trần Đình Tuấn"
+];
 const ownerAccountLinks = [
   { code: "NV1", label: ownerOptions[0], email: "phuongbtm@bidv.com.vn" },
   { code: "NV2", label: ownerOptions[1], email: "giangnc2@bidv.com.vn" },
@@ -91,7 +102,8 @@ const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
 const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Done UAT"];
 const planStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Hoàn thành", "Tạm dừng/Blocked", "Chờ sửa lỗi", "Đã ký UAT"];
 const testStatusOptions = ["Chưa Test", "Đang Test", "Passed", "Failed"];
-const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopen", "Reopened", "Resolved", "SIT Pass", "SIT Fail"];
+const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail", "SIT Pass", "Reopen"];
+const dailyBugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail"];
 const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 const workCategoryStatusOptions = ["Đang theo dõi", "Tạm dừng", "Hoàn thành"];
 const workStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Chờ phản hồi", "Tạm dừng", "Hoàn thành", "Quá hạn", "Hủy"];
@@ -145,8 +157,9 @@ const collectionRules = {
     numbers: ["totalCases", "executedCases", "passedCases", "failedCases", "criticalBugs", "highBugs"],
     percents: [],
     enums: {
-      bugStatus: bugStatusOptions,
-      maxBugSeverity: bugSeverityOptions
+      bugStatus: dailyBugStatusOptions,
+      maxBugSeverity: bugSeverityOptions,
+      handler: personnelNameOptions
     }
   },
   defects: {
@@ -155,7 +168,9 @@ const collectionRules = {
     percents: [],
     enums: {
       severity: bugSeverityOptions,
-      status: bugStatusOptions
+      status: bugStatusOptions,
+      tester: personnelNameOptions,
+      owner: ownerOptions
     }
   },
   userStories: {

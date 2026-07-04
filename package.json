@@ -9,6 +9,7 @@
     "dev": "node server.js",
     "check": "node --check server.js && node --check app.js",
     "check:workbook": "node scripts/check-workbook-schema.js",
+    "check:hd-uat": "node scripts/check-hd-uat-mapping.js",
     "import:workbook:db": "node scripts/import-workbook-to-db.js",
     "sync:handoff-sections": "node scripts/sync-handoff-sections.js",
     "smoke:dashboard": "node scripts/smoke-dashboard.js",

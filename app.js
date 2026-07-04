@@ -50,6 +50,17 @@ const ownerOptions = [
     "ALL",
     "BA"
 ];
+const personnelNameOptions = [
+    "Bùi Thị Mai Phương",
+    "Hoàng Thành Trí",
+    "Huỳnh Công Sinh",
+    "Lê Trần Sơn",
+    "Mai Tấn Thành",
+    "Nguyễn Châu Giang",
+    "Nguyễn Gia Huy",
+    "Phạm Anh Tuấn",
+    "Trần Đình Tuấn"
+];
 const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
 const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Done UAT"];
 const handoffSectionDefaults = [
@@ -65,7 +76,8 @@ const handoffSectionDefaults = [
 ];
 const planStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Hoàn thành", "Tạm dừng/Blocked", "Chờ sửa lỗi", "Đã ký UAT"];
 const testStatusOptions = ["Chưa Test", "Đang Test", "Passed", "Failed"];
-const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopen", "Reopened", "Resolved", "SIT Pass", "SIT Fail"];
+const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail", "SIT Pass", "Reopen"];
+const dailyBugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail"];
 const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 const legacyStatusOptions = [
     "Chưa bắt đầu",
@@ -450,11 +462,11 @@ const modules = {
             { key: "totalCases", label: "Tổng TC", type: "number" },
             { key: "passedCases", label: "TC Passed", type: "number" },
             { key: "failedCases", label: "TC Failed", type: "number" },
-            { key: "bugStatus", label: "Trạng thái lỗi", type: "select", options: bugStatusOptions },
+            { key: "bugStatus", label: "Trạng thái lỗi", type: "select", options: dailyBugStatusOptions },
             { key: "maxBugSeverity", label: "Mức độ lỗi", type: "select", options: bugSeverityOptions },
             { key: "bugDetail", label: "Chi tiết lỗi", type: "textarea", full: true },
             { key: "blocker", label: "Vướng mắc/Blocker", type: "textarea", full: true },
-            { key: "handler", label: "Người xử lý", type: "text" },
+            { key: "handler", label: "Người xử lý", type: "select", options: personnelNameOptions },
             { key: "dueDate", label: "Thời hạn xử lý", type: "date" }
         ],
         filters: [
@@ -497,7 +509,7 @@ const modules = {
             { key: "severity", label: "Severity", type: "select", options: bugSeverityOptions },
             { key: "status", label: "Status", type: "select", options: bugStatusOptions },
             { key: "foundDate", label: "Ngày phát hiện", type: "date" },
-            { key: "tester", label: "Tester", type: "text" },
+            { key: "tester", label: "Tester", type: "select", options: personnelNameOptions },
             { key: "owner", label: "Owner", type: "select", options: ownerOptions },
             { key: "resolvedDate", label: "Ngày xử lý", type: "date" },
             { key: "aging", label: "Aging", type: "number" },
@@ -5616,14 +5628,14 @@ function renderWorkWarning(value) {
 
 function renderStatus(value) {
     const text = String(value || "");
-    const tone = text.includes("Đã bàn giao") || value === "Done" || value === "Done UAT" || value === "Hoàn thành" || value === "Đã ký UAT" || value === "Closed" ? "green"
-        : value === "Đạt" || value === "Xanh" ? "green"
-            : text.includes("Chưa bàn giao") || value === "Vàng" || value === "Đạt có điều kiện" || value === "Chưa hoàn thành TC" || value === "Chưa bắt đầu" || value === "Chờ sửa lỗi" || value === "Pending" || value === "In Progress" || value === "Major" ? "yellow"
-                : value === "Đỏ" || value === "Chưa đạt" || value === "Thiếu tester" || value === "Tạm dừng/Blocked" || value === "Open" || value === "SIT Fail" || value === "Blocker" || value === "Critical" ? "red"
-                    : value === "Done SIT" || value === "Retest" || value === "Reopen" || value === "Reopened" ? "purple"
-                        : value === "Done DEV" || value === "Đang kiểm thử" || value === "Resolved" || value === "SIT Pass" || value === "Minor" ? "blue"
-                            : value === "Done RSD" ? "yellow"
-                                : value === "Chờ fix" || value === "Tạm hoãn" ? "red"
+    const tone = text.includes("Đã bàn giao") || value === "Done" || value === "Done UAT" || value === "Hoàn thành" || value === "Đã ký UAT" || value === "Closed" || value === "Đạt" || value === "Xanh" ? "green"
+        : value === "Blocker" || value === "SIT Fail" ? "red-dark"
+            : value === "Đỏ" || value === "Chưa đạt" || value === "Thiếu tester" || value === "Tạm dừng/Blocked" || value === "Open" || value === "Critical" || value === "Chờ fix" || value === "Tạm hoãn" ? "red"
+                : value === "Major" || value === "In Progress" ? "orange"
+                    : text.includes("Chưa bàn giao") || value === "Minor" || value === "Pending" || value === "Vàng" || value === "Đạt có điều kiện" || value === "Chưa hoàn thành TC" || value === "Chưa bắt đầu" || value === "Chờ sửa lỗi" || value === "Done RSD" ? "yellow"
+                        : value === "Trivial" || value === "Done DEV" || value === "Đang kiểm thử" || value === "Resolved" || value === "SIT Pass" ? "blue"
+                            : value === "Done SIT" || value === "Retest" || value === "Reopen" || value === "Reopened" ? "purple"
+                                : value === "Cancelled" ? "gray-dark"
                                     : "gray";
     return tag(value, tone);
 }

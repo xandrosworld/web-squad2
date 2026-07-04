@@ -2118,6 +2118,11 @@ body.is-column-resizing * {
     color: var(--warning);
 }
 
+.tag.orange {
+    background: #fff7ed;
+    color: #c2410c;
+}
+
 .tag.blue {
     background: #eff6ff;
     color: var(--info);
@@ -2138,9 +2143,19 @@ body.is-column-resizing * {
     color: var(--danger);
 }
 
+.tag.red-dark {
+    background: #ffe4e6;
+    color: #9f1239;
+}
+
 .tag.gray {
     background: #f3f4f6;
     color: #4b5563;
+}
+
+.tag.gray-dark {
+    background: #f1f5f9;
+    color: #334155;
 }
 
 .cell-badge-list {
