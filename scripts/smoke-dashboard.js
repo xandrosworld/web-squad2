@@ -184,7 +184,7 @@ async function assertPlanDashboardRecomputes(payload) {
     if (afterTotalCases !== expectedTotalCases) {
       throw new Error(`Dashboard plan total did not recompute from PhanCong_UAT: expected ${expectedTotalCases}, got ${afterTotalCases}`);
     }
-    await assertDashboardMetric("dashboard", "Tá»•ng Testcase", expectedTotalCases);
+    await assertDashboardMetric("dashboard", "Testcase", expectedTotalCases);
   } finally {
     if (createdPlanId) {
       await apiJson(`/api/records/plans/${encodeURIComponent(createdPlanId)}`, { method: "DELETE" });
