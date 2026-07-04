@@ -3394,6 +3394,7 @@ function bindTableScrollbars() {
 
         const collection = table.dataset.resizableTable || ui.activeTab;
         spacer.style.width = `${getTableRenderedWidth(table)}px`;
+        table.style.setProperty("--table-view-width", `${main.clientWidth}px`);
         restoreTableScrollLeft(collection, top, main);
         let syncing = false;
         const syncScroll = (source, target) => {
