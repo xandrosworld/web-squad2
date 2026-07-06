@@ -2633,9 +2633,11 @@ body.is-column-resizing * {
     width: 100%;
     min-width: 520px;
     border-collapse: collapse;
+    table-layout: fixed;
     color: #172033;
     font-size: 13px;
     line-height: 18px;
+    font-variant-numeric: tabular-nums;
 }
 
 .sheet-dashboard-table.compact {
@@ -2659,6 +2661,10 @@ body.is-column-resizing * {
     text-align: left;
 }
 
+.sheet-dashboard-table thead th:not(:first-child) {
+    text-align: right;
+}
+
 .sheet-dashboard-table tbody tr:nth-child(even) td {
     background: #fbfdff;
 }
@@ -2670,18 +2676,60 @@ body.is-column-resizing * {
 .sheet-dashboard-table .label-cell {
     color: #334155;
     font-weight: 850;
+    text-align: left;
 }
 
 .sheet-dashboard-table .value-cell {
     color: #111827;
     font-weight: 800;
+    text-align: right;
 }
 
-.sheet-dashboard-table.compact .value-cell,
-.matrix-dashboard-table .value-cell,
-.owner-dashboard-table .value-cell,
-.sprint-dashboard-table .value-cell {
+.sheet-dashboard-table.compact th:first-child,
+.sheet-dashboard-table.compact td:first-child {
+    width: 62%;
+}
+
+.sheet-dashboard-table.compact th:last-child,
+.sheet-dashboard-table.compact td:last-child {
+    width: 38%;
     text-align: right;
+}
+
+.sprint-dashboard-table th:first-child,
+.sprint-dashboard-table td:first-child,
+.matrix-dashboard-table th:first-child,
+.matrix-dashboard-table td:first-child,
+.owner-dashboard-table th:first-child,
+.owner-dashboard-table td:first-child {
+    text-align: left;
+}
+
+.sprint-dashboard-table thead th:not(:first-child),
+.sprint-dashboard-table .value-cell,
+.matrix-dashboard-table thead th:not(:first-child),
+.matrix-dashboard-table .value-cell {
+    text-align: center;
+}
+
+.owner-dashboard-table thead th:not(:first-child),
+.owner-dashboard-table .value-cell {
+    text-align: right;
+}
+
+.sprint-dashboard-table th:first-child,
+.sprint-dashboard-table td:first-child {
+    width: 16%;
+}
+
+.sprint-dashboard-table th:last-child,
+.sprint-dashboard-table td:last-child {
+    width: 20%;
+}
+
+.owner-dashboard-table th:first-child,
+.owner-dashboard-table td:first-child {
+    width: 34%;
 }
 
 .sprint-dashboard-table,
