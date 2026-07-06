@@ -18,6 +18,8 @@ const TABLE_TARGET_MIN_WIDTH = 980;
 const TABLE_VIEWPORT_GUTTER = 104;
 const COLUMN_HEADER_CONTROL_WIDTH = 58;
 const COLUMN_HEADER_FIT_BUFFER = 8;
+const ROWS_PER_PAGE_OPTIONS = [10, 20, 50];
+const DEFAULT_ROWS_PER_PAGE = 20;
 
 const computedFieldsByCollection = {
     features: [
@@ -832,17 +834,21 @@ const tabs = [
     { id: "readiness", label: "TongKet_Sprint", icon: modules.readiness.icon },
     { id: "matrix", label: "NangSuat_Tester", icon: modules.matrix.icon },
     { id: "defectSummary", label: "Tong hop loi", icon: modules.defectSummary.icon },
-    { id: "userStories", label: "DS_US", icon: modules.userStories.icon, sheetMark: "red" },
-    { id: "bugSources", label: "DS.Loi", icon: modules.bugSources.icon, sheetMark: "red" }
+    { id: "userStories", label: "DS_US", icon: modules.userStories.icon, sheetMark: "red", hidden: true },
+    { id: "bugSources", label: "DS.Loi", icon: modules.bugSources.icon, sheetMark: "red", hidden: true }
 ];
 
+function visibleTabs() {
+    return tabs.filter((tab) => !tab.hidden);
+}
+
 function getDataModuleCount() {
-    return tabs.filter((tab) => modules[tab.id]).length;
+    return visibleTabs().filter((tab) => modules[tab.id]).length;
 }
 
 function getInitialTab() {
     const id = (window.location.hash || "").replace("#", "");
-    return tabs.some((tab) => tab.id === id) ? id : "dashboard";
+    return visibleTabs().some((tab) => tab.id === id) ? id : "dashboard";
 }
 
 function tabButtonClass(tab, baseClass) {
@@ -888,6 +894,8 @@ let ui = {
     columnFilters: {},
     columnWidths: loadColumnWidths(),
     tableScrollLefts: loadTableScrollLefts(),
+    tablePages: {},
+    tablePageSizes: {},
     openColumnFilter: null,
     modal: null,
     profileOpen: false,
@@ -1337,10 +1345,10 @@ function renderLoginPage() {
 
                         <form id="loginForm" class="login-form">
                             <div class="login-field">
-                                <label for="loginIdentifier">Email / Username</label>
+                                <label for="loginIdentifier">Email / mã BIDV</label>
                                 <div class="login-input-wrap">
                                     <i class="fa-regular fa-user"></i>
-                                    <input id="loginIdentifier" name="identifier" type="text" autocomplete="username" placeholder="Nhập email hoặc username" required>
+                                    <input id="loginIdentifier" name="identifier" type="text" autocomplete="username" placeholder="Ví dụ: huyng hoặc huyng@bidv.com.vn" required>
                                 </div>
                             </div>
 
@@ -1381,7 +1389,7 @@ function renderSidebar() {
         <aside class="sidebar" aria-label="Điều hướng">
             <div class="sidebar-logo"><i class="fa-solid fa-bars"></i></div>
             <nav class="sidebar-menu">
-                ${tabs.map((tab) => `
+                ${visibleTabs().map((tab) => `
                     <button class="${tabButtonClass(tab, "side-btn")}" data-tab="${tab.id}" title="${e(tab.label)}" aria-label="${e(tab.label)}">
                         <i class="fa-solid ${tab.icon}"></i>
                     </button>
@@ -1451,7 +1459,7 @@ function renderKpis() {
 function renderTabs() {
     return `
         <nav class="tabbar" aria-label="Module">
-            ${tabs.map((tab) => `
+            ${visibleTabs().map((tab) => `
                 <button class="${tabButtonClass(tab, "tab-btn")}" data-tab="${tab.id}">
                     <i class="fa-solid ${tab.icon}"></i>${e(tab.label)}
                 </button>
@@ -1564,6 +1572,8 @@ function renderDefectDashboardPanel() {
                         row.total
                     ]), "matrix-dashboard-table")}
                 </article>
+            </div>
+            <div class="defect-dashboard-summary-row">
                 <article class="sheet-dashboard-card">
                     <div class="sheet-card-title">
                         <i class="fa-solid fa-list-check"></i>
@@ -2300,7 +2310,9 @@ function getRecentActivities(limit = 8) {
 
 function renderWorkPlanModule() {
     const mod = modules.workItems;
-    const rows = getFilteredWorkRows();
+    const filteredRows = getFilteredWorkRows();
+    const pageState = getPaginationState(mod.collection, filteredRows);
+    const rows = pageState.rows;
     const categories = getWorkCategories();
     const stats = getWorkPlanStats();
     const total = stats.total;
@@ -2326,7 +2338,7 @@ function renderWorkPlanModule() {
                             <i class="fa-solid ${mod.icon}"></i>
                             <div>
                                 <h2>Danh sách đầu việc</h2>
-                                <span>${e(total)} đầu việc · ${e(rows.length)} đang hiển thị</span>
+                                <span>${e(total)} đầu việc · ${renderPaginationSummary(pageState)}</span>
                             </div>
                         </div>
                         <div class="panel-actions">
@@ -2346,6 +2358,7 @@ function renderWorkPlanModule() {
                         ${total ? `
                             ${renderWorkViewTabs(stats)}
                             ${renderWorkPlanFilterBar()}
+                            ${renderPaginationControls(mod.collection, pageState)}
                             ${renderTable(mod, rows)}
                         ` : renderWorkTaskEmptyState(canManage, categories.length)}
                     </div>
@@ -2621,7 +2634,9 @@ function compareBySortOrderThenName(a, b) {
 
 function renderModule(mod) {
     if (mod.collection === "guide") return renderGuideModule(mod);
-    const rows = getFilteredRows(mod);
+    const filteredRows = getFilteredRows(mod);
+    const pageState = getPaginationState(mod.collection, filteredRows);
+    const rows = pageState.rows;
     const total = appState[mod.collection].length;
     const activeFilters = countActiveFilters(mod);
     return `
@@ -2632,7 +2647,7 @@ function renderModule(mod) {
                         <i class="fa-solid ${mod.icon}"></i>
                         <div>
                             <h2>${e(mod.label)}</h2>
-                            <span>${e(total)} bản ghi · ${e(mod.columns.length)} cột · ${e(rows.length)} đang hiển thị</span>
+                            <span>${e(total)} bản ghi · ${e(mod.columns.length)} cột · ${renderPaginationSummary(pageState)}</span>
                         </div>
                     </div>
                     <div class="panel-actions">
@@ -2649,6 +2664,7 @@ function renderModule(mod) {
                     </div>
                 </div>
                 <div class="panel-body">
+                    ${renderPaginationControls(mod.collection, pageState)}
                     ${renderTable(mod, rows)}
                 </div>
             </section>
@@ -2783,6 +2799,91 @@ function renderGuideModule(mod) {
             </div>
         </div>
     `;
+}
+
+function getPaginationState(collection, rows) {
+    const pageSize = getRowsPerPage(collection);
+    const totalRows = rows.length;
+    const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+    const page = Math.min(Math.max(1, Number(ui.tablePages?.[collection] || 1)), totalPages);
+    if (!ui.tablePages) ui.tablePages = {};
+    if (Number(ui.tablePages[collection] || 1) !== page) ui.tablePages[collection] = page;
+    const startIndex = totalRows ? (page - 1) * pageSize : 0;
+    const endIndex = Math.min(totalRows, startIndex + pageSize);
+    return {
+        collection,
+        page,
+        pageSize,
+        totalPages,
+        totalRows,
+        start: totalRows ? startIndex + 1 : 0,
+        end: endIndex,
+        rows: rows.slice(startIndex, endIndex)
+    };
+}
+
+function getRowsPerPage(collection) {
+    const value = Number(ui.tablePageSizes?.[collection]);
+    return ROWS_PER_PAGE_OPTIONS.includes(value) ? value : DEFAULT_ROWS_PER_PAGE;
+}
+
+function renderPaginationSummary(pageState) {
+    if (!pageState.totalRows) return "0 đang hiển thị";
+    return `${e(pageState.totalRows)} kết quả · đang xem ${e(pageState.start)}-${e(pageState.end)}`;
+}
+
+function renderPaginationControls(collection, pageState) {
+    if (!pageState || pageState.totalRows <= ROWS_PER_PAGE_OPTIONS[0]) return "";
+    return `
+        <div class="table-pagination" data-pagination-collection="${e(collection)}">
+            <div class="table-page-size">
+                <span>Dòng/trang</span>
+                <select class="field-select compact-select" data-page-size="${e(collection)}" aria-label="Chọn số dòng mỗi trang">
+                    ${ROWS_PER_PAGE_OPTIONS.map((option) => `<option value="${e(option)}" ${option === pageState.pageSize ? "selected" : ""}>${e(option)}</option>`).join("")}
+                </select>
+            </div>
+            <div class="table-page-status">
+                ${e(pageState.start)}-${e(pageState.end)} / ${e(pageState.totalRows)}
+            </div>
+            <div class="table-page-actions">
+                <button class="icon-btn page-btn" type="button" data-action="set-table-page" data-collection="${e(collection)}" data-page="${e(pageState.page - 1)}" ${pageState.page <= 1 ? "disabled" : ""} title="Trang trước" aria-label="Trang trước">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <span>${e(pageState.page)} / ${e(pageState.totalPages)}</span>
+                <button class="icon-btn page-btn" type="button" data-action="set-table-page" data-collection="${e(collection)}" data-page="${e(pageState.page + 1)}" ${pageState.page >= pageState.totalPages ? "disabled" : ""} title="Trang sau" aria-label="Trang sau">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function resetTablePage(collection) {
+    if (!collection) return;
+    ui.tablePages = {
+        ...(ui.tablePages || {}),
+        [collection]: 1
+    };
+}
+
+function setTablePage(collection, page) {
+    if (!collection) return;
+    ui.tablePages = {
+        ...(ui.tablePages || {}),
+        [collection]: Math.max(1, Number(page) || 1)
+    };
+    render();
+}
+
+function setRowsPerPage(collection, pageSize) {
+    const value = Number(pageSize);
+    if (!collection || !ROWS_PER_PAGE_OPTIONS.includes(value)) return;
+    ui.tablePageSizes = {
+        ...(ui.tablePageSizes || {}),
+        [collection]: value
+    };
+    resetTablePage(collection);
+    render();
 }
 
 function renderGuideTable(title, headers, rows) {
@@ -3941,6 +4042,8 @@ function bindEvents() {
             ui.activeTab = button.dataset.tab;
             ui.query = "";
             ui.openColumnFilter = null;
+            const mod = modules[ui.activeTab];
+            if (mod) resetTablePage(mod.collection);
             history.replaceState(null, "", `#${ui.activeTab}`);
             requestActiveTabScroll();
             render();
@@ -4008,7 +4111,9 @@ function bindEvents() {
     const search = document.getElementById("searchInput");
     if (search) {
         search.addEventListener("input", (event) => {
+            const mod = modules[ui.activeTab];
             ui.query = event.target.value;
+            if (mod) resetTablePage(mod.collection);
             render();
         });
     }
@@ -4018,6 +4123,7 @@ function bindEvents() {
             const mod = modules[ui.activeTab];
             const key = `${mod.collection}:${event.target.dataset.filterKey}`;
             ui.filters[key] = event.target.value;
+            resetTablePage(mod.collection);
             render();
         });
     });
@@ -4027,9 +4133,16 @@ function bindEvents() {
             const mod = modules[ui.activeTab];
             if (!mod) return;
             ui.columnFilters[columnFilterKey(mod, { key: event.target.dataset.columnFilter })] = event.target.value;
+            resetTablePage(mod.collection);
             render();
         };
         input.addEventListener(input.tagName === "SELECT" ? "change" : "input", updateColumnFilter);
+    });
+
+    document.querySelectorAll("[data-page-size]").forEach((select) => {
+        select.addEventListener("change", (event) => {
+            setRowsPerPage(event.target.dataset.pageSize, event.target.value);
+        });
     });
 
     bindColumnResizeEvents();
@@ -4759,6 +4872,7 @@ function handleAction(event) {
     if (action === "delete-category") return deleteWorkCategory(id);
     if (action === "set-work-category") return setWorkCategoryFilter(id);
     if (action === "set-work-view") return setWorkView(event.currentTarget.dataset.workView);
+    if (action === "set-table-page") return setTablePage(event.currentTarget.dataset.collection, event.currentTarget.dataset.page);
     if (action === "open-work-progress") return openWorkProgress(id);
     if (action === "close-modal") return closeModal();
     if (action === "reset-filters") return resetFilters();
@@ -4844,12 +4958,14 @@ function openWorkCategoryEdit(id) {
 function setWorkCategoryFilter(id) {
     ui.filters["workItems:categoryId"] = id || "";
     ui.openColumnFilter = null;
+    resetTablePage("workItems");
     render();
 }
 
 function setWorkView(view) {
     ui.workView = view || "all";
     ui.openColumnFilter = null;
+    resetTablePage("workItems");
     render();
 }
 
@@ -5054,6 +5170,7 @@ function resetFilters() {
     ui.query = "";
     ui.openColumnFilter = null;
     if (mod?.collection === "workItems") ui.workView = "all";
+    if (mod) resetTablePage(mod.collection);
     if (mod) {
         Object.keys(ui.filters)
             .filter((key) => key.startsWith(`${mod.collection}:`))

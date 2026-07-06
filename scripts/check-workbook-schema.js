@@ -188,6 +188,13 @@ function assertUpdatedWorkbookCalculations(state) {
   if (firstDefect.bugId !== "PS0142025-10272" || firstDefect.linkedUsKey !== "PS0142025-5937") {
     throw new Error(`DEFECT_LOG first row mismatch: ${JSON.stringify(firstDefect)}`);
   }
+  if (firstDefect.tester !== "Nguyễn Gia Huy") {
+    throw new Error(`DEFECT_LOG tester lookup mismatch: ${JSON.stringify(firstDefect)}`);
+  }
+  const defectsWithTester = state.defects.filter((row) => row.tester).length;
+  if (defectsWithTester < 60) {
+    throw new Error(`DEFECT_LOG tester lookup missed too many rows: ${defectsWithTester}/${state.defects.length}`);
+  }
   const defectStatusCounts = countBy(state.defects, "status");
   if (defectStatusCounts.Open !== 15 || defectStatusCounts.Closed !== 17 || defectStatusCounts["SIT Pass"] !== 14) {
     throw new Error(`DEFECT_LOG status counts mismatch: ${JSON.stringify(defectStatusCounts)}`);

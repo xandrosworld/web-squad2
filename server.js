@@ -605,6 +605,7 @@ app.get("/api/auth/me", asyncHandler(async (req, res) => {
 app.post("/api/auth/login", asyncHandler(async (req, res) => {
   await ensureSchema();
   const identifier = String(req.body.identifier || req.body.email || req.body.username || "").trim().toLowerCase();
+  const identifierCandidates = loginIdentifierCandidates(identifier);
   const password = String(req.body.password || "");
   if (!identifier || !password) {
     throw httpError(400, "Vui lòng nhập tài khoản và mật khẩu.");
@@ -613,9 +614,9 @@ app.post("/api/auth/login", asyncHandler(async (req, res) => {
   const result = await getPool().query(`
     select id, username, email, name, role, password_hash, active, avatar_data
     from app_users
-    where lower(username) = $1 or lower(coalesce(email, '')) = $1
+    where lower(username) = any($1::text[]) or lower(coalesce(email, '')) = any($1::text[])
     limit 1
-  `, [identifier]);
+  `, [identifierCandidates]);
   const user = result.rows[0];
   if (!user || !user.active || !(await verifyPassword(password, user.password_hash))) {
     throw httpError(401, "Tài khoản hoặc mật khẩu không đúng.");
@@ -714,12 +715,12 @@ app.post("/api/auth/users", requireAdmin, asyncHandler(async (req, res) => {
 app.get("/api/state", asyncHandler(async (req, res) => {
   await ensureSchema();
   const state = await readState(getPool(), req.user);
-  res.json({ state });
+  res.json({ state: applyWorkbookRulesForResponse(state) });
 }));
 
 app.get("/api/export/excel", asyncHandler(async (req, res) => {
   await ensureSchema();
-  const state = await readState(getPool());
+  const state = applyWorkbookRulesForResponse(await readState(getPool()));
   const workbook = buildExcelWorkbook(state);
   const buffer = await workbook.xlsx.writeBuffer();
   const filename = `squad2-uat-${new Date().toISOString().slice(0, 10)}.xlsx`;
@@ -756,7 +757,7 @@ app.post("/api/import/excel", requireAdmin, express.raw({
       }
     }
     await touchMeta(client);
-    const state = await readState(client, req.user);
+    const state = applyWorkbookRulesForResponse(await readState(client, req.user));
     await client.query("commit");
     res.json({ state, imported: summarizeImportState(importState, workbookCollections) });
   } catch (error) {
@@ -818,7 +819,7 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
   }
   const message = normalizeAiMessage(req.body.message || req.body.body);
   const history = normalizeAiHistory(req.body.history);
-  const state = await readState(getPool(), req.user);
+  const state = applyWorkbookRulesForResponse(await readState(getPool(), req.user));
   const shortcutAnswer = tryAnswerAiShortcut(message, state);
   if (shortcutAnswer) {
     res.json({ answer: shortcutAnswer });
@@ -846,7 +847,7 @@ app.put("/api/state", requireAdmin, asyncHandler(async (req, res) => {
       }
     }
     await touchMeta(client);
-    const nextState = await readState(client, req.user);
+    const nextState = applyWorkbookRulesForResponse(await readState(client, req.user));
     await client.query("commit");
     res.json({ state: nextState });
   } catch (error) {
@@ -1005,6 +1006,7 @@ module.exports = {
   isComputedRecordField,
   buildExcelWorkbook,
   excelSheets,
+  loginIdentifierCandidates,
   tryAnswerAiShortcut,
   summarizeTesterAssignments
 };
@@ -1848,6 +1850,7 @@ function applyWorkbookRules(state) {
     row.featureName = story?.featureName || row.featureName || "";
     row.tester = row.tester || "";
   });
+  const bugSourceByIssueKey = lookupBy(bugSources, "issueKey");
 
   plans.forEach((row) => {
     const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.feature));
@@ -1879,8 +1882,9 @@ function applyWorkbookRules(state) {
   });
 
   defects.forEach((row) => {
+    const sourceBug = bugSourceByIssueKey.get(lookupKey(row.bugId));
     row.status = normalizeBugStatus(row.status);
-    row.linkedUsKey = row.linkedUsKey || "";
+    row.linkedUsKey = row.linkedUsKey || sourceBug?.linkedUsKey || "";
     const story = userStoryByIssueKey.get(lookupKey(row.linkedUsKey));
     const featureJiraCode = row.featureJiraCode || row.jiraCode || story?.jiraCode || "";
     const feature = featureByJira.get(lookupKey(featureJiraCode)) || featureByName.get(lookupKey(row.featureName || row.storyName));
@@ -1889,6 +1893,7 @@ function applyWorkbookRules(state) {
     row.featureName = feature?.name || story?.featureName || row.featureName || "";
     row.storyName = row.storyName || row.featureName || "";
     row.sprint = row.sprint || feature?.sprint || "";
+    row.tester = row.tester || sourceBug?.tester || "";
     row.owner = row.owner || feature?.owner || "";
     row.aging = calculateDefectAging(row.foundDate, row.resolvedDate);
   });
@@ -3225,6 +3230,12 @@ function normalizeState(input) {
   return state;
 }
 
+function applyWorkbookRulesForResponse(state) {
+  applyWorkbookRules(state);
+  assignSortOrder(state);
+  return state;
+}
+
 function normalizeRecord(input, forcedId) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw httpError(400, "Record không hợp lệ.");
@@ -3872,6 +3883,19 @@ function validateNewUser({ username, email, name, password }) {
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw httpError(400, "Email không hợp lệ.");
   if (!name) throw httpError(400, "Tên hiển thị là bắt buộc.");
   validatePassword(password);
+}
+
+function loginIdentifierCandidates(identifier) {
+  const raw = String(identifier || "").trim().toLowerCase();
+  if (!raw) return [];
+  const candidates = new Set([raw]);
+  if (raw.includes("@")) {
+    const shortName = raw.split("@")[0];
+    if (shortName) candidates.add(shortName);
+  } else {
+    candidates.add(`${raw}@bidv.com.vn`);
+  }
+  return [...candidates];
 }
 
 function validatePassword(password) {

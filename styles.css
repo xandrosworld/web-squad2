@@ -1571,6 +1571,57 @@ button {
     width: 100%;
 }
 
+.table-pagination {
+    margin-bottom: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    color: #475569;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.table-page-size,
+.table-page-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.compact-select {
+    width: auto;
+    min-width: 74px;
+    height: 32px;
+    padding: 0 30px 0 10px;
+    font-size: 12px;
+}
+
+.table-page-status {
+    color: #64748b;
+    white-space: nowrap;
+}
+
+.table-page-actions span {
+    min-width: 52px;
+    color: #1f2937;
+    text-align: center;
+}
+
+.page-btn {
+    width: 32px;
+    height: 32px;
+}
+
+.page-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
 .table-top-scroll {
     position: sticky;
     top: 0;
@@ -2646,8 +2697,12 @@ body.is-column-resizing * {
     grid-template-columns: minmax(260px, 0.62fr) minmax(0, 1.38fr);
 }
 
-.defect-dashboard-layout .sheet-dashboard-card:nth-child(n + 3) {
-    grid-column: span 1;
+.defect-dashboard-summary-row {
+    padding: 0 16px 16px;
+    display: grid;
+    grid-template-columns: minmax(260px, 0.9fr) minmax(320px, 1.35fr) minmax(220px, 0.8fr);
+    gap: 14px;
+    align-items: start;
 }
 
 .uat-dashboard {
@@ -4513,14 +4568,14 @@ body.is-column-resizing * {
     }
 
     .sheet-dashboard-grid,
-    .defect-dashboard-layout {
+    .defect-dashboard-layout,
+    .defect-dashboard-summary-row {
         grid-template-columns: 1fr;
     }
 
     .sheet-dashboard-card.sprint-card,
     .sheet-dashboard-card.matrix-card,
-    .sheet-dashboard-card.owner-card,
-    .defect-dashboard-layout .sheet-dashboard-card:nth-child(n + 3) {
+    .sheet-dashboard-card.owner-card {
         grid-column: 1 / -1;
     }
 
@@ -4954,6 +5009,7 @@ body.is-column-resizing * {
     .uat-dashboard-grid,
     .sheet-dashboard-grid,
     .defect-dashboard-layout,
+    .defect-dashboard-summary-row,
     .guide-step-grid,
     .guide-handoff-layout,
     .guide-handoff-facts,
@@ -4972,5 +5028,15 @@ body.is-column-resizing * {
 
     .modal-foot button {
         width: 100%;
+    }
+
+    .table-pagination {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .table-page-size,
+    .table-page-actions {
+        justify-content: space-between;
     }
 }

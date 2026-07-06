@@ -4,6 +4,7 @@ const path = require("path");
 const {
   parseWorkbookImportState,
   applyWorkbookRules,
+  loginIdentifierCandidates,
   buildExcelWorkbook
 } = require("../server");
 
@@ -24,11 +25,13 @@ async function main() {
   testHandoffMutation(baseState);
   testBugSourceMutation(baseState);
   testComputedOverwrite(baseState);
+  testDefectTesterLookup(baseState);
+  testShortBidvLoginIdentifier();
 
   console.log(JSON.stringify({
     ok: true,
     workbook: path.basename(workbookPath),
-    mutationTests: 6
+    mutationTests: 8
   }, null, 2));
 }
 
@@ -163,6 +166,30 @@ function testComputedOverwrite(baseState) {
   assert(Number(afterFeature.totalCases || 0) !== 9999, "Feature computed totalCases was not overwritten.");
   assert(Number(afterPlan.totalCases || 0) !== 9999, "Plan computed totalCases was not overwritten.");
   assert(Number(afterDefect.aging || 0) !== 9999, "Defect computed aging was not overwritten.");
+}
+
+function testDefectTesterLookup(baseState) {
+  const firstDefect = baseState.defects.find((row) => row.bugId === "PS0142025-10272");
+  assert(firstDefect, "Missing PS0142025-10272 defect.");
+  assertEqual("DEFECT_LOG tester from DS.Loi", "Nguyễn Gia Huy", firstDefect.tester);
+
+  const state = clone(baseState);
+  const defect = state.defects.find((row) => row.bugId === "PS0142025-10272");
+  const sourceBug = state.bugSources.find((row) => row.issueKey === "PS0142025-10272");
+  assert(defect && sourceBug, "Missing source rows for tester lookup mutation.");
+  defect.tester = "";
+  sourceBug.tester = "Mai Tấn Thành";
+  applyWorkbookRules(state);
+  assertEqual("DEFECT_LOG blank tester refills from DS.Loi", "Mai Tấn Thành", defect.tester);
+}
+
+function testShortBidvLoginIdentifier() {
+  const candidates = loginIdentifierCandidates("huyng");
+  assert(candidates.includes("huyng"), "Short login candidate should keep raw username.");
+  assert(candidates.includes("huyng@bidv.com.vn"), "Short login candidate should include BIDV email.");
+  const emailCandidates = loginIdentifierCandidates("thanhmt@bidv.com.vn");
+  assert(emailCandidates.includes("thanhmt@bidv.com.vn"), "Email login candidate should keep full email.");
+  assert(emailCandidates.includes("thanhmt"), "Email login candidate should include short username.");
 }
 
 function dashboardCell(state, address) {

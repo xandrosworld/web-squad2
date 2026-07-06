@@ -32,9 +32,7 @@ const moduleTabs = [
   "weekly",
   "readiness",
   "matrix",
-  "defectSummary",
-  "userStories",
-  "bugSources"
+  "defectSummary"
 ];
 const readOnlyTabs = new Set(["defectSummary"]);
 const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00bb|\u00c4\u2018|\u00c6[\u00a0-\u00bf]/;
@@ -88,6 +86,12 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   const title = await page.title();
   if (!title.includes("Squad 2 UAT")) {
     throw new Error(`Unexpected page title: ${title}`);
+  }
+
+  for (const hiddenTab of ["userStories", "bugSources"]) {
+    if (await page.locator(`.tabbar [data-tab="${hiddenTab}"], .sidebar [data-tab="${hiddenTab}"]`).count()) {
+      throw new Error(`Source-only tab should be hidden from navigation: ${hiddenTab}`);
+    }
   }
 
   for (const removedSelector of [
@@ -230,6 +234,18 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
     }
     if (await page.locator(".data-table .th-filter-btn").count() < 1) {
       throw new Error(`Module ${tab} did not render compact column filters.`);
+    }
+    if (tab === "defects") {
+      const firstTester = (await page.locator('[data-resizable-table="defects"] tbody tr td:nth-child(10)').first().innerText()).trim();
+      if (!firstTester || firstTester === "-") {
+        throw new Error("DEFECT_LOG tester column is blank after DS.Loi lookup.");
+      }
+      const pageSize = page.locator('[data-page-size="defects"]');
+      if (await pageSize.count() !== 1) {
+        throw new Error("DEFECT_LOG did not render rows-per-page selector.");
+      }
+      await pageSize.selectOption("10");
+      await page.waitForFunction(() => document.querySelectorAll('[data-resizable-table="defects"] tbody tr').length <= 10, null, { timeout: 5000 });
     }
 
     if (readOnlyTabs.has(tab)) {
