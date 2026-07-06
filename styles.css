@@ -2641,7 +2641,7 @@ body.is-column-resizing * {
 }
 
 .sheet-dashboard-table.compact {
-    min-width: 360px;
+    min-width: 100%;
 }
 
 .sheet-dashboard-table th,
