@@ -2486,6 +2486,9 @@ function renderWorkTaskEmptyState(canManage, categoryCount) {
 function renderWorkCategoryPanel() {
     const categories = getWorkCategories();
     const canManage = canManageWorkPlans();
+    const stats = getWorkPlanStats();
+    const selectedCategoryId = ui.filters["workItems:categoryId"] || "";
+    const doneProgress = stats.total ? Math.round((stats.done / stats.total) * 100) : 0;
     return `
         <section class="panel work-category-panel">
             <div class="panel-head">
@@ -2505,17 +2508,18 @@ function renderWorkCategoryPanel() {
                 </div>
             </div>
             <div class="panel-body">
-                <div class="work-category-tabs">
-                    <button class="work-category-tab ${!ui.filters["workItems:categoryId"] ? "active" : ""}" data-action="set-work-category" data-id="">
-                        Tất cả
-                    </button>
-                    ${categories.map((category) => `
-                        <button class="work-category-tab ${ui.filters["workItems:categoryId"] === category.id ? "active" : ""}" data-action="set-work-category" data-id="${e(category.id)}">
-                            ${e(category.name)}
-                        </button>
-                    `).join("")}
-                </div>
                 <div class="work-category-list">
+                    <button class="work-category-overview ${!selectedCategoryId ? "active" : ""}" data-action="set-work-category" data-id="">
+                        <span class="work-category-overview-icon"><i class="fa-solid fa-layer-group"></i></span>
+                        <span class="work-category-overview-copy">
+                            <strong>Tất cả nhóm</strong>
+                            <small>${e(stats.total)} đầu việc · ${e(stats.done)} hoàn thành</small>
+                        </span>
+                        <span class="work-category-overview-percent">${e(doneProgress)}%</span>
+                        <span class="work-category-progress">
+                            <span style="width:${e(clamp(doneProgress))}%"></span>
+                        </span>
+                    </button>
                     ${categories.length ? categories.map(renderWorkCategoryRow).join("") : `
                         <div class="work-empty-note">
                             <i class="fa-solid fa-folder-plus"></i>
@@ -2535,19 +2539,23 @@ function renderWorkCategoryRow(category) {
     const progress = items.length ? Math.round(items.reduce((total, item) => total + Number(item.progress || 0), 0) / items.length) : 0;
     const canEdit = canManageWorkPlans() && canModifyRecord(category);
     const canDelete = canManageWorkPlans() && canDeleteRecord(category);
+    const active = ui.filters["workItems:categoryId"] === category.id;
+    const title = getWorkCategoryShortName(category);
+    const deadline = category.targetDate ? ` · hạn ${formatWorkCategoryDueShort(category.targetDate)}` : "";
+    const itemLabel = items.length ? `${items.length} việc` : "Chưa có việc";
     return `
-        <article class="work-category-row">
-            <button class="work-category-main" data-action="set-work-category" data-id="${e(category.id)}">
-                <strong>${e(category.name)}</strong>
-                <span>${e(category.taskPrefix || "-")} · ${e(items.length)} đầu việc · ${e(done)} hoàn thành</span>
+        <article class="work-category-row ${active ? "active" : ""}">
+            <button class="work-category-main" data-action="set-work-category" data-id="${e(category.id)}" title="${e(category.name)}">
+                <span class="work-category-code">${e(category.taskPrefix || "-")}</span>
+                <span class="work-category-copy">
+                    <strong>${e(title)}</strong>
+                    <small>${e(itemLabel)} · ${e(done)} xong${e(deadline)}</small>
+                </span>
+                <span class="work-category-percent">${e(progress)}%</span>
                 <div class="work-category-progress">
                     <span style="width:${e(clamp(progress))}%"></span>
                 </div>
             </button>
-            <div class="work-category-meta">
-                ${renderStatus(category.status || "Đang theo dõi")}
-                ${category.targetDate ? `<span>${e(formatDate(category.targetDate))}</span>` : ""}
-            </div>
             <div class="row-actions work-category-actions">
                 ${canEdit ? `
                     <button class="icon-btn" data-action="open-category-edit" data-id="${e(category.id)}" title="Sửa nhóm" aria-label="Sửa nhóm">
@@ -2562,6 +2570,29 @@ function renderWorkCategoryRow(category) {
             </div>
         </article>
     `;
+}
+
+function getWorkCategoryShortName(category) {
+    const prefix = String(category?.taskPrefix || "").trim().toUpperCase();
+    const names = {
+        "SQ2-T01": "Kiểm thử chức năng",
+        "SQ2-T02": "Kiểm thử luồng",
+        "SQ2-T03": "HDSD Lending Hub",
+        "SQ2-T04": "Quick Guide tác nghiệp",
+        "SQ2-T05": "HDSD vận hành",
+        "SQ2-T06": "Quy định vận hành",
+        "SQ2-T07": "Tài liệu đào tạo",
+        "SQ2-T08": "Tham gia ý kiến",
+        "SQ2-T09": "Công tác Báo cáo",
+        "SQ2-T10": "Công việc khác"
+    };
+    return names[prefix] || category?.name || "Nhóm công việc";
+}
+
+function formatWorkCategoryDueShort(value) {
+    const date = parseDateOnly(value);
+    if (!date) return String(value || "");
+    return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function renderWorkPlanFilterBar() {
