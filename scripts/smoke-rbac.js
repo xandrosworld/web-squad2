@@ -8,7 +8,7 @@ const accounts = {
   userOne: process.env.SMOKE_USER_ONE || "tuanpa13@bidv.com.vn",
   userTwo: process.env.SMOKE_USER_TWO || "giangnc2@bidv.com.vn",
   ownerNv1: process.env.SMOKE_OWNER_NV1 || "phuongbtm@bidv.com.vn",
-  ownerNv3: process.env.SMOKE_OWNER_NV3 || "tuantd3@bidv.com.vn"
+  ownerNv3: process.env.SMOKE_OWNER_NV3 || "tuanpa13@bidv.com.vn"
 };
 
 if (!password) {

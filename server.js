@@ -97,7 +97,7 @@ const personnelNameOptions = [
 const ownerAccountLinks = [
   { code: "NV1", label: ownerOptions[0], email: "phuongbtm@bidv.com.vn" },
   { code: "NV2", label: ownerOptions[1], email: "giangnc2@bidv.com.vn" },
-  { code: "NV3", label: ownerOptions[2], email: "tuantd3@bidv.com.vn" }
+  { code: "NV3", label: ownerOptions[2], email: "tuanpa13@bidv.com.vn" }
 ];
 const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
 const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Done UAT"];
