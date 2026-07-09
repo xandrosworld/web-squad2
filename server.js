@@ -106,9 +106,114 @@ const testStatusOptions = ["Chưa Test", "Đang Test", "Passed", "Failed"];
 const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail", "SIT Pass", "Reopen"];
 const dailyBugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail"];
 const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
-const workCategoryStatusOptions = ["Đang theo dõi", "Tạm dừng", "Hoàn thành"];
-const workStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Chờ phản hồi", "Tạm dừng", "Hoàn thành", "Quá hạn", "Hủy"];
+const workCategoryStatusOptions = ["Đang theo dõi", "Hoàn thành", "Tạm dừng"];
+const workStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Chờ phê duyệt", "Quá hạn", "Hoàn thành"];
 const workPriorityOptions = ["Cao", "Trung bình", "Thấp"];
+const pilotWorkPlanSeedKey = "pilot_workplan_seed_v1";
+const pilotWorkPlanDocumentUrl = "https://drive.google.com/drive/folders/1mraUTa3nb4bVhikApO9i-uCB-THKbVWd";
+const workAssigneeDirectory = {
+  "Bùi Thị Mai Phương": "phuongbtm@bidv.com.vn",
+  "Nguyễn Châu Giang": "giangnc2@bidv.com.vn",
+  "Nguyễn Gia Huy": "huyng@bidv.com.vn",
+  "Phạm Anh Tuấn": "tuanpa13@bidv.com.vn",
+  "Trần Đình Tuấn": "tuantd3@bidv.com.vn",
+  "Lê Trần Sơn": "tantc@bidv.com.vn",
+  "Huỳnh Công Sinh": "sinhhc@bidv.com.vn",
+  "Hoàng Thành Trí": "triht@bidv.com.vn",
+  "Mai Tấn Thành": "thanhmt@bidv.com.vn",
+  "Uông Thị Hải Yến": "yenuth@bidv.com.vn"
+};
+const pilotWorkCategories = [
+  { id: "pilot-t01", sortOrder: 1, taskPrefix: "SQ2-T01", name: "Kiểm thử chức năng", description: "Theo dõi các đầu việc kiểm thử chức năng Lending Hub.", targetDate: "" },
+  { id: "pilot-t02", sortOrder: 2, taskPrefix: "SQ2-T02", name: "Kiểm thử luồng", description: "Theo dõi các luồng nghiệp vụ cần kiểm thử end-to-end.", targetDate: "" },
+  { id: "pilot-t03", sortOrder: 3, taskPrefix: "SQ2-T03", name: "Xây dựng Tài liệu Hướng dẫn sử dụng hệ thống Lending Hub", description: "Nguồn: 1_TL HDSD_Squad2_v1 (Deadline 15.07).docx", targetDate: "2026-07-15" },
+  { id: "pilot-t04", sortOrder: 4, taskPrefix: "SQ2-T04", name: "Xây dựng Tài liệu Quick Guide khai thác nghiệp vụ hệ thống Lending Hub", description: "Nguồn: 2_Quytrinhhuongdantacnghiep_Squad2_v1 (Deadline 25.07).docx", targetDate: "2026-07-25" },
+  { id: "pilot-t05", sortOrder: 5, taskPrefix: "SQ2-T05", name: "Xây dựng Tài liệu Hướng dẫn vận hành hệ thống Lending Hub", description: "Nguồn: 4. TL HDSD SysAdmin_Squad2_v1 (Deadline 10.08).docx", targetDate: "2026-08-10" },
+  { id: "pilot-t06", sortOrder: 6, taskPrefix: "SQ2-T06", name: "Xây dựng Tài liệu Quy định vận hành nghiệp vụ hệ thống Lending Hub", description: "Nguồn: 3_Quydinhvanhanh SysAdmin_Squad2_v1 ((Deadline 31.07).docx", targetDate: "2026-07-31" },
+  { id: "pilot-t07", sortOrder: 7, taskPrefix: "SQ2-T07", name: "Xây dựng Tài liệu đào tạo hệ thống Lending Hub", description: "Danh sách deliverable theo ảnh sếp gửi ngày 09/07.", targetDate: "" },
+  { id: "pilot-t08", sortOrder: 8, taskPrefix: "SQ2-T08", name: "Tham gia ý kiến", description: "Theo dõi các đầu việc góp ý, rà soát và phản hồi tài liệu Pilot.", targetDate: "" },
+  { id: "pilot-t09", sortOrder: 9, taskPrefix: "SQ2-T09", name: "Công tác Báo cáo", description: "Nguồn: Phụ lục báo cáo Squad 02 trong tài liệu Quy định vận hành.", targetDate: "" },
+  { id: "pilot-t10", sortOrder: 10, taskPrefix: "SQ2-T10", name: "Các công việc khác", description: "Nhóm mở để sếp/admin bổ sung việc phát sinh.", targetDate: "" }
+];
+const pilotWorkSeedItems = [
+  { categoryId: "pilot-t03", title: "Tiếp nhận hồ sơ", assignee: "Phạm Anh Tuấn", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P27)" },
+  { categoryId: "pilot-t03", title: "Phân bổ tự động (Common Pool)", assignee: "Phạm Anh Tuấn", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P29)" },
+  { categoryId: "pilot-t03", title: "Phân bổ thủ công", assignee: "Bùi Thị Mai Phương", collaborators: "Trần Đình Tuấn", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P32)" },
+  { categoryId: "pilot-t03", title: "Luân chuyển HSTD", assignee: "Bùi Thị Mai Phương", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P37)" },
+  { categoryId: "pilot-t03", title: "Luồng trình duyệt & lịch sử xử lý", assignee: "Bùi Thị Mai Phương", collaborators: "Trần Đình Tuấn", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P39)" },
+  { categoryId: "pilot-t03", title: "Tác vụ Trả lại", assignee: "Bùi Thị Mai Phương", collaborators: "Nguyễn Gia Huy", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P159/P199)" },
+  { categoryId: "pilot-t03", title: "Thẩm định tín dụng - phần tổng hợp", assignee: "Nguyễn Châu Giang", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P266)" },
+  { categoryId: "pilot-t03", title: "Thông tin phi tài chính", assignee: "Phạm Anh Tuấn", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P284)" },
+  { categoryId: "pilot-t03", title: "Thông tin quan hệ tại các TCTD", assignee: "Nguyễn Gia Huy", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P329)" },
+  { categoryId: "pilot-t03", title: "Quan hệ tại BIDV", assignee: "Nguyễn Gia Huy", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P338)" },
+  { categoryId: "pilot-t03", title: "Thông tin CIC", assignee: "Phạm Anh Tuấn", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P358)" },
+  { categoryId: "pilot-t03", title: "Nhóm KHLQ", assignee: "Nguyễn Gia Huy", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P360)" },
+  { categoryId: "pilot-t03", title: "Phương án cấp tín dụng", assignee: "Lê Trần Sơn", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P398)" },
+  { categoryId: "pilot-t03", title: "Quyết định phê duyệt", assignee: "Lê Trần Sơn", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P536)" },
+  { categoryId: "pilot-t03", title: "Phê duyệt tín dụng - phần tổng hợp", assignee: "Nguyễn Châu Giang", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P521)" },
+  { categoryId: "pilot-t03", title: "Hội đồng tín dụng - phần tổng hợp", assignee: "Nguyễn Châu Giang", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P589)" },
+  { categoryId: "pilot-t03", title: "Luồng Hội đồng quản trị", assignee: "Nguyễn Gia Huy", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P637)" },
+  { categoryId: "pilot-t03", title: "Quản lý TSBĐ", assignee: "Phạm Anh Tuấn", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P674)" },
+  { categoryId: "pilot-t03", title: "Thông tin tài chính", assignee: "Hoàng Thành Trí", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P289)" },
+  { categoryId: "pilot-t03", title: "Biện pháp bảo đảm", assignee: "Hoàng Thành Trí", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P465)" },
+  { categoryId: "pilot-t03", title: "Đánh giá chung", assignee: "Huỳnh Công Sinh", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P514)" },
+  { categoryId: "pilot-t03", title: "Tài liệu tín dụng", assignee: "Huỳnh Công Sinh", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P518)" },
+
+  { categoryId: "pilot-t04", title: "Đệ trình Tờ trình/Báo cáo đề xuất", assignee: "Bùi Thị Mai Phương", dueDate: "2026-07-25", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 (P6)" },
+  { categoryId: "pilot-t04", title: "Kiểm soát, phê duyệt Tờ trình/Báo cáo đề xuất", assignee: "Bùi Thị Mai Phương", dueDate: "2026-07-25", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 (P12)" },
+  { categoryId: "pilot-t04", title: "Ký số Tờ trình/Báo cáo đề xuất", assignee: "Nguyễn Gia Huy", dueDate: "2026-07-25", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 (P25)" },
+  { categoryId: "pilot-t04", title: "Tiếp nhận, khởi tạo Tờ trình/Báo cáo thẩm định", assignee: "Nguyễn Châu Giang", dueDate: "2026-07-25", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 (P32)" },
+  { categoryId: "pilot-t04", title: "Kiểm soát Tờ trình/Báo cáo thẩm định", assignee: "Nguyễn Châu Giang", dueDate: "2026-07-25", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 (P38)" },
+  { categoryId: "pilot-t04", title: "Phê duyệt Tờ trình/Báo cáo thẩm định", assignee: "Nguyễn Châu Giang", dueDate: "2026-07-25", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 (P44)" },
+  { categoryId: "pilot-t04", title: "Ký số Tờ trình/Báo cáo thẩm định", assignee: "Nguyễn Gia Huy", dueDate: "2026-07-25", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 (P50)" },
+  { categoryId: "pilot-t04", title: "Tác nghiệp của cấp thẩm quyền phê duyệt", assignee: "Nguyễn Châu Giang", dueDate: "2026-07-25", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 (P56)" },
+  { categoryId: "pilot-t04", title: "Ký số quyết định phê duyệt và lưu trữ hồ sơ", assignee: "Nguyễn Gia Huy", dueDate: "2026-07-25", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 (P72)" },
+  { categoryId: "pilot-t04", title: "Xử lý trường hợp phê duyệt CAS sai thẩm quyền", assignee: "Bùi Thị Mai Phương", dueDate: "2026-07-25", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 (P84)" },
+  { categoryId: "pilot-t04", title: "Mẫu tờ trình thẩm định, luồng trình", assignee: "Nguyễn Châu Giang", dueDate: "2026-07-25", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 (P93/P99/P117/P123/P136/P143)" },
+  { categoryId: "pilot-t04", title: "Tình huống Omnibus/Commitment", assignee: "Nguyễn Châu Giang", dueDate: "2026-07-25", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 (P159)" },
+  { categoryId: "pilot-t04", title: "Luồng trình, mẫu BCTĐ", assignee: "Bùi Thị Mai Phương", collaborators: "Nguyễn Châu Giang", dueDate: "2026-07-25", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 (P179)" },
+
+  { categoryId: "pilot-t05", title: "Quản lý cấu hình luồng phê duyệt", assignee: "Bùi Thị Mai Phương", collaborators: "Trần Đình Tuấn", dueDate: "2026-08-10", source: "4. TL HDSD SysAdmin_Squad2_v1 (P50)" },
+  { categoryId: "pilot-t05", title: "Quản lý sinh số văn bản", assignee: "Nguyễn Gia Huy", dueDate: "2026-08-10", source: "4. TL HDSD SysAdmin_Squad2_v1 (P92)" },
+  { categoryId: "pilot-t05", title: "Quản lý chữ ký số", assignee: "Nguyễn Gia Huy", dueDate: "2026-08-10", source: "4. TL HDSD SysAdmin_Squad2_v1 (P93)" },
+  { categoryId: "pilot-t05", title: "Rà soát tham số do Squad 2 đầu mối", dueDate: "2026-08-10", source: "4. TL HDSD SysAdmin_Squad2_v1 (P78)" },
+
+  { categoryId: "pilot-t06", title: "Mục 4 - Quản lý cấu hình luồng phê duyệt, tham số quy trình", dueDate: "2026-07-31", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (P1)" },
+  { categoryId: "pilot-t06", title: "Mục 5 - Quản lý công cụ phân bổ hồ sơ tự động", dueDate: "2026-07-31", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (P4/T1-R4)" },
+  { categoryId: "pilot-t06", title: "Mục 6 - Quản lý chữ ký số", assignee: "Nguyễn Gia Huy", dueDate: "2026-07-31", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (P8/T1-R14)" },
+  { categoryId: "pilot-t06", title: "Quản lý template sinh số văn bản", assignee: "Nguyễn Gia Huy", dueDate: "2026-07-31", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (T1-R21)" },
+
+  { categoryId: "pilot-t07", title: "Khung chương trình đào tạo (Training Framework)" },
+  { categoryId: "pilot-t07", title: "Training Master Deck" },
+  { categoryId: "pilot-t07", title: "Slide đào tạo Workflow" },
+  { categoryId: "pilot-t07", title: "Slide đào tạo Thẩm định tín dụng" },
+  { categoryId: "pilot-t07", title: "Slide đào tạo Phê duyệt tín dụng" },
+  { categoryId: "pilot-t07", title: "Slide đào tạo Tài liệu tín dụng" },
+  { categoryId: "pilot-t07", title: "Slide đào tạo Điều kiện tín dụng" },
+  { categoryId: "pilot-t07", title: "Demo Script nghiệp vụ" },
+  { categoryId: "pilot-t07", title: "Case Study thực hành" },
+  { categoryId: "pilot-t07", title: "Bộ câu hỏi FAQ" },
+  { categoryId: "pilot-t07", title: "Bộ câu hỏi đánh giá sau đào tạo (Quiz/Assessment)" },
+  { categoryId: "pilot-t07", title: "Kịch bản Train the Trainer (TTT)" },
+  { categoryId: "pilot-t07", title: "Tài liệu đào tạo Key User" },
+  { categoryId: "pilot-t07", title: "Tài liệu đào tạo Pilot Branch" },
+  { categoryId: "pilot-t07", title: "Video hướng dẫn (Video Learning Script)" },
+
+  { categoryId: "pilot-t08", title: "Rà soát ý kiến về tác vụ Từ chối/Trả lại chuyển về Squad 2", source: "Comment trong 2_Quytrinhhuongdantacnghiep_Squad2_v1" },
+  { categoryId: "pilot-t08", title: "Tham gia ý kiến các tình huống đặc thù của Squad 2", source: "2_Quytrinhhuongdantacnghiep_Squad2_v1 - Chương III" },
+  { categoryId: "pilot-t08", title: "Tổng hợp phản hồi góp ý tài liệu Pilot" },
+
+  { categoryId: "pilot-t09", title: "Báo cáo danh sách hồ sơ tín dụng bị trả về", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (T2-R16)" },
+  { categoryId: "pilot-t09", title: "Báo cáo danh sách hồ sơ tín dụng bị từ chối", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (T2-R17)" },
+  { categoryId: "pilot-t09", title: "Báo cáo tổng hợp hồ sơ cấp tín dụng được phê duyệt tại Chi nhánh", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (T2-R18)" },
+  { categoryId: "pilot-t09", title: "Báo cáo tổng hợp hồ sơ cấp tín dụng được phê duyệt tại Trụ sở chính", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (T2-R19)" },
+  { categoryId: "pilot-t09", title: "Báo cáo tổng hợp hồ sơ cấp tín dụng đang xử lý tại Chi nhánh & TSC", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (T2-R20)" },
+  { categoryId: "pilot-t09", title: "Báo cáo hồ sơ tín dụng do HĐQT thông qua", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (T2-R21)" },
+  { categoryId: "pilot-t09", title: "Báo cáo hồ sơ xin ý kiến Hội đồng", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (T2-R22)" },
+  { categoryId: "pilot-t09", title: "Báo cáo hồ sơ khác biệt trọng yếu giữa BPTD và BPĐX", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (T2-R23)" },
+  { categoryId: "pilot-t09", title: "Báo cáo kết quả phân bổ hồ sơ tự động", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (T2-R24)" },
+  { categoryId: "pilot-t09", title: "Báo cáo danh sách văn bản đã sinh số", assignee: "Nguyễn Gia Huy", source: "3_Quydinhvanhanh SysAdmin_Squad2_v1 (T2-R25)" }
+];
 const collectionRules = {
   features: {
     required: ["code", "name"],
@@ -1008,7 +1113,8 @@ module.exports = {
   excelSheets,
   loginIdentifierCandidates,
   tryAnswerAiShortcut,
-  summarizeTesterAssignments
+  summarizeTesterAssignments,
+  __testBuildPilotWorkPlanSeedRecords: buildPilotWorkPlanSeedRecords
 };
 
 function getPool() {
@@ -1093,6 +1199,7 @@ function ensureSchema() {
       await ensureSeedAdmin();
       await ensureDefaultUsers();
       await ensureExclusiveAdminRoles();
+      await ensurePilotWorkPlanSeed();
     })().catch((error) => {
       schemaPromise = null;
       throw error;
@@ -1690,6 +1797,7 @@ function parseGuideSheet(worksheet) {
 
 function assignSortOrder(state) {
   for (const collection of collections) {
+    if (planningCollections.includes(collection)) continue;
     (state[collection] || []).forEach((record, index) => {
       record.sortOrder = index + 1;
     });
@@ -2365,6 +2473,8 @@ function addWorkPlanWorksheet(workbook, state) {
   const columns = [
     ["recordType", "Loại dòng", 12],
     ["sortOrder", "STT", 8, "number"],
+    ["taskPrefix", "Task Prefix", 14],
+    ["taskId", "Task ID", 16],
     ["categoryName", "Nhóm công việc", 28],
     ["title", "Tên công việc", 34],
     ["description", "Mô tả", 42],
@@ -2384,7 +2494,7 @@ function addWorkPlanWorksheet(workbook, state) {
   ];
 
   worksheet.columns = columns.map(([, , width]) => ({ width }));
-  writeDashboardTitle(worksheet, "A1:R1", "KẾ HOẠCH CÔNG VIỆC SQUAD 2");
+  writeDashboardTitle(worksheet, "A1:T1", "KẾ HOẠCH CÔNG VIỆC SQUAD 2");
   writeDashboardTable(worksheet, 3, 1, ["Chỉ số", "Giá trị"], getWorkPlanKpiRows(state));
 
   const headerRow = worksheet.getRow(12);
@@ -2415,6 +2525,7 @@ function addWorkPlanWorksheet(workbook, state) {
     rows.push({
       recordType: "Nhóm",
       sortOrder: category.sortOrder || "",
+      taskPrefix: category.taskPrefix || "",
       categoryName: category.name || "",
       title: category.name || "",
       description: category.description || "",
@@ -2459,10 +2570,13 @@ function addWorkPlanWorksheet(workbook, state) {
 }
 
 function workPlanExportRow(item, categoryMap) {
+  const category = categoryMap.get(String(item.categoryId || ""));
   return {
     recordType: "Công việc",
     sortOrder: item.sortOrder || "",
-    categoryName: categoryMap.get(String(item.categoryId || ""))?.name || item.categoryName || "Chưa phân nhóm",
+    taskPrefix: category?.taskPrefix || "",
+    taskId: item.taskId || "",
+    categoryName: category?.name || item.categoryName || "Chưa phân nhóm",
     title: item.title || "",
     description: item.description || "",
     assignee: item.assignee || "",
@@ -2741,16 +2855,17 @@ function getDefectPrioritySummaryRows(state) {
 function getWorkPlanKpiRows(state) {
   const items = collectionRows(state, "workItems");
   const done = items.filter((row) => row.status === "Hoàn thành").length;
+  const inProgress = items.filter((row) => row.status === "Đang thực hiện").length;
+  const pendingApproval = items.filter((row) => row.status === "Chờ phê duyệt").length;
   const overdue = items.filter((row) => getWorkItemWarning(row) === "Quá hạn").length;
-  const dueSoon = items.filter((row) => getWorkItemWarning(row) === "Sắp đến hạn").length;
   const progress = items.length ? Math.round(items.reduce((total, row) => total + Number(row.progress || 0), 0) / items.length) : 0;
   return [
     ["Nhóm công việc", collectionRows(state, "workCategories").length],
     ["Tổng đầu việc", items.length],
-    ["Đã hoàn thành", done],
-    ["Đang mở", Math.max(0, items.length - done)],
+    ["Đang thực hiện", inProgress],
+    ["Chờ phê duyệt", pendingApproval],
     ["Quá hạn", overdue],
-    ["Sắp đến hạn", dueSoon],
+    ["Đã hoàn thành", done],
     ["Tiến độ trung bình", `${progress}%`]
   ];
 }
@@ -2758,7 +2873,6 @@ function getWorkPlanKpiRows(state) {
 function getWorkItemWarning(row) {
   const status = String(row?.status || "").trim();
   if (status === "Hoàn thành") return "Đã xong";
-  if (status === "Hủy") return "Đã hủy";
   if (status === "Quá hạn") return "Quá hạn";
   const dueDate = parseImportDateOnly(row?.dueDate);
   if (!dueDate) return Number(row?.progress || 0) >= 80 ? "Ổn" : "Đang theo dõi";
@@ -3271,18 +3385,55 @@ async function applyRecordDefaults(client, collection, record) {
   }
   if (collection === "workCategories") {
     if (isBlank(record.sortOrder)) record.sortOrder = await getNextCollectionSortOrder(client, collection);
+    if (isBlank(record.taskPrefix)) record.taskPrefix = `SQ2-T${String(Math.trunc(Number(record.sortOrder) || 0)).padStart(2, "0")}`;
     if (isBlank(record.status)) record.status = "Đang theo dõi";
   }
   if (collection === "workItems") {
     if (isBlank(record.sortOrder)) record.sortOrder = await getNextCollectionSortOrder(client, collection);
+    if (isBlank(record.taskId)) record.taskId = await getNextWorkItemTaskId(client, record.categoryId);
     if (isBlank(record.status)) record.status = "Chưa bắt đầu";
+    record.status = normalizeWorkStatus(record.status);
     if (isBlank(record.priority)) record.priority = "Trung bình";
+    if (isBlank(record.assigneeEmail)) record.assigneeEmail = emailForWorkAssignee(record.assignee);
     if (isBlank(record.progress)) record.progress = 0;
     if (record.status === "Hoàn thành") {
       record.progress = 100;
       if (isBlank(record.completedDate)) record.completedDate = localDateString(new Date());
     }
   }
+}
+
+function normalizeWorkStatus(value) {
+  const status = String(value || "").trim();
+  if (status === "Chờ phản hồi") return "Chờ phê duyệt";
+  if (status === "Tạm dừng") return "Chưa bắt đầu";
+  if (status === "Hủy") return "Chưa bắt đầu";
+  return status;
+}
+
+async function getNextWorkItemTaskId(client, categoryId) {
+  const categoryResult = await client.query(`
+    select data
+    from uat_records
+    where collection = 'workCategories' and id = $1
+    limit 1
+  `, [categoryId]);
+  const category = categoryResult.rows[0]?.data || {};
+  const prefix = String(category.taskPrefix || "").trim()
+    || `SQ2-T${String(Math.trunc(Number(category.sortOrder) || 0)).padStart(2, "0")}`;
+  const itemResult = await client.query(`
+    select data->>'taskId' as task_id
+    from uat_records
+    where collection = 'workItems'
+      and data->>'categoryId' = $1
+      and data->>'taskId' like $2
+  `, [categoryId, `${prefix}-%`]);
+  const maxIndex = itemResult.rows.reduce((max, row) => {
+    const match = String(row.task_id || "").match(/-(\d+)$/);
+    const value = match ? Number(match[1]) : 0;
+    return Number.isFinite(value) ? Math.max(max, value) : max;
+  }, 0);
+  return `${prefix}-${String(maxIndex + 1).padStart(3, "0")}`;
 }
 
 async function getNextFeatureStt(client) {
@@ -3364,6 +3515,117 @@ function validateRecordForCollection(collection, record) {
 
 function isBlank(value) {
   return value === "" || value == null;
+}
+
+async function ensurePilotWorkPlanSeed() {
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    const existingSeed = await client.query(
+      "select value from app_meta where key = $1 for update",
+      [pilotWorkPlanSeedKey]
+    );
+    if (existingSeed.rows[0]) {
+      await client.query("commit");
+      return;
+    }
+
+    const countResult = await client.query(
+      "select count(*)::integer as count from uat_records where collection = any($1::text[])",
+      [planningCollections]
+    );
+    const existingPlanRecords = Number(countResult.rows[0]?.count || 0);
+    let seeded = false;
+    if (existingPlanRecords === 0) {
+      const now = new Date();
+      const nowIso = now.toISOString();
+      const rows = buildPilotWorkPlanSeedRecords(nowIso);
+      rows.forEach((row) => validateRecordForCollection(row.collection, row.data));
+      await bulkUpsertRecords(client, rows, null, now);
+      seeded = true;
+    }
+
+    await client.query(`
+      insert into app_meta (key, value, updated_at)
+      values ($1, $2::jsonb, now())
+      on conflict (key) do update
+        set value = excluded.value,
+            updated_at = now()
+    `, [pilotWorkPlanSeedKey, JSON.stringify({
+      seeded,
+      version: 1,
+      checkedAt: new Date().toISOString(),
+      categories: pilotWorkCategories.length,
+      items: seeded ? pilotWorkSeedItems.length : 0
+    })]);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+function buildPilotWorkPlanSeedRecords(nowIso) {
+  const categories = pilotWorkCategories.map((category) => ({
+    collection: "workCategories",
+    id: category.id,
+    data: {
+      id: category.id,
+      sortOrder: category.sortOrder,
+      taskPrefix: category.taskPrefix,
+      name: category.name,
+      description: category.description || "",
+      owner: "",
+      targetDate: category.targetDate || "",
+      status: "Đang theo dõi",
+      note: "",
+      createdAt: nowIso,
+      updatedAt: nowIso
+    }
+  }));
+
+  const categoryById = new Map(pilotWorkCategories.map((category) => [category.id, category]));
+  const indexByCategory = new Map();
+  const items = pilotWorkSeedItems.map((item, globalIndex) => {
+    const category = categoryById.get(item.categoryId);
+    const nextIndex = (indexByCategory.get(item.categoryId) || 0) + 1;
+    indexByCategory.set(item.categoryId, nextIndex);
+    const taskId = `${category?.taskPrefix || "SQ2-T00"}-${String(nextIndex).padStart(3, "0")}`;
+    const assigneeEmail = emailForWorkAssignee(item.assignee);
+    return {
+      collection: "workItems",
+      id: `pilot-${taskId.toLowerCase()}`,
+      data: {
+        id: `pilot-${taskId.toLowerCase()}`,
+        sortOrder: globalIndex + 1,
+        taskId,
+        categoryId: item.categoryId,
+        title: item.title,
+        description: item.description || item.source || "",
+        assignee: item.assignee || "",
+        assigneeEmail,
+        collaborators: item.collaborators || "",
+        status: "Chưa bắt đầu",
+        progress: 0,
+        priority: item.priority || "Trung bình",
+        startDate: "",
+        dueDate: item.dueDate || category?.targetDate || "",
+        completedDate: "",
+        documentUrl: pilotWorkPlanDocumentUrl,
+        note: item.source ? `Nguồn: ${item.source}` : "",
+        createdAt: nowIso,
+        updatedAt: nowIso
+      }
+    };
+  });
+
+  return [...categories, ...items];
+}
+
+function emailForWorkAssignee(name) {
+  return workAssigneeDirectory[String(name || "").trim()] || "";
 }
 
 async function ensureSeedAdmin() {

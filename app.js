@@ -123,9 +123,33 @@ const legacyStatusOptions = [
 const priorityOptions = ["Critical", "Cao", "Trung bình", "Thấp"];
 const decisionOptions = ["Chưa quyết định", "Sẵn sàng", "Có điều kiện", "Chưa sẵn sàng"];
 const assessmentOptions = ["Tốt", "Cần theo dõi", "Rủi ro", "Blocker"];
-const workCategoryStatusOptions = ["Đang theo dõi", "Tạm dừng", "Hoàn thành"];
-const workStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Chờ phản hồi", "Tạm dừng", "Hoàn thành", "Quá hạn", "Hủy"];
+const workCategoryStatusOptions = ["Đang theo dõi", "Hoàn thành", "Tạm dừng"];
+const workStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Chờ phê duyệt", "Quá hạn", "Hoàn thành"];
 const workPriorityOptions = ["Cao", "Trung bình", "Thấp"];
+const workAssigneeOptions = [
+    "Bùi Thị Mai Phương",
+    "Nguyễn Châu Giang",
+    "Nguyễn Gia Huy",
+    "Phạm Anh Tuấn",
+    "Trần Đình Tuấn",
+    "Lê Trần Sơn",
+    "Huỳnh Công Sinh",
+    "Hoàng Thành Trí",
+    "Mai Tấn Thành",
+    "Uông Thị Hải Yến"
+];
+const workAssigneeEmailByName = {
+    "Bùi Thị Mai Phương": "phuongbtm@bidv.com.vn",
+    "Nguyễn Châu Giang": "giangnc2@bidv.com.vn",
+    "Nguyễn Gia Huy": "huyng@bidv.com.vn",
+    "Phạm Anh Tuấn": "tuanpa13@bidv.com.vn",
+    "Trần Đình Tuấn": "tuantd3@bidv.com.vn",
+    "Lê Trần Sơn": "tantc@bidv.com.vn",
+    "Huỳnh Công Sinh": "sinhhc@bidv.com.vn",
+    "Hoàng Thành Trí": "triht@bidv.com.vn",
+    "Mai Tấn Thành": "thanhmt@bidv.com.vn",
+    "Uông Thị Hải Yến": "yenuth@bidv.com.vn"
+};
 
 const modules = {
     features: {
@@ -204,9 +228,10 @@ const modules = {
         fields: [
             { key: "sortOrder", label: "STT", type: "number", defaultValue: getNextWorkItemSortOrder },
             { key: "categoryId", label: "Nhóm công việc", type: "select", options: () => getWorkCategorySelectOptions(), defaultValue: getDefaultWorkCategoryId, required: true, full: true },
+            { key: "taskId", label: "Task ID", type: "text", defaultValue: getNextWorkItemTaskId },
             { key: "title", label: "Tên công việc", type: "text", required: true, full: true },
             { key: "description", label: "Mô tả", type: "textarea", full: true },
-            { key: "assignee", label: "Người phụ trách", type: "text" },
+            { key: "assignee", label: "Người phụ trách", type: "select", options: workAssigneeOptions },
             { key: "assigneeEmail", label: "Email phụ trách", type: "text" },
             { key: "collaborators", label: "Người phối hợp", type: "text", full: true },
             { key: "status", label: "Trạng thái", type: "select", options: workStatusOptions, defaultValue: "Chưa bắt đầu" },
@@ -226,6 +251,7 @@ const modules = {
         ],
         columns: [
             { key: "sortOrder", label: "STT", width: "58px" },
+            { key: "taskId", label: "Task ID", width: "126px", render: (row) => tag(row.taskId, "gray") },
             { key: "categoryName", label: "Nhóm công việc", width: "180px", render: (row) => tag(row.categoryName, "teal") },
             { key: "title", label: "Tên công việc", width: "300px", render: renderWorkTitleCell },
             { key: "assignee", label: "Người phụ trách", width: "180px", render: (row) => strongText(row.assignee || "-", row.assigneeEmail) },
@@ -251,6 +277,7 @@ const modules = {
         emptyText: "Thêm nhóm để phân loại kế hoạch công việc.",
         fields: [
             { key: "sortOrder", label: "STT", type: "number", defaultValue: getNextWorkCategorySortOrder },
+            { key: "taskPrefix", label: "Task ID Prefix", type: "text", defaultValue: getNextWorkCategoryPrefix },
             { key: "name", label: "Tên nhóm", type: "text", required: true, full: true },
             { key: "description", label: "Mô tả", type: "textarea", full: true },
             { key: "owner", label: "Người phụ trách nhóm", type: "text" },
@@ -263,6 +290,7 @@ const modules = {
         ],
         columns: [
             { key: "sortOrder", label: "STT", width: "70px" },
+            { key: "taskPrefix", label: "Prefix", width: "110px", render: (row) => tag(row.taskPrefix, "gray") },
             { key: "name", label: "Tên nhóm", width: "260px", render: (row) => strongText(row.name, row.description) },
             { key: "owner", label: "Phụ trách", width: "180px" },
             { key: "targetDate", label: "Mốc hoàn thành", width: "150px", render: (row) => formatDate(row.targetDate) },
@@ -2321,11 +2349,12 @@ function renderWorkPlanModule() {
     return `
         <div class="work-plan-page">
             <section class="work-plan-summary">
-                ${renderWorkMetric("Việc của tôi", stats.mine, "fa-user-check", "teal")}
-                ${renderWorkMetric("Đang theo dõi", stats.open, "fa-list-check", "blue")}
-                ${renderWorkMetric("Đã hoàn thành", stats.done, "fa-circle-check", "green")}
+                ${renderWorkMetric("Nhóm", stats.categories, "fa-folder-tree", "teal")}
+                ${renderWorkMetric("Tổng đầu việc", stats.total, "fa-list-check", "blue")}
+                ${renderWorkMetric("Đang thực hiện", stats.inProgress, "fa-person-running", "blue")}
+                ${renderWorkMetric("Chờ phê duyệt", stats.pendingApproval, "fa-clock", "yellow")}
                 ${renderWorkMetric("Quá hạn", stats.overdue, "fa-triangle-exclamation", "red")}
-                ${renderWorkMetric("Tiến độ TB", `${stats.averageProgress}%`, "fa-chart-simple", "yellow")}
+                ${renderWorkMetric("Hoàn thành", stats.done, "fa-circle-check", "green")}
             </section>
 
             ${renderWorkOnboarding(canManage, categories.length, total)}
@@ -2416,6 +2445,7 @@ function renderWorkViewTabs(stats) {
         { id: "all", label: "Tất cả", count: stats.total },
         { id: "mine", label: "Việc của tôi", count: stats.mine },
         { id: "open", label: "Đang làm", count: stats.open },
+        { id: "approval", label: "Chờ duyệt", count: stats.pendingApproval },
         { id: "overdue", label: "Quá hạn", count: stats.overdue },
         { id: "done", label: "Hoàn thành", count: stats.done }
     ];
@@ -2509,7 +2539,7 @@ function renderWorkCategoryRow(category) {
         <article class="work-category-row">
             <button class="work-category-main" data-action="set-work-category" data-id="${e(category.id)}">
                 <strong>${e(category.name)}</strong>
-                <span>${e(items.length)} đầu việc · ${e(done)} hoàn thành</span>
+                <span>${e(category.taskPrefix || "-")} · ${e(items.length)} đầu việc · ${e(done)} hoàn thành</span>
                 <div class="work-category-progress">
                     <span style="width:${e(clamp(progress))}%"></span>
                 </div>
@@ -2573,12 +2603,15 @@ function renderWorkPlanFilterBar() {
 
 function getWorkPlanStats() {
     const rows = appState.workItems || [];
+    const categories = getWorkCategories();
     const done = rows.filter((row) => row.status === "Hoàn thành").length;
     const overdue = rows.filter((row) => getWorkItemWarning(row) === "Quá hạn").length;
     const mine = rows.filter(isAssignedWorkItem).length;
-    const open = rows.filter((row) => !["Hoàn thành", "Hủy"].includes(String(row.status || ""))).length;
+    const inProgress = rows.filter((row) => row.status === "Đang thực hiện").length;
+    const pendingApproval = rows.filter((row) => row.status === "Chờ phê duyệt").length;
+    const open = rows.filter((row) => String(row.status || "") !== "Hoàn thành").length;
     const averageProgress = rows.length ? Math.round(rows.reduce((total, row) => total + Number(row.progress || 0), 0) / rows.length) : 0;
-    return { total: rows.length, mine, open, done, overdue, averageProgress };
+    return { categories: categories.length, total: rows.length, mine, open, inProgress, pendingApproval, done, overdue, averageProgress };
 }
 
 function getFilteredWorkRows() {
@@ -2595,7 +2628,8 @@ function getFilteredWorkRows() {
         if (!matchLegacyFilters) return false;
         const view = ui.workView || "all";
         if (view === "mine" && !isAssignedWorkItem(row)) return false;
-        if (view === "open" && ["Hoàn thành", "Hủy"].includes(String(row.status || ""))) return false;
+        if (view === "open" && String(row.status || "") === "Hoàn thành") return false;
+        if (view === "approval" && String(row.status || "") !== "Chờ phê duyệt") return false;
         if (view === "overdue" && row.warning !== "Quá hạn") return false;
         if (view === "done" && String(row.status || "") !== "Hoàn thành") return false;
         return mod.columns.every((col) => {
@@ -4017,6 +4051,31 @@ function renderField(field, row) {
     `;
 }
 
+function bindWorkItemFormHelpers(form) {
+    if (ui.modal?.tab !== "workItems" || ui.modal?.mode === "work-progress") return;
+    const categorySelect = form.elements.categoryId;
+    const taskInput = form.elements.taskId;
+    const assigneeSelect = form.elements.assignee;
+    const emailInput = form.elements.assigneeEmail;
+    if (categorySelect && taskInput && !ui.modal.id) {
+        categorySelect.addEventListener("change", () => {
+            const current = String(taskInput.value || "").trim();
+            if (current && !/^SQ2-T\d{2}-\d{3}$/i.test(current)) return;
+            taskInput.value = categorySelect.value ? getNextWorkItemTaskIdForCategory(categorySelect.value) : "";
+        });
+    }
+    if (assigneeSelect && emailInput) {
+        assigneeSelect.addEventListener("change", () => {
+            const suggestedEmail = emailForWorkAssignee(assigneeSelect.value);
+            const currentEmail = String(emailInput.value || "").trim();
+            const knownEmails = new Set(Object.values(workAssigneeEmailByName));
+            if (suggestedEmail && (!currentEmail || knownEmails.has(currentEmail))) {
+                emailInput.value = suggestedEmail;
+            }
+        });
+    }
+}
+
 function renderEmpty(icon, title, text, compact = false, mod = null) {
     return `
         <div class="empty-state ${compact ? "compact" : ""}">
@@ -4152,7 +4211,10 @@ function bindEvents() {
     bindComboFields();
 
     const form = document.getElementById("recordForm");
-    if (form) form.addEventListener("submit", handleSubmit);
+    if (form) {
+        bindWorkItemFormHelpers(form);
+        form.addEventListener("submit", handleSubmit);
+    }
 
     const modal = document.getElementById("recordModal");
     if (modal) {
@@ -5011,6 +5073,8 @@ async function handleSubmit(event) {
         payload.owner = normalizeOwnerOption(payload.owner);
     }
     if (mod.collection === "workItems") {
+        if (!payload.assigneeEmail) payload.assigneeEmail = emailForWorkAssignee(payload.assignee);
+        if (!payload.taskId && payload.categoryId) payload.taskId = getNextWorkItemTaskIdForCategory(payload.categoryId);
         if (payload.status === "Hoàn thành") {
             payload.progress = 100;
             if (!payload.completedDate) payload.completedDate = todayStamp();
@@ -5452,8 +5516,18 @@ function getNextWorkItemSortOrder() {
     return getNextSortOrder(appState.workItems);
 }
 
+function getNextWorkItemTaskId() {
+    const categoryId = getDefaultWorkCategoryId();
+    if (!categoryId) return "";
+    return getNextWorkItemTaskIdForCategory(categoryId);
+}
+
 function getNextWorkCategorySortOrder() {
     return getNextSortOrder(appState.workCategories);
+}
+
+function getNextWorkCategoryPrefix() {
+    return `SQ2-T${String(getNextWorkCategorySortOrder()).padStart(2, "0")}`;
 }
 
 function getNextSortOrder(rows) {
@@ -5476,10 +5550,26 @@ function getDefaultWorkCategoryId() {
     return categories.length === 1 ? categories[0].id : "";
 }
 
+function getNextWorkItemTaskIdForCategory(categoryId) {
+    const category = getWorkCategories().find((item) => String(item.id) === String(categoryId));
+    const prefix = String(category?.taskPrefix || "").trim()
+        || `SQ2-T${String(Math.trunc(Number(category?.sortOrder) || 0)).padStart(2, "0")}`;
+    const maxIndex = (appState.workItems || []).reduce((max, row) => {
+        if (String(row.categoryId || "") !== String(categoryId)) return max;
+        const match = String(row.taskId || "").match(/-(\d+)$/);
+        const value = match ? Number(match[1]) : 0;
+        return Number.isFinite(value) ? Math.max(max, value) : max;
+    }, 0);
+    return `${prefix}-${String(maxIndex + 1).padStart(3, "0")}`;
+}
+
+function emailForWorkAssignee(name) {
+    return workAssigneeEmailByName[String(name || "").trim()] || "";
+}
+
 function getWorkItemWarning(row) {
     const status = String(row?.status || "").trim();
     if (status === "Hoàn thành") return "Đã xong";
-    if (status === "Hủy") return "Đã hủy";
     if (status === "Quá hạn") return "Quá hạn";
     const dueDate = parseDateOnly(row?.dueDate);
     if (!dueDate) return Number(row?.progress || 0) >= 80 ? "Ổn" : "Đang theo dõi";
@@ -5773,10 +5863,9 @@ function renderWorkStatus(value) {
     const text = String(value || "");
     const tone = text === "Hoàn thành" ? "green"
         : text === "Đang thực hiện" ? "blue"
-            : text === "Chờ phản hồi" || text === "Tạm dừng" ? "yellow"
+            : text === "Chờ phê duyệt" ? "yellow"
                 : text === "Quá hạn" ? "red"
-                    : text === "Hủy" ? "gray"
-                        : "gray";
+                    : "gray";
     return tag(value, tone);
 }
 
@@ -5789,8 +5878,7 @@ function renderWorkWarning(value) {
     const tone = value === "Quá hạn" ? "red"
         : value === "Sắp đến hạn" ? "yellow"
             : value === "Đã xong" || value === "Ổn" ? "green"
-                : value === "Đã hủy" ? "gray"
-                    : "blue";
+                : "blue";
     return tag(value, tone);
 }
 
