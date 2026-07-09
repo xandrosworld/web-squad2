@@ -251,8 +251,8 @@ const modules = {
         ],
         columns: [
             { key: "sortOrder", label: "STT", width: "58px" },
-            { key: "taskId", label: "Task ID", width: "126px", render: (row) => tag(row.taskId, "gray") },
-            { key: "categoryName", label: "Nhóm công việc", width: "180px", render: (row) => tag(row.categoryName, "teal") },
+            { key: "taskId", label: "Task ID", width: "132px", render: renderWorkTaskIdCell },
+            { key: "categoryName", label: "Nhóm công việc", width: "210px", render: renderWorkCategoryCell },
             { key: "title", label: "Tên công việc", width: "300px", render: renderWorkTitleCell },
             { key: "assignee", label: "Người phụ trách", width: "180px", render: (row) => strongText(row.assignee || "-", row.assigneeEmail) },
             { key: "status", label: "Trạng thái", width: "140px", render: (row) => renderWorkStatus(row.status) },
@@ -5878,6 +5878,34 @@ function renderHandoffFeatureCell(row) {
 function renderPriority(value) {
     const tone = value === "Critical" ? "red" : value === "Cao" ? "yellow" : value === "Trung bình" ? "blue" : "gray";
     return tag(value, tone);
+}
+
+function renderWorkTaskIdCell(row) {
+    const taskId = String(row.taskId || "").trim();
+    if (!taskId) return `<span style="color:#9ca3af">-</span>`;
+    return `<span class="work-task-id" title="${e(taskId)}">${e(taskId)}</span>`;
+}
+
+function renderWorkCategoryCell(row) {
+    const category = getWorkCategoryForRow(row);
+    const prefix = String(category?.taskPrefix || extractWorkTaskPrefix(row.taskId) || "").trim();
+    const fullName = category?.name || row.categoryName || "Chưa phân nhóm";
+    const shortName = getWorkCategoryShortName(category || { taskPrefix: prefix, name: fullName });
+    return `
+        <div class="work-table-category" title="${e(fullName)}">
+            ${prefix ? `<span class="work-table-category-code">${e(prefix.replace(/^SQ2-/, ""))}</span>` : ""}
+            <strong>${e(shortName)}</strong>
+        </div>
+    `;
+}
+
+function getWorkCategoryForRow(row) {
+    return getWorkCategories().find((category) => String(category.id || "") === String(row.categoryId || "")) || null;
+}
+
+function extractWorkTaskPrefix(taskId) {
+    const match = String(taskId || "").trim().match(/^(.*)-\d+$/);
+    return match ? match[1] : "";
 }
 
 function renderWorkTitleCell(row) {
