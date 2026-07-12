@@ -848,9 +848,7 @@ app.post("/api/import/excel", requireAdmin, express.raw({
   if (!stateRecordTotal(importState, workbookCollections)) {
     throw httpError(400, "Không tìm thấy dữ liệu UAT hợp lệ trong file Excel.");
   }
-  for (const collection of workbookCollections) {
-    importState[collection].forEach((record) => validateRecordForCollection(collection, record));
-  }
+  validateWorkbookImportState(importState);
 
   const client = await getPool().connect();
   try {
@@ -1114,6 +1112,7 @@ module.exports = {
   loginIdentifierCandidates,
   tryAnswerAiShortcut,
   summarizeTesterAssignments,
+  validateWorkbookImportState,
   __testBuildPilotWorkPlanSeedRecords: buildPilotWorkPlanSeedRecords
 };
 
@@ -3471,7 +3470,15 @@ function requireCollection(collection) {
   return collection;
 }
 
-function validateRecordForCollection(collection, record) {
+function validateWorkbookImportState(state) {
+  for (const collection of workbookCollections) {
+    for (const record of state[collection] || []) {
+      validateRecordForCollection(collection, record, { preserveWorkbookSource: true });
+    }
+  }
+}
+
+function validateRecordForCollection(collection, record, options = {}) {
   const rules = collectionRules[collection];
   if (!rules) throw httpError(404, "Phân hệ dữ liệu không hợp lệ.");
 
@@ -3504,7 +3511,7 @@ function validateRecordForCollection(collection, record) {
     }
   }
 
-  if (!isBlank(record.totalCases) && !isBlank(record.executedCases)) {
+  if (!options.preserveWorkbookSource && !isBlank(record.totalCases) && !isBlank(record.executedCases)) {
     const totalCases = Number(record.totalCases);
     const executedCases = Number(record.executedCases);
     if (Number.isFinite(totalCases) && Number.isFinite(executedCases) && executedCases > totalCases) {
