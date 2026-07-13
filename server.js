@@ -968,13 +968,19 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
   if (computedCollections.has(collection)) {
     throw httpError(403, "Phan he nay duoc tinh tu dong, khong cho sua truc tiep.");
   }
-  if (planningCollections.includes(collection) && !canCreateWorkPlanRecord(req.user)) {
-    throw httpError(403, "Chỉ admin được tạo kế hoạch công việc.");
+  if (collection === "workCategories" && !canManageWorkCategories(req.user)) {
+    throw httpError(403, "Chỉ admin được tạo nhóm công việc.");
+  }
+  if (collection === "workItems" && !canCreateWorkItem(req.user)) {
+    throw httpError(403, "Bạn cần đăng nhập để thêm đầu việc.");
   }
   const client = await getPool().connect();
   try {
     await client.query("begin");
     stripComputedFields(collection, record);
+    if (collection === "workItems" && req.user.role !== "admin") {
+      assignWorkItemToUser(record, req.user);
+    }
     await applyRecordDefaults(client, collection, record);
     validateRecordForCollection(collection, record);
     const saved = await createRecord(client, collection, record, req.user);
@@ -1002,11 +1008,14 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     await client.query("begin");
     const current = await getRecordForUpdate(client, collection, req.params.id);
     assertCanModifyRecord(req.user, current);
-    if (collection === "workCategories" && !canCreateWorkPlanRecord(req.user)) {
+    if (collection === "workCategories" && !canManageWorkCategories(req.user)) {
       throw httpError(403, "Chỉ admin được sửa nhóm công việc.");
     }
     if (collection === "workItems" && !canFullyManageWorkItem(req.user, current)) {
       record = mergeWorkItemProgressUpdate(current.data, record);
+    }
+    if (collection === "workItems" && req.user.role !== "admin") {
+      assignWorkItemToUser(record, req.user);
     }
     stripComputedFields(collection, record);
     record.createdAt = current.data?.createdAt || current.created_at?.toISOString?.() || record.createdAt;
@@ -1034,8 +1043,8 @@ app.delete("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     await client.query("begin");
     const current = await getRecordForUpdate(client, collection, req.params.id);
     assertCanDeleteRecord(req.user, current);
-    if (planningCollections.includes(collection) && !canCreateWorkPlanRecord(req.user)) {
-      throw httpError(403, "Chỉ admin được xóa kế hoạch công việc.");
+    if (collection === "workCategories" && !canManageWorkCategories(req.user)) {
+      throw httpError(403, "Chỉ admin được xóa nhóm công việc.");
     }
     await client.query("delete from uat_records where collection = $1 and id = $2", [collection, req.params.id]);
     const { state, updatedAt } = await recomputeAndPersistWorkbookRules(client, req.user.id, req.user);
@@ -3117,8 +3126,20 @@ function canFullyManageWorkItem(user, record) {
   return user.role === "admin" || Boolean(record.created_by && record.created_by === user.id);
 }
 
-function canCreateWorkPlanRecord(user) {
+function canManageWorkCategories(user) {
   return user?.role === "admin";
+}
+
+function canCreateWorkItem(user) {
+  return Boolean(user?.id && user?.active !== false);
+}
+
+function assignWorkItemToUser(record, user) {
+  const email = String(user?.email || user?.username || "").trim().toLowerCase();
+  if (!email) throw httpError(403, "Tài khoản chưa có email để tự nhận đầu việc.");
+  record.assignee = String(user?.name || user?.username || email).trim();
+  record.assigneeEmail = email;
+  return record;
 }
 
 function mergeWorkItemProgressUpdate(existingRecord, inputRecord) {

@@ -2345,6 +2345,7 @@ function renderWorkPlanModule() {
     const stats = getWorkPlanStats();
     const total = stats.total;
     const canManage = canManageWorkPlans();
+    const canCreate = canCreateWorkItems();
     const activeFilters = countActiveFilters(mod);
     return `
         <div class="work-plan-page">
@@ -2357,7 +2358,7 @@ function renderWorkPlanModule() {
                 ${renderWorkMetric("Hoàn thành", stats.done, "fa-circle-check", "green")}
             </section>
 
-            ${renderWorkOnboarding(canManage, categories.length, total)}
+            ${renderWorkOnboarding(canManage, canCreate, categories.length, total)}
 
             <div class="content-grid work-plan-layout">
                 ${renderWorkCategoryPanel()}
@@ -2376,7 +2377,7 @@ function renderWorkPlanModule() {
                                     <i class="fa-solid fa-filter-circle-xmark"></i><span>${e(activeFilters)} lọc</span>
                                 </button>
                             ` : ""}
-                            ${canManage && categories.length ? `
+                            ${canCreate && categories.length ? `
                             <button class="primary-btn" data-action="open-create">
                                 <i class="fa-solid fa-plus"></i><span>Thêm đầu việc</span>
                             </button>
@@ -2389,7 +2390,7 @@ function renderWorkPlanModule() {
                             ${renderWorkPlanFilterBar()}
                             ${renderPaginationControls(mod.collection, pageState)}
                             ${renderTable(mod, rows)}
-                        ` : renderWorkTaskEmptyState(canManage, categories.length)}
+                        ` : renderWorkTaskEmptyState(canCreate, canManage, categories.length)}
                     </div>
                 </section>
             </div>
@@ -2409,7 +2410,7 @@ function renderWorkMetric(label, value, icon, tone) {
     `;
 }
 
-function renderWorkOnboarding(canManage, categoryCount, totalTasks) {
+function renderWorkOnboarding(canManage, canCreate, categoryCount, totalTasks) {
     if (categoryCount && totalTasks) return "";
     if (!canManage) {
         return `
@@ -2417,8 +2418,8 @@ function renderWorkOnboarding(canManage, categoryCount, totalTasks) {
                 <div>
                     <i class="fa-solid fa-circle-info"></i>
                     <div>
-                        <strong>Chưa có kế hoạch công việc được giao</strong>
-                        <span>Khi sếp tạo nhóm hoặc giao đầu việc, nội dung cần xử lý sẽ hiện tại đây để bạn cập nhật tiến độ.</span>
+                        <strong>${categoryCount && canCreate ? "Bạn có thể tự thêm đầu việc" : "Chưa có kế hoạch công việc được giao"}</strong>
+                        <span>${categoryCount && canCreate ? "Chọn Thêm đầu việc để bổ sung công việc còn thiếu. Hệ thống sẽ tự gán công việc cho tài khoản của bạn." : "Khi admin tạo nhóm hoặc giao đầu việc, nội dung cần xử lý sẽ hiện tại đây để bạn cập nhật tiến độ."}</span>
                     </div>
                 </div>
             </section>
@@ -2461,18 +2462,20 @@ function renderWorkViewTabs(stats) {
     `;
 }
 
-function renderWorkTaskEmptyState(canManage, categoryCount) {
-    const title = canManage ? "Chưa có đầu việc" : "Chưa có công việc được giao";
-    const text = canManage
+function renderWorkTaskEmptyState(canCreate, canManage, categoryCount) {
+    const title = canCreate ? "Chưa có đầu việc" : "Chưa có công việc được giao";
+    const text = canCreate
         ? categoryCount
             ? "Thêm đầu việc đầu tiên để bắt đầu theo dõi tiến độ."
-            : "Tạo nhóm công việc trước, sau đó thêm từng đầu việc."
+            : canManage
+                ? "Tạo nhóm công việc trước, sau đó thêm từng đầu việc."
+                : "Admin cần tạo ít nhất một nhóm trước khi bạn có thể tự thêm đầu việc."
         : "Khi có việc được giao, bạn sẽ cập nhật tiến độ trực tiếp tại màn này.";
-    const action = canManage
-        ? categoryCount
-            ? `<button class="primary-btn" data-action="open-create"><i class="fa-solid fa-plus"></i><span>Thêm đầu việc</span></button>`
-            : `<button class="primary-btn" data-action="open-category-create"><i class="fa-solid fa-folder-plus"></i><span>Tạo nhóm công việc</span></button>`
-        : "";
+    const action = canCreate && categoryCount
+        ? `<button class="primary-btn" data-action="open-create"><i class="fa-solid fa-plus"></i><span>Thêm đầu việc</span></button>`
+        : canManage
+            ? `<button class="primary-btn" data-action="open-category-create"><i class="fa-solid fa-folder-plus"></i><span>Tạo nhóm công việc</span></button>`
+            : "";
     return `
         <div class="work-task-empty">
             <i class="fa-solid fa-list-check"></i>
@@ -4036,12 +4039,20 @@ function renderComboOptions(options) {
 }
 
 function renderField(field, row) {
-    const value = row ? row[field.key] ?? "" : getDefaultFieldValue(field);
+    const selfAssignmentField = ui.modal?.tab === "workItems"
+        && authState.user?.role !== "admin"
+        && ["assignee", "assigneeEmail"].includes(field.key);
+    const selfAssignmentValue = field.key === "assignee"
+        ? authState.user?.name || authState.user?.username || ""
+        : authState.user?.email || authState.user?.username || "";
+    const value = selfAssignmentField ? selfAssignmentValue : row ? row[field.key] ?? "" : getDefaultFieldValue(field);
     const required = field.required ? "required" : "";
     const label = e(field.label);
     const wrapper = `field ${field.full ? "full" : ""}`;
     let control = "";
-    if (field.type === "select") {
+    if (selfAssignmentField) {
+        control = `<input class="field-input" name="${e(field.key)}" type="text" value="${e(value)}" readonly aria-readonly="true">`;
+    } else if (field.type === "select") {
         const options = getFieldOptions(field);
         control = `
             <select class="field-select" name="${e(field.key)}" ${required}>
@@ -5002,8 +5013,8 @@ function openCreate() {
     const mod = modules[ui.activeTab];
     if (!mod || mod.readOnly) return;
     if (mod.collection === "workItems") {
-        if (!canManageWorkPlans()) {
-            showToast("Chỉ admin được tạo đầu việc. Bạn có thể cập nhật tiến độ việc được giao.");
+        if (!canCreateWorkItems()) {
+            showToast("Bạn cần đăng nhập để thêm đầu việc.");
             return;
         }
         if (!getWorkCategories().length) {
@@ -5084,8 +5095,8 @@ async function handleSubmit(event) {
     if (!ensureDbReady() || ui.saving) return;
     const mod = modules[ui.modal.tab];
     if (!mod || mod.readOnly) return;
-    if (["workCategories", "workItems"].includes(mod.collection) && !canManageWorkPlans()) {
-        showToast("Chỉ admin được tạo hoặc sửa kế hoạch công việc.");
+    if (mod.collection === "workCategories" && !canManageWorkPlans()) {
+        showToast("Chỉ admin được tạo hoặc sửa nhóm công việc.");
         return;
     }
     const form = event.currentTarget;
@@ -5104,6 +5115,10 @@ async function handleSubmit(event) {
         payload.owner = normalizeOwnerOption(payload.owner);
     }
     if (mod.collection === "workItems") {
+        if (authState.user?.role !== "admin") {
+            payload.assignee = authState.user?.name || authState.user?.username || "";
+            payload.assigneeEmail = authState.user?.email || authState.user?.username || "";
+        }
         if (!payload.assigneeEmail) payload.assigneeEmail = emailForWorkAssignee(payload.assignee);
         if (!payload.taskId && payload.categoryId) payload.taskId = getNextWorkItemTaskIdForCategory(payload.categoryId);
         if (payload.status === "Hoàn thành") {
@@ -6024,6 +6039,10 @@ function canDeleteRecord(row) {
 
 function canManageWorkPlans() {
     return authState.user?.role === "admin";
+}
+
+function canCreateWorkItems() {
+    return Boolean(authState.user);
 }
 
 function canFullyManageWorkItem(row) {
