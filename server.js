@@ -3105,6 +3105,9 @@ function compareStateRecords(a, b) {
   if (Number.isFinite(numericA) && Number.isFinite(numericB) && numericA !== numericB) {
     return numericA - numericB;
   }
+  if (Number.isFinite(numericA) !== Number.isFinite(numericB)) {
+    return Number.isFinite(numericA) ? -1 : 1;
+  }
   return String(a?.sprint || a?.code || a?.jiraCode || a?.name || a?.title || a?.topic || "")
     .localeCompare(String(b?.sprint || b?.code || b?.jiraCode || b?.name || b?.title || b?.topic || ""), "vi", { numeric: true });
 }

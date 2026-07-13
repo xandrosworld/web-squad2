@@ -154,6 +154,7 @@ async function assertDashboardMetric(tabId, label, expectedValue) {
 async function assertPlanDashboardRecomputes(payload) {
   const state = payload.state || payload;
   const beforeTotalCases = sumRows(state.plans || [], "totalCases");
+  const beforePlanOrder = (state.plans || []).map((row) => row.id);
   const testCases = 7;
   const stamp = Date.now();
   const planRecord = {
@@ -191,6 +192,10 @@ async function assertPlanDashboardRecomputes(payload) {
       const restoredTotalCases = sumRows(afterDelete.state.plans || [], "totalCases");
       if (restoredTotalCases !== beforeTotalCases) {
         throw new Error(`Dashboard plan cleanup did not restore total cases: expected ${beforeTotalCases}, got ${restoredTotalCases}`);
+      }
+      const afterPlanOrder = (afterDelete.state.plans || []).map((row) => row.id);
+      if (JSON.stringify(afterPlanOrder) !== JSON.stringify(beforePlanOrder)) {
+        throw new Error("Dashboard plan cleanup changed PhanCong_UAT row order.");
       }
     }
   }
