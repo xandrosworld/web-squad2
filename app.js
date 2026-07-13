@@ -144,7 +144,7 @@ const workAssigneeEmailByName = {
     "Nguyễn Gia Huy": "huyng@bidv.com.vn",
     "Phạm Anh Tuấn": "tuanpa13@bidv.com.vn",
     "Trần Đình Tuấn": "tuantd3@bidv.com.vn",
-    "Lê Trần Sơn": "tantc@bidv.com.vn",
+    "Lê Trần Sơn": "sonlt8@bidv.com.vn",
     "Huỳnh Công Sinh": "sinhhc@bidv.com.vn",
     "Hoàng Thành Trí": "triht@bidv.com.vn",
     "Mai Tấn Thành": "thanhmt@bidv.com.vn",
