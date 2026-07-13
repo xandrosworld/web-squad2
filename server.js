@@ -60,7 +60,7 @@ const workbookCollections = [
   "matrix",
   "guide"
 ];
-const planningCollections = ["workCategories", "workItems"];
+const planningCollections = ["workCategories", "workItems", "kpiConfig", "memberKpiInputs"];
 const collections = [...workbookCollections, ...planningCollections];
 const collectionSet = new Set(collections);
 const computedCollections = new Set(["defectSummary"]);
@@ -109,6 +109,20 @@ const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 const workCategoryStatusOptions = ["Đang theo dõi", "Hoàn thành", "Tạm dừng"];
 const workStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Chờ phê duyệt", "Quá hạn", "Hoàn thành"];
 const workPriorityOptions = ["Cao", "Trung bình", "Thấp"];
+const memberKpiRoleOptions = ["PO", "BA", "Squad Lead", "Tester", "Developer", "Reviewer", "Khác"];
+const defaultWorkKpiConfig = {
+  id: "work-kpi-default",
+  progressWeight: 35,
+  onTimeWeight: 25,
+  qualityWeight: 20,
+  contributionWeight: 10,
+  disciplineWeight: 10,
+  progressTarget: 100,
+  onTimeTarget: 95,
+  qualityTarget: 90,
+  contributionTarget: 90,
+  disciplineTarget: 95
+};
 const pilotWorkPlanSeedKey = "pilot_workplan_seed_v1";
 const pilotWorkPlanDocumentUrl = "https://drive.google.com/drive/folders/1mraUTa3nb4bVhikApO9i-uCB-THKbVWd";
 const workAssigneeDirectory = {
@@ -341,6 +355,20 @@ const collectionRules = {
     enums: {
       status: workStatusOptions,
       priority: workPriorityOptions
+    }
+  },
+  kpiConfig: {
+    required: [],
+    numbers: [],
+    percents: ["progressWeight", "onTimeWeight", "qualityWeight", "contributionWeight", "disciplineWeight", "progressTarget", "onTimeTarget", "qualityTarget", "contributionTarget", "disciplineTarget"],
+    enums: {}
+  },
+  memberKpiInputs: {
+    required: ["memberEmail"],
+    numbers: ["capacity"],
+    percents: ["qualityScore", "contributionScore", "disciplineScore"],
+    enums: {
+      role: memberKpiRoleOptions
     }
   }
 };
@@ -974,6 +1002,9 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
   if (collection === "workItems" && !canCreateWorkItem(req.user)) {
     throw httpError(403, "Bạn cần đăng nhập để thêm đầu việc.");
   }
+  if (["kpiConfig", "memberKpiInputs"].includes(collection) && !canManageWorkCategories(req.user)) {
+    throw httpError(403, "Chỉ admin được cập nhật cấu hình KPI.");
+  }
   const client = await getPool().connect();
   try {
     await client.query("begin");
@@ -982,6 +1013,9 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
       assignWorkItemToUser(record, req.user);
     }
     await applyRecordDefaults(client, collection, record);
+    if (collection === "memberKpiInputs") {
+      await assertUniqueMemberKpiInput(client, record.memberEmail, record.id);
+    }
     validateRecordForCollection(collection, record);
     const saved = await createRecord(client, collection, record, req.user);
     const { state, updatedAt } = await recomputeAndPersistWorkbookRules(client, req.user.id, req.user);
@@ -1011,6 +1045,13 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     if (collection === "workCategories" && !canManageWorkCategories(req.user)) {
       throw httpError(403, "Chỉ admin được sửa nhóm công việc.");
     }
+    if (["kpiConfig", "memberKpiInputs"].includes(collection) && !canManageWorkCategories(req.user)) {
+      throw httpError(403, "Chỉ admin được cập nhật cấu hình KPI.");
+    }
+    if (collection === "workCategories" && req.params.id === "pilot-t01") {
+      record.taskPrefix = current.data?.taskPrefix || "SQ2-T01";
+      record.sortOrder = current.data?.sortOrder || 1;
+    }
     if (collection === "workItems" && !canFullyManageWorkItem(req.user, current)) {
       record = mergeWorkItemProgressUpdate(current.data, record);
     }
@@ -1021,6 +1062,9 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     record.createdAt = current.data?.createdAt || current.created_at?.toISOString?.() || record.createdAt;
     record.updatedAt = new Date().toISOString();
     await applyRecordDefaults(client, collection, record);
+    if (collection === "memberKpiInputs") {
+      await assertUniqueMemberKpiInput(client, record.memberEmail, record.id);
+    }
     validateRecordForCollection(collection, record);
     const saved = await updateRecord(client, collection, record, req.user.id, current);
     const { state, updatedAt } = await recomputeAndPersistWorkbookRules(client, req.user.id, req.user);
@@ -1045,6 +1089,25 @@ app.delete("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     assertCanDeleteRecord(req.user, current);
     if (collection === "workCategories" && !canManageWorkCategories(req.user)) {
       throw httpError(403, "Chỉ admin được xóa nhóm công việc.");
+    }
+    if (["kpiConfig", "memberKpiInputs"].includes(collection) && !canManageWorkCategories(req.user)) {
+      throw httpError(403, "Chỉ admin được xóa cấu hình KPI.");
+    }
+    if (collection === "kpiConfig") {
+      throw httpError(409, "Cấu hình KPI mặc định không thể xóa.");
+    }
+    if (collection === "workCategories") {
+      if (req.params.id === "pilot-t01") {
+        throw httpError(409, "Nhóm Kiểm thử chức năng là nhóm hệ thống và không thể xóa.");
+      }
+      const linked = await client.query(`
+        select count(*)::integer as count
+        from uat_records
+        where collection = 'workItems' and data->>'categoryId' = $1
+      `, [req.params.id]);
+      if (Number(linked.rows[0]?.count || 0) > 0) {
+        throw httpError(409, "Nhóm đang có đầu việc. Hãy chuyển hoặc xóa đầu việc trước.");
+      }
     }
     await client.query("delete from uat_records where collection = $1 and id = $2", [collection, req.params.id]);
     const { state, updatedAt } = await recomputeAndPersistWorkbookRules(client, req.user.id, req.user);
@@ -1122,6 +1185,9 @@ module.exports = {
   tryAnswerAiShortcut,
   summarizeTesterAssignments,
   validateWorkbookImportState,
+  __testApplyWorkKpiRules: applyWorkKpiRules,
+  __testDefaultWorkKpiConfig: defaultWorkKpiConfig,
+  __testValidateRecordForCollection: validateRecordForCollection,
   __testBuildPilotWorkPlanSeedRecords: buildPilotWorkPlanSeedRecords
 };
 
@@ -1208,6 +1274,7 @@ function ensureSchema() {
       await ensureDefaultUsers();
       await ensureExclusiveAdminRoles();
       await ensurePilotWorkPlanSeed();
+      await ensureWorkKpiConfig();
     })().catch((error) => {
       schemaPromise = null;
       throw error;
@@ -3277,7 +3344,7 @@ async function recomputeAndPersistWorkbookRules(client, actorId, viewer = null) 
 
   const metaUpdatedAt = await touchMeta(client);
   return {
-    state: await readState(client, viewer),
+    state: applyWorkbookRulesForResponse(await readState(client, viewer)),
     updatedAt: metaUpdatedAt
   };
 }
@@ -3346,6 +3413,9 @@ function emptyState() {
     guide: [],
     workCategories: [],
     workItems: [],
+    kpiConfig: [],
+    memberKpiInputs: [],
+    memberKpiResults: [],
     updatedAt: null
   };
 }
@@ -3359,6 +3429,7 @@ function normalizeState(input) {
       : [];
   }
   applyWorkbookRules(state);
+  applyWorkKpiRules(state);
   assignSortOrder(state);
   state.updatedAt = typeof source.updatedAt === "string" ? source.updatedAt : new Date().toISOString();
   return state;
@@ -3366,8 +3437,113 @@ function normalizeState(input) {
 
 function applyWorkbookRulesForResponse(state) {
   applyWorkbookRules(state);
+  applyWorkKpiRules(state);
   assignSortOrder(state);
   return state;
+}
+
+function applyWorkKpiRules(state) {
+  const config = { ...defaultWorkKpiConfig, ...(state.kpiConfig?.[0] || {}) };
+  state.kpiConfig = [config];
+  const inputByEmail = new Map((state.memberKpiInputs || []).map((row) => [normalizeIdentity(row.memberEmail), row]));
+  const people = new Map();
+
+  (state.personnel || []).forEach((row) => {
+    const email = normalizeIdentity(row.email || workAssigneeDirectory[row.name]);
+    if (!email) return;
+    people.set(email, { email, name: row.name || email, personnel: row });
+  });
+  (state.memberKpiInputs || []).forEach((row) => {
+    const email = normalizeIdentity(row.memberEmail);
+    if (!email) return;
+    if (!people.has(email)) people.set(email, { email, name: row.memberName || email, personnel: {} });
+  });
+  (state.workItems || []).forEach((row) => {
+    const email = normalizeIdentity(row.assigneeEmail || workAssigneeDirectory[row.assignee]);
+    if (!email) return;
+    if (!people.has(email)) people.set(email, { email, name: row.assignee || email, personnel: {} });
+  });
+
+  const today = localDateString(new Date());
+  state.memberKpiResults = [...people.values()]
+    .map((person, index) => {
+      const input = inputByEmail.get(person.email) || {};
+      const tasks = (state.workItems || []).filter((row) => normalizeIdentity(row.assigneeEmail || workAssigneeDirectory[row.assignee]) === person.email);
+      const completedTasks = tasks.filter((row) => row.status === "Hoàn thành");
+      const datedCompletedTasks = completedTasks.filter((row) => isDateOnly(row.completedDate) && isDateOnly(row.dueDate));
+      const progress = tasks.length ? round(averageAll(tasks.map((row) => Number(row.progress || 0)))) : null;
+      const onTimeRate = datedCompletedTasks.length
+        ? round((datedCompletedTasks.filter((row) => row.completedDate <= row.dueDate).length / datedCompletedTasks.length) * 100)
+        : null;
+      const capacity = numberOrNull(input.capacity);
+      const qualityScore = numberOrNull(input.qualityScore);
+      const contributionScore = numberOrNull(input.contributionScore);
+      const disciplineScore = numberOrNull(input.disciplineScore);
+      const hasScoreInputs = progress !== null && onTimeRate !== null
+        && qualityScore !== null && contributionScore !== null && disciplineScore !== null;
+      const kpiTotal = hasScoreInputs ? roundOne(
+        normalizedKpiScore(progress, config.progressTarget, config.progressWeight)
+        + normalizedKpiScore(onTimeRate, config.onTimeTarget, config.onTimeWeight)
+        + normalizedKpiScore(qualityScore, config.qualityTarget, config.qualityWeight)
+        + normalizedKpiScore(contributionScore, config.contributionTarget, config.contributionWeight)
+        + normalizedKpiScore(disciplineScore, config.disciplineTarget, config.disciplineWeight)
+      ) : null;
+      return {
+        id: `member-kpi-${person.email}`,
+        sortOrder: index + 1,
+        memberName: input.memberName || person.name,
+        memberEmail: person.email,
+        role: input.role || person.personnel?.role || "",
+        module: input.module || person.personnel?.scope || "",
+        capacity,
+        totalTasks: tasks.length,
+        completed: completedTasks.length,
+        inProgress: tasks.filter((row) => row.status === "Đang thực hiện").length,
+        overdue: tasks.filter((row) => isDateOnly(row.dueDate) && row.dueDate < today && row.status !== "Hoàn thành").length,
+        progress,
+        onTimeRate,
+        qualityScore,
+        contributionScore,
+        disciplineScore,
+        workload: capacity && capacity > 0 ? roundOne(tasks.length / capacity) : null,
+        rank: kpiRank(kpiTotal),
+        kpiTotal,
+        scored: kpiTotal !== null
+      };
+    })
+    .sort((a, b) => String(a.memberName).localeCompare(String(b.memberName), "vi"));
+}
+
+function normalizeIdentity(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function numberOrNull(value) {
+  if (value === "" || value == null) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function isDateOnly(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+}
+
+function normalizedKpiScore(value, target, weight) {
+  const safeTarget = Number(target || 0);
+  if (!safeTarget) return 0;
+  return Math.min(Number(value || 0) / safeTarget, 1) * Number(weight || 0);
+}
+
+function roundOne(value) {
+  return Math.round(Number(value || 0) * 10) / 10;
+}
+
+function kpiRank(value) {
+  if (value == null) return "";
+  if (value >= 90) return "Xuất sắc";
+  if (value >= 80) return "Tốt";
+  if (value >= 65) return "Đạt";
+  return "Cần cải thiện";
 }
 
 function normalizeRecord(input, forcedId) {
@@ -3420,6 +3596,12 @@ async function applyRecordDefaults(client, collection, record) {
       record.progress = 100;
       if (isBlank(record.completedDate)) record.completedDate = localDateString(new Date());
     }
+  }
+  if (collection === "kpiConfig") {
+    Object.assign(record, { ...defaultWorkKpiConfig, ...record, id: "work-kpi-default" });
+  }
+  if (collection === "memberKpiInputs") {
+    record.memberEmail = String(record.memberEmail || "").trim().toLowerCase();
   }
 }
 
@@ -3532,6 +3714,19 @@ function validateRecordForCollection(collection, record, options = {}) {
     }
   }
 
+  if (collection === "kpiConfig") {
+    const totalWeight = [
+      "progressWeight",
+      "onTimeWeight",
+      "qualityWeight",
+      "contributionWeight",
+      "disciplineWeight"
+    ].reduce((total, field) => total + Number(record[field] || 0), 0);
+    if (Math.abs(totalWeight - 100) > 0.001) {
+      throw httpError(400, "Tổng trọng số KPI phải bằng 100%.");
+    }
+  }
+
   if (!options.preserveWorkbookSource && !isBlank(record.totalCases) && !isBlank(record.executedCases)) {
     const totalCases = Number(record.totalCases);
     const executedCases = Number(record.executedCases);
@@ -3593,6 +3788,30 @@ async function ensurePilotWorkPlanSeed() {
   } finally {
     client.release();
   }
+}
+
+async function assertUniqueMemberKpiInput(client, memberEmail, currentId) {
+  const result = await client.query(`
+    select id
+    from uat_records
+    where collection = 'memberKpiInputs'
+      and lower(data->>'memberEmail') = lower($1)
+      and id <> $2
+    limit 1
+  `, [String(memberEmail || "").trim(), String(currentId || "")]);
+  if (result.rows[0]) {
+    throw httpError(409, "Thành viên này đã có dữ liệu chấm KPI. Hãy sửa bản ghi hiện tại.");
+  }
+}
+
+async function ensureWorkKpiConfig() {
+  const now = new Date().toISOString();
+  const record = { ...defaultWorkKpiConfig, createdAt: now, updatedAt: now };
+  await getPool().query(`
+    insert into uat_records (collection, id, data, created_by, updated_by, created_at, updated_at)
+    values ('kpiConfig', $1, $2::jsonb, null, null, now(), now())
+    on conflict (collection, id) do nothing
+  `, [record.id, JSON.stringify(record)]);
 }
 
 function buildPilotWorkPlanSeedRecords(nowIso) {

@@ -21,9 +21,6 @@ if (!executablePath) {
 }
 
 const moduleTabs = [
-  "workItems",
-  "personnel",
-  "guide",
   "features",
   "handoffs",
   "plans",
@@ -34,6 +31,7 @@ const moduleTabs = [
   "matrix",
   "defectSummary"
 ];
+const moduleRoutes = Object.fromEntries(moduleTabs.map((tab) => [tab, `work/group/pilot-t01/${tab}`]));
 const readOnlyTabs = new Set(["defectSummary"]);
 const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00bb|\u00c4\u2018|\u00c6[\u00a0-\u00bf]/;
 
@@ -183,46 +181,43 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   await page.locator("[data-ai-action=\"close\"]").click();
   await page.waitForSelector("#aiChatForm", { state: "detached", timeout: 5000 });
 
-  await page.locator(".tabbar button[data-tab=\"defectDashboard\"]").click();
+  await goToRoute(page, "work/group/pilot-t01/defectDashboard");
   await page.waitForSelector(".defect-dashboard-panel", { timeout: 5000 });
   assertReadableText(await page.locator(".defect-dashboard-panel").innerText(), "defect dashboard");
 
-  for (const tab of moduleTabs) {
-    await page.locator(`.tabbar button[data-tab="${tab}"]`).click();
-    assertReadableText(await page.locator("#app").innerText(), tab);
-    if (tab === "workItems") {
-      await page.waitForSelector(".work-plan-page", { timeout: 5000 });
-      if (await page.locator(".work-category-panel").count() !== 1) {
-        throw new Error("Work plan tab did not render the category panel.");
-      }
-      if (await page.locator('[data-action="open-category-create"]').count() < 1) {
-        throw new Error("Work plan tab is missing category create action.");
-      }
-      await page.locator('[data-action="open-category-create"]').first().click();
-      await page.waitForSelector("#recordForm", { timeout: 5000 });
-      assertReadableText(await page.locator("#recordForm").innerText(), "work category form");
-      await page.locator("#recordModal .modal-head button[data-action=\"close-modal\"]").click();
-      await page.waitForSelector("#recordForm", { state: "detached", timeout: 5000 });
-      const addTaskButton = page.locator(".work-items-panel .panel-head button[data-action=\"open-create\"]");
-      if (await addTaskButton.count()) {
-        await addTaskButton.click();
-        await page.waitForSelector("#recordForm", { timeout: 5000 });
-        assertReadableText(await page.locator("#recordForm").innerText(), "work plan form");
-        await page.locator("#recordModal .modal-head button[data-action=\"close-modal\"]").click();
-        await page.waitForSelector("#recordForm", { state: "detached", timeout: 5000 });
-      } else if (await page.locator(".work-task-empty, .work-onboarding").count() < 1) {
-        throw new Error("Work plan tab has no task create action and no onboarding state.");
-      }
-      continue;
-    }
-    if (tab === "guide") {
-      await page.waitForSelector(".guide-page", { timeout: 5000 });
-      if (await page.locator(".guide-section").count() < 1) {
-        throw new Error("Guide tab did not render guide sections.");
-      }
-      continue;
-    }
+  await goToRoute(page, "work/inputs");
+  if (await page.locator('[data-action="open-category-create"]').count() < 1) {
+    throw new Error("Thông tin đầu vào thiếu nút thêm nhóm.");
+  }
+  await page.locator('[data-action="open-category-create"]').first().click();
+  await page.waitForSelector("#recordForm", { timeout: 5000 });
+  assertReadableText(await page.locator("#recordForm").innerText(), "work category form");
+  await page.locator('#recordModal .modal-head button[data-action="close-modal"]').click();
 
+  await goToRoute(page, "work/task-master");
+  await page.waitForSelector(".standalone-work-items", { timeout: 5000 });
+  const addTaskButton = page.locator('.work-items-panel .panel-head button[data-action="open-create"]');
+  if (await addTaskButton.count()) {
+    await addTaskButton.click();
+    await page.waitForSelector("#recordForm", { timeout: 5000 });
+    assertReadableText(await page.locator("#recordForm").innerText(), "work plan form");
+    await page.locator('#recordModal .modal-head button[data-action="close-modal"]').click();
+  }
+
+  await goToRoute(page, "common/personnel/list");
+  await page.waitForSelector('[data-resizable-table="personnel"]', { timeout: 5000 });
+  await goToRoute(page, "common/personnel/map");
+  await page.waitForSelector(".personnel-map", { timeout: 5000 });
+  await goToRoute(page, "common/personnel/kpi");
+  await page.waitForSelector(".kpi-config-grid", { timeout: 5000 });
+  await goToRoute(page, "work/member-kpi");
+  await page.waitForSelector(".member-kpi-table", { timeout: 5000 });
+  await goToRoute(page, "common/guide");
+  await page.waitForSelector(".guide-page", { timeout: 5000 });
+
+  for (const tab of moduleTabs) {
+    await goToRoute(page, moduleRoutes[tab]);
+    assertReadableText(await page.locator("#app").innerText(), tab);
     await page.waitForSelector(".content-grid-single .panel", { timeout: 5000 });
 
     const rowsOrEmpty = await page.locator(".data-table tbody tr, .empty-state").count();
@@ -272,7 +267,7 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
     await assertTableScrollPersistsAfterRefresh(page);
   }
 
-  await page.locator(".tabbar button[data-tab=\"dashboard\"]").click();
+  await goToRoute(page, "work/group/pilot-t01/dashboard");
   await page.waitForSelector(".dashboard-shell .sheet-dashboard, .dashboard-shell .dashboard-empty-panel", { timeout: 5000 });
 
   if (errors.length) {
@@ -294,7 +289,7 @@ function assertReadableText(text, area) {
 }
 
 async function assertTableScrollPersistsAfterRefresh(page) {
-  await page.locator(".tabbar button[data-tab=\"plans\"]").click();
+  await goToRoute(page, "work/group/pilot-t01/plans");
   await page.waitForSelector('[data-resizable-table="plans"]', { timeout: 5000 });
   const mainScroll = page.locator('[data-table-scrollbar="main"]').first();
   const before = await mainScroll.evaluate((element) => {
@@ -328,7 +323,7 @@ async function assertPageScrollPersistsAfterRefresh(page) {
   const originalViewport = page.viewportSize() || { width: 1440, height: 900 };
   await page.setViewportSize({ width: originalViewport.width, height: Math.min(originalViewport.height, 620) });
   try {
-    await page.locator(".tabbar button[data-tab=\"plans\"]").click();
+    await goToRoute(page, "work/group/pilot-t01/plans");
     await page.waitForSelector('[data-resizable-table="plans"]', { timeout: 5000 });
     const before = await page.evaluate(() => {
       const workspace = document.querySelector(".workspace");
@@ -352,4 +347,12 @@ async function assertPageScrollPersistsAfterRefresh(page) {
   } finally {
     await page.setViewportSize(originalViewport);
   }
+}
+
+async function goToRoute(page, route) {
+  await page.evaluate((nextRoute) => {
+    window.location.hash = nextRoute;
+  }, route);
+  await page.waitForFunction((expected) => window.location.hash.replace(/^#/, "") === expected, route, { timeout: 5000 });
+  await page.waitForTimeout(30);
 }

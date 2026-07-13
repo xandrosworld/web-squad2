@@ -130,11 +130,9 @@ async function assertDashboardMetric(tabId, label, expectedValue) {
       sameSite: "Lax"
     }]);
     const page = await context.newPage();
-    await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("[data-tab=\"dashboard\"]", { timeout: 15000 });
-    if (tabId && tabId !== "dashboard") {
-      await page.locator(`.tabbar [data-tab="${tabId}"]`).click();
-    }
+    const route = `work/group/pilot-t01/${tabId || "dashboard"}`;
+    await page.goto(`${baseUrl}/#${route}`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector(".t01-module-tabs", { timeout: 15000 });
     const expectedHeading = tabId === "defectDashboard" ? "DEFECT_Dashboard" : "Dashboard_UAT";
     await page.locator(".sheet-dashboard-head", { hasText: expectedHeading }).waitFor({ timeout: 15000 });
     await page.waitForSelector(".sheet-dashboard-table", { timeout: 15000 });

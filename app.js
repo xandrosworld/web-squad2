@@ -232,7 +232,6 @@ const modules = {
             { key: "title", label: "Tên công việc", type: "text", required: true, full: true },
             { key: "description", label: "Mô tả", type: "textarea", full: true },
             { key: "assignee", label: "Người phụ trách", type: "select", options: workAssigneeOptions },
-            { key: "assigneeEmail", label: "Email phụ trách", type: "text" },
             { key: "collaborators", label: "Người phối hợp", type: "text", full: true },
             { key: "status", label: "Trạng thái", type: "select", options: workStatusOptions, defaultValue: "Chưa bắt đầu" },
             { key: "progress", label: "% hoàn thành", type: "percent", defaultValue: 0 },
@@ -847,6 +846,47 @@ const modules = {
     }
 };
 
+modules.kpiConfig = {
+    label: "Cấu hình KPI",
+    shortLabel: "cấu hình KPI",
+    icon: "fa-sliders",
+    collection: "kpiConfig",
+    description: "Thiết lập trọng số và mục tiêu KPI thành viên. Tổng trọng số luôn bằng 100%.",
+    fields: [
+        { key: "progressWeight", label: "Trọng số tiến độ", type: "percent", required: true },
+        { key: "onTimeWeight", label: "Trọng số đúng hạn", type: "percent", required: true },
+        { key: "qualityWeight", label: "Trọng số chất lượng", type: "percent", required: true },
+        { key: "contributionWeight", label: "Trọng số đóng góp", type: "percent", required: true },
+        { key: "disciplineWeight", label: "Trọng số kỷ luật cập nhật", type: "percent", required: true },
+        { key: "progressTarget", label: "Mục tiêu tiến độ", type: "percent", required: true },
+        { key: "onTimeTarget", label: "Mục tiêu đúng hạn", type: "percent", required: true },
+        { key: "qualityTarget", label: "Mục tiêu chất lượng", type: "percent", required: true },
+        { key: "contributionTarget", label: "Mục tiêu đóng góp", type: "percent", required: true },
+        { key: "disciplineTarget", label: "Mục tiêu kỷ luật", type: "percent", required: true }
+    ],
+    filters: [],
+    columns: []
+};
+
+modules.memberKpiInputs = {
+    label: "Dữ liệu chấm KPI",
+    shortLabel: "KPI thành viên",
+    icon: "fa-user-check",
+    collection: "memberKpiInputs",
+    description: "Nhập capacity và các tiêu chí cần đánh giá thủ công cho từng thành viên.",
+    fields: [
+        { key: "memberEmail", label: "Thành viên", type: "select", options: () => getKpiMemberOptions(), required: true, full: true },
+        { key: "role", label: "Vai trò KPI", type: "select", options: ["PO", "BA", "Squad Lead", "Tester", "Developer", "Reviewer", "Khác"] },
+        { key: "module", label: "Module phụ trách", type: "text", full: true },
+        { key: "capacity", label: "Capacity / kỳ", type: "number" },
+        { key: "qualityScore", label: "Điểm review / chất lượng", type: "percent" },
+        { key: "contributionScore", label: "Điểm phối hợp / đóng góp", type: "percent" },
+        { key: "disciplineScore", label: "Điểm kỷ luật cập nhật", type: "percent" }
+    ],
+    filters: [],
+    columns: []
+};
+
 const tabs = [
     { id: "dashboard", label: "Dashboard_UAT", icon: "fa-gauge-high" },
     { id: "workItems", label: "Kế hoạch công việc", icon: modules.workItems.icon },
@@ -866,6 +906,36 @@ const tabs = [
     { id: "bugSources", label: "DS.Loi", icon: modules.bugSources.icon, sheetMark: "red", hidden: true }
 ];
 
+const t01ModuleIds = [
+    "dashboard",
+    "defectDashboard",
+    "features",
+    "handoffs",
+    "plans",
+    "daily",
+    "defects",
+    "weekly",
+    "readiness",
+    "matrix"
+];
+const t01ModuleTabs = tabs.filter((tab) => t01ModuleIds.includes(tab.id));
+const legacyRouteAliases = {
+    dashboard: "work/group/pilot-t01/dashboard",
+    defectDashboard: "work/group/pilot-t01/defectDashboard",
+    features: "work/group/pilot-t01/features",
+    handoffs: "work/group/pilot-t01/handoffs",
+    plans: "work/group/pilot-t01/plans",
+    daily: "work/group/pilot-t01/daily",
+    defects: "work/group/pilot-t01/defects",
+    defectSummary: "work/group/pilot-t01/defectSummary",
+    weekly: "work/group/pilot-t01/weekly",
+    readiness: "work/group/pilot-t01/readiness",
+    matrix: "work/group/pilot-t01/matrix",
+    personnel: "common/personnel/list",
+    guide: "common/guide",
+    workItems: "work/task-master"
+};
+
 function visibleTabs() {
     return tabs.filter((tab) => !tab.hidden);
 }
@@ -875,8 +945,48 @@ function getDataModuleCount() {
 }
 
 function getInitialTab() {
-    const id = (window.location.hash || "").replace("#", "");
-    return visibleTabs().some((tab) => tab.id === id) ? id : "dashboard";
+    return getInitialRoute().activeTab;
+}
+
+function getInitialRoute(pathOverride) {
+    const rawPath = pathOverride == null ? window.location.hash || "" : pathOverride;
+    let path = decodeURIComponent(String(rawPath).replace(/^#\/?/, "")).trim();
+    if (legacyRouteAliases[path]) path = legacyRouteAliases[path];
+    if (!path) path = "work/dashboard";
+    const parts = path.split("/").filter(Boolean);
+
+    if (parts[0] === "common" && parts[1] === "personnel") {
+        const section = ["list", "map", "kpi"].includes(parts[2]) ? parts[2] : "list";
+        return { path: `common/personnel/${section}`, view: `personnel-${section}`, activeTab: "personnel", categoryId: "", t01Tab: "dashboard" };
+    }
+    if (path === "common/guide") {
+        return { path, view: "guide", activeTab: "guide", categoryId: "", t01Tab: "dashboard" };
+    }
+    if (path === "work/task-master") {
+        return { path, view: "task-master", activeTab: "workItems", categoryId: "", t01Tab: "dashboard" };
+    }
+    if (path === "work/dashboard") {
+        return { path, view: "work-dashboard", activeTab: "workItems", categoryId: "", t01Tab: "dashboard" };
+    }
+    if (path === "work/inputs") {
+        return { path, view: "work-inputs", activeTab: "workCategories", categoryId: "", t01Tab: "dashboard" };
+    }
+    if (path === "work/member-kpi") {
+        return { path, view: "member-kpi", activeTab: "workItems", categoryId: "", t01Tab: "dashboard" };
+    }
+    if (parts[0] === "work" && parts[1] === "group" && parts[2]) {
+        const categoryId = parts[2];
+        const requestedTab = parts[3] || "dashboard";
+        const t01Tab = [...t01ModuleIds, "defectSummary"].includes(requestedTab) ? requestedTab : "dashboard";
+        return {
+            path: `work/group/${categoryId}${categoryId === "pilot-t01" ? `/${t01Tab}` : ""}`,
+            view: "work-group",
+            activeTab: categoryId === "pilot-t01" ? t01Tab : "workItems",
+            categoryId,
+            t01Tab
+        };
+    }
+    return { path: "work/dashboard", view: "work-dashboard", activeTab: "workItems", categoryId: "", t01Tab: "dashboard" };
 }
 
 function tabButtonClass(tab, baseClass) {
@@ -904,6 +1014,9 @@ const emptyState = () => ({
     guide: [],
     workCategories: [],
     workItems: [],
+    kpiConfig: [],
+    memberKpiInputs: [],
+    memberKpiResults: [],
     updatedAt: null
 });
 
@@ -915,8 +1028,18 @@ let authState = {
 };
 let lastRenderedTab = null;
 let pendingActiveTabScroll = null;
+const initialRoute = getInitialRoute();
+if ((window.location.hash || "").replace(/^#\/?/, "") !== initialRoute.path) {
+    history.replaceState(null, "", `#${initialRoute.path}`);
+}
 let ui = {
-    activeTab: getInitialTab(),
+    activeTab: initialRoute.activeTab,
+    activeView: initialRoute.view,
+    activeRoute: initialRoute.path,
+    activeCategoryId: initialRoute.categoryId,
+    t01Tab: initialRoute.t01Tab,
+    sidebarCollapsed: localStorage.getItem("squad2-sidebar-collapsed") === "true",
+    sidebarMobileOpen: false,
     query: "",
     filters: {},
     columnFilters: {},
@@ -963,6 +1086,7 @@ function normalizeState(raw) {
         const collection = modules[id].collection;
         nextState[collection] = Array.isArray(source[collection]) ? source[collection] : [];
     });
+    nextState.memberKpiResults = Array.isArray(source.memberKpiResults) ? source.memberKpiResults : [];
     nextState.updatedAt = typeof source.updatedAt === "string" ? source.updatedAt : null;
     return nextState;
 }
@@ -1145,8 +1269,34 @@ async function replaceRemoteState(state) {
     });
 }
 
+function navigateToRoute(path, options = {}) {
+    const route = getRouteForPath(path);
+    ui.activeRoute = route.path;
+    ui.activeView = route.view;
+    ui.activeTab = route.activeTab;
+    ui.activeCategoryId = route.categoryId;
+    ui.t01Tab = route.t01Tab;
+    ui.query = "";
+    ui.openColumnFilter = null;
+    ui.sidebarMobileOpen = false;
+    if (route.view === "task-master" || route.view === "work-dashboard") {
+        ui.filters["workItems:categoryId"] = "";
+    } else if (route.view === "work-group" && route.categoryId !== "pilot-t01") {
+        ui.filters["workItems:categoryId"] = route.categoryId;
+    }
+    const hash = `#${route.path}`;
+    if (options.push) history.pushState(null, "", hash);
+    else history.replaceState(null, "", hash);
+    requestActiveTabScroll();
+    render();
+}
+
+function getRouteForPath(path) {
+    return getInitialRoute(path);
+}
+
 function render() {
-    const pageScroll = lastRenderedTab === ui.activeTab ? capturePageScroll() : null;
+    const pageScroll = lastRenderedTab === ui.activeRoute ? capturePageScroll() : null;
     const previousTabbarScrollLeft = document.querySelector(".tabbar")?.scrollLeft || 0;
     if (authState.status === "checking") {
         lastRenderedTab = null;
@@ -1177,13 +1327,12 @@ function render() {
     document.getElementById("app").innerHTML = `
         <div class="app-shell">
             ${renderSidebar()}
+            ${ui.sidebarMobileOpen ? `<button class="sidebar-scrim" data-action="toggle-sidebar" aria-label="Đóng điều hướng"></button>` : ""}
             <main class="main">
                 ${renderTopbar()}
                 <section class="workspace">
                     ${renderCommandBand()}
-                    ${renderKpis()}
-                    ${renderTabs()}
-                    ${ui.activeTab === "dashboard" ? renderDashboard() : ui.activeTab === "defectDashboard" ? renderDefectDashboardPage() : ui.activeTab === "workItems" ? renderWorkPlanModule() : renderModule(modules[ui.activeTab])}
+                    ${renderActiveView()}
                 </section>
             </main>
         </div>
@@ -1195,7 +1344,7 @@ function render() {
     `;
 
     bindEvents();
-    lastRenderedTab = ui.activeTab;
+    lastRenderedTab = ui.activeRoute;
     restoreTabbarScrollLeft(previousTabbarScrollLeft);
 
     let restoredFocus = false;
@@ -1276,7 +1425,7 @@ function stateDataSignature(state) {
 function capturePageScroll() {
     const workspace = document.querySelector(".workspace");
     return {
-        tab: ui.activeTab,
+        route: ui.activeRoute,
         left: window.scrollX || document.documentElement.scrollLeft || 0,
         top: window.scrollY || document.documentElement.scrollTop || 0,
         workspaceLeft: workspace?.scrollLeft || 0,
@@ -1285,7 +1434,7 @@ function capturePageScroll() {
 }
 
 function restorePageScroll(snapshot) {
-    if (!snapshot || snapshot.tab !== ui.activeTab) return;
+    if (!snapshot || snapshot.route !== ui.activeRoute) return;
     const restore = () => {
         const workspace = document.querySelector(".workspace");
         if (workspace) {
@@ -1413,17 +1562,52 @@ function renderLoginPage() {
 }
 
 function renderSidebar() {
+    const categories = getWorkCategories();
     return `
-        <aside class="sidebar" aria-label="Điều hướng">
-            <div class="sidebar-logo"><i class="fa-solid fa-bars"></i></div>
-            <nav class="sidebar-menu">
-                ${visibleTabs().map((tab) => `
-                    <button class="${tabButtonClass(tab, "side-btn")}" data-tab="${tab.id}" title="${e(tab.label)}" aria-label="${e(tab.label)}">
-                        <i class="fa-solid ${tab.icon}"></i>
-                    </button>
-                `).join("")}
+        <aside class="sidebar navigation-tree ${ui.sidebarCollapsed ? "collapsed" : ""} ${ui.sidebarMobileOpen ? "mobile-open" : ""}" aria-label="Điều hướng chính">
+            <div class="sidebar-logo">
+                <button type="button" data-action="toggle-sidebar-collapse" title="Thu gọn điều hướng" aria-label="Thu gọn điều hướng">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <strong>Squad 2 UAT</strong>
+            </div>
+            <nav class="sidebar-menu tree-menu">
+                <div class="tree-section">
+                    <span class="tree-section-title"><i class="fa-solid fa-users-viewfinder"></i><b>THÔNG TIN CHUNG</b></span>
+                    <span class="tree-parent"><i class="fa-regular fa-user"></i><b>Nhân sự</b></span>
+                    ${renderSidebarRouteButton("common/personnel/list", "fa-address-book", "Danh sách thành viên", 2)}
+                    ${renderSidebarRouteButton("common/personnel/map", "fa-sitemap", "Sơ đồ hoạt động", 2)}
+                    ${renderSidebarRouteButton("common/personnel/kpi", "fa-chart-column", "KPI", 2)}
+                    ${renderSidebarRouteButton("common/guide", "fa-book-open", "Hướng dẫn UAT", 1)}
+                </div>
+                <div class="tree-section">
+                    <span class="tree-section-title"><i class="fa-solid fa-clipboard-list"></i><b>CÔNG VIỆC</b></span>
+                    ${renderSidebarRouteButton("work/task-master", "fa-table-list", "Task_Master", 1)}
+                    ${renderSidebarRouteButton("work/dashboard", "fa-chart-pie", "Dashboard", 1)}
+                    ${renderSidebarRouteButton("work/inputs", "fa-file-circle-plus", "Thông tin đầu vào", 1)}
+                    ${renderSidebarRouteButton("work/member-kpi", "fa-chart-line", "KPI_Thành viên", 1)}
+                    <span class="tree-parent"><i class="fa-regular fa-folder-open"></i><b>Nhóm công việc</b></span>
+                    <div class="tree-category-list">
+                        ${categories.map((category) => renderSidebarRouteButton(
+                            `work/group/${category.id}${category.id === "pilot-t01" ? `/${ui.t01Tab || "dashboard"}` : ""}`,
+                            "fa-circle",
+                            `${Math.max(0, Math.trunc(Number(category.sortOrder || 1)) - 1)}. ${getWorkCategoryShortName(category)}`,
+                            2,
+                            ui.activeView === "work-group" && ui.activeCategoryId === category.id
+                        )).join("")}
+                    </div>
+                </div>
             </nav>
         </aside>
+    `;
+}
+
+function renderSidebarRouteButton(route, icon, label, level = 1, forceActive = false) {
+    const active = forceActive || ui.activeRoute === route;
+    return `
+        <button class="tree-link level-${e(level)} ${active ? "active" : ""}" type="button" data-route="${e(route)}" title="${e(label)}">
+            <i class="fa-solid ${e(icon)}"></i><span>${e(label)}</span>
+        </button>
     `;
 }
 
@@ -1431,6 +1615,9 @@ function renderTopbar() {
     return `
         <header class="topbar">
             <div class="brand-lockup">
+                <button class="mobile-menu-btn" type="button" data-action="toggle-sidebar" title="Mở điều hướng" aria-label="Mở điều hướng">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
                 <img class="brand-logo" src="assets/logo-bidv.jpg" alt="BIDV">
                 <div class="brand-divider"></div>
                 <div class="brand-title">
@@ -1460,16 +1647,20 @@ function renderTopbar() {
 }
 
 function renderCommandBand() {
-    const activeModule = modules[ui.activeTab];
-    const title = activeModule ? activeModule.label : "Dashboard_UAT";
-    const subtitle = activeModule ? activeModule.description : "Bảng điều hành UAT Squad 2 - Agile Tester Pool.";
-    const totalRecords = Object.keys(modules).reduce((sum, id) => sum + appState[modules[id].collection].length, 0);
+    const meta = getActiveViewMeta();
+    const healthCollections = [...new Set([
+        ...tabs.map((tab) => modules[tab.id]?.collection).filter(Boolean),
+        "schedule",
+        "workCategories",
+        "workItems"
+    ])];
+    const totalRecords = healthCollections.reduce((sum, collection) => sum + (appState[collection]?.length || 0), 0);
     return `
         <div class="command-band">
             <div>
                 <div class="screen-kicker">BIDV · Squad 2 · UAT</div>
-                <h1 class="screen-title">${e(title)}</h1>
-                <p class="screen-subtitle">${e(subtitle)}</p>
+                <h1 class="screen-title">${e(meta.title)}</h1>
+                <p class="screen-subtitle">${e(meta.subtitle)}</p>
             </div>
             <div class="command-meta">
                 ${renderDbStatusPill()}
@@ -1478,6 +1669,23 @@ function renderCommandBand() {
             </div>
         </div>
     `;
+}
+
+function getActiveViewMeta() {
+    const category = getWorkCategories().find((row) => row.id === ui.activeCategoryId);
+    if (ui.activeView === "personnel-list") return { title: "Danh sách thành viên", subtitle: modules.personnel.description };
+    if (ui.activeView === "personnel-map") return { title: "Sơ đồ hoạt động", subtitle: "Tổng quan vai trò, đơn vị và phạm vi phụ trách của thành viên Squad 2." };
+    if (ui.activeView === "personnel-kpi") return { title: "Cấu hình KPI", subtitle: "Thiết lập trọng số, mục tiêu và dữ liệu đánh giá thủ công cho thành viên." };
+    if (ui.activeView === "guide") return { title: "Hướng dẫn UAT", subtitle: modules.guide.description };
+    if (ui.activeView === "task-master") return { title: "Task_Master", subtitle: "Danh sách nguồn duy nhất để tạo, giao và cập nhật toàn bộ công việc." };
+    if (ui.activeView === "work-dashboard") return { title: "Dashboard công việc", subtitle: "Tổng hợp tiến độ trực tiếp từ Task_Master, không nhập số liệu riêng." };
+    if (ui.activeView === "work-inputs") return { title: "Thông tin đầu vào", subtitle: "Quản lý nhóm công việc và tra cứu các danh mục dùng chung." };
+    if (ui.activeView === "member-kpi") return { title: "KPI thành viên", subtitle: "Kết quả được tính từ công việc thực tế và dữ liệu đánh giá đã cấu hình." };
+    if (ui.activeView === "work-group") return {
+        title: category ? `${category.taskPrefix || ""} · ${getWorkCategoryShortName(category)}` : "Nhóm công việc",
+        subtitle: category?.description || "Theo dõi tiến độ và danh sách đầu việc của nhóm."
+    };
+    return { title: "Dashboard công việc", subtitle: "Tổng hợp tiến độ công việc Squad 2." };
 }
 
 function renderKpis() {
@@ -1494,6 +1702,300 @@ function renderTabs() {
             `).join("")}
         </nav>
     `;
+}
+
+function renderActiveView() {
+    if (ui.activeView === "personnel-list") return renderModule(modules.personnel);
+    if (ui.activeView === "personnel-map") return renderPersonnelMapPage();
+    if (ui.activeView === "personnel-kpi") return renderPersonnelKpiPage();
+    if (ui.activeView === "guide") return renderModule(modules.guide);
+    if (ui.activeView === "task-master") return renderTaskMasterPage();
+    if (ui.activeView === "work-dashboard") return renderWorkDashboardPage();
+    if (ui.activeView === "work-inputs") return renderWorkInputsPage();
+    if (ui.activeView === "member-kpi") return renderMemberKpiPage();
+    if (ui.activeView === "work-group") return renderWorkGroupPage();
+    return renderWorkDashboardPage();
+}
+
+function renderTaskMasterPage() {
+    const stats = getWorkPlanStats();
+    return `
+        <div class="work-plan-page">
+            ${renderWorkSummaryStrip(stats, true)}
+            ${renderWorkItemsPanel({ title: "Task_Master", subtitle: "Toàn bộ đầu việc · cập nhật tại đây để đồng bộ Dashboard/KPI", showViews: true, showGroupFilter: true })}
+        </div>
+    `;
+}
+
+function renderWorkDashboardPage() {
+    const stats = getWorkPlanStats();
+    const categories = getWorkCategories();
+    return `
+        <div class="work-plan-page">
+            ${renderWorkSummaryStrip(stats, true)}
+            <div class="work-dashboard-grid">
+                <section class="panel">
+                    <div class="panel-head">
+                        <div class="panel-title"><i class="fa-solid fa-layer-group"></i><div><h2>Tiến độ theo nhóm</h2><span>Tính trực tiếp từ Task_Master</span></div></div>
+                    </div>
+                    <div class="panel-body flush-mobile">
+                        <div class="work-dashboard-list">
+                            ${categories.map((category) => {
+                                const groupStats = getWorkGroupStats(category.id);
+                                const progress = groupStats.total ? Math.round(groupStats.progress) : 0;
+                                return `
+                                    <button class="work-dashboard-row" type="button" data-route="work/group/${e(category.id)}${category.id === "pilot-t01" ? "/dashboard" : ""}">
+                                        <span class="work-dashboard-code">${e(category.taskPrefix || "-")}</span>
+                                        <span class="work-dashboard-name"><strong>${e(getWorkCategoryShortName(category))}</strong><small>${e(groupStats.total)} việc · ${e(groupStats.done)} hoàn thành</small></span>
+                                        <span class="work-dashboard-progress"><span><i style="width:${e(clamp(progress))}%"></i></span><b>${e(progress)}%</b></span>
+                                        <i class="fa-solid fa-chevron-right"></i>
+                                    </button>
+                                `;
+                            }).join("") || `<div class="work-task-empty"><i class="fa-solid fa-folder-open"></i><strong>Chưa có nhóm công việc</strong></div>`}
+                        </div>
+                    </div>
+                </section>
+                <section class="panel work-status-panel">
+                    <div class="panel-head">
+                        <div class="panel-title"><i class="fa-solid fa-chart-simple"></i><div><h2>Trạng thái công việc</h2><span>${e(stats.total)} đầu việc hiện tại</span></div></div>
+                    </div>
+                    <div class="panel-body">
+                        ${workStatusOptions.map((status) => {
+                            const count = (appState.workItems || []).filter((row) => row.status === status).length;
+                            const percent = stats.total ? Math.round((count / stats.total) * 100) : 0;
+                            return `<div class="status-breakdown-row"><span>${renderWorkStatus(status)}</span><div><i style="width:${e(percent)}%"></i></div><strong>${e(count)}</strong></div>`;
+                        }).join("")}
+                    </div>
+                </section>
+            </div>
+        </div>
+    `;
+}
+
+function renderWorkSummaryStrip(stats, includeCategories = false) {
+    return `
+        <section class="work-plan-summary ${includeCategories ? "with-categories" : ""}">
+            ${includeCategories ? renderWorkMetric("Nhóm", stats.categories ?? 0, "fa-folder-tree", "teal") : ""}
+            ${renderWorkMetric("Tổng công việc", stats.total, "fa-list-check", "blue")}
+            ${renderWorkMetric("Đang thực hiện", stats.inProgress, "fa-person-running", "blue")}
+            ${renderWorkMetric("Chờ phê duyệt", stats.pendingApproval, "fa-clock", "yellow")}
+            ${renderWorkMetric("Quá hạn", stats.overdue, "fa-triangle-exclamation", "red")}
+            ${renderWorkMetric("Hoàn thành", stats.done, "fa-circle-check", "green")}
+        </section>
+    `;
+}
+
+function renderWorkItemsPanel({ title, subtitle, categoryId = "", showViews = true, showGroupFilter = true }) {
+    const mod = modules.workItems;
+    const filteredRows = getFilteredWorkRows(categoryId);
+    const pageState = getPaginationState(mod.collection, filteredRows);
+    const rows = pageState.rows;
+    const canCreate = canCreateWorkItems();
+    const categories = getWorkCategories();
+    return `
+        <section class="panel work-items-panel standalone-work-items">
+            <div class="panel-head">
+                <div class="panel-title"><i class="fa-solid ${mod.icon}"></i><div><h2>${e(title)}</h2><span>${e(subtitle)} · ${renderPaginationSummary(pageState)}</span></div></div>
+                <div class="panel-actions">
+                    ${canCreate && categories.length ? `<button class="primary-btn" data-action="open-create"><i class="fa-solid fa-plus"></i><span>Thêm công việc</span></button>` : ""}
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="work-task-tools">
+                    <label class="work-task-search"><i class="fa-solid fa-magnifying-glass"></i><input id="searchInput" value="${e(ui.query)}" placeholder="Tìm Task ID, tên công việc, người phụ trách..."></label>
+                    ${showViews ? renderWorkViewTabs(getWorkPlanStats()) : ""}
+                </div>
+                ${renderWorkPlanFilterBar(showGroupFilter)}
+                ${renderPaginationControls(mod.collection, pageState)}
+                ${rows.length ? renderTable(mod, rows) : renderEmpty(mod.emptyIcon, categoryId ? "Nhóm chưa có công việc" : mod.emptyTitle, categoryId ? "Thêm công việc đầu tiên hoặc thay đổi bộ lọc." : mod.emptyText, true, canCreate ? mod : null)}
+            </div>
+        </section>
+    `;
+}
+
+function renderWorkGroupPage() {
+    const category = getWorkCategories().find((row) => row.id === ui.activeCategoryId);
+    if (!category) return `<div class="work-plan-page">${renderEmpty("fa-folder-open", "Không tìm thấy nhóm", "Nhóm công việc có thể đã được đổi hoặc xóa.", false)}</div>`;
+    const stats = getWorkGroupStats(category.id);
+    if (category.id === "pilot-t01") return renderT01WorkGroup(category, stats);
+    return `
+        <div class="work-plan-page">
+            ${renderWorkSummaryStrip(stats)}
+            ${renderWorkItemsPanel({
+                title: getWorkCategoryShortName(category),
+                subtitle: `${category.taskPrefix || ""} · ${stats.total} đầu việc`,
+                categoryId: category.id,
+                showViews: false,
+                showGroupFilter: false
+            })}
+        </div>
+    `;
+}
+
+function renderT01WorkGroup(category, stats) {
+    const activeTab = ui.t01Tab || "dashboard";
+    const effectiveParent = activeTab === "defectSummary" ? "defects" : activeTab;
+    return `
+        <div class="work-plan-page t01-workspace">
+            ${renderWorkSummaryStrip(stats)}
+            <nav class="t01-module-tabs" aria-label="Phân hệ kiểm thử chức năng">
+                ${t01ModuleTabs.map((tab) => `
+                    <button class="${effectiveParent === tab.id ? "active" : ""}" type="button" data-route="work/group/${e(category.id)}/${e(tab.id)}">
+                        <i class="fa-solid ${e(tab.icon)}"></i><span>${e(tab.label)}</span>
+                    </button>
+                `).join("")}
+            </nav>
+            ${effectiveParent === "defects" ? `
+                <div class="secondary-tabs">
+                    <button class="${activeTab === "defects" ? "active" : ""}" data-route="work/group/${e(category.id)}/defects">DEFECT_LOG</button>
+                    <button class="${activeTab === "defectSummary" ? "active" : ""}" data-route="work/group/${e(category.id)}/defectSummary">Tổng hợp lỗi</button>
+                </div>
+            ` : ""}
+            ${renderLegacyT01Content(activeTab)}
+        </div>
+    `;
+}
+
+function renderLegacyT01Content(tabId) {
+    if (tabId === "dashboard") return renderDashboard();
+    if (tabId === "defectDashboard") return renderDefectDashboardPage();
+    return renderModule(modules[tabId] || modules.features);
+}
+
+function getWorkGroupStats(categoryId) {
+    const rows = (appState.workItems || []).filter((row) => String(row.categoryId || "") === String(categoryId || ""));
+    const done = rows.filter((row) => row.status === "Hoàn thành").length;
+    const inProgress = rows.filter((row) => row.status === "Đang thực hiện").length;
+    const pendingApproval = rows.filter((row) => row.status === "Chờ phê duyệt").length;
+    const overdue = rows.filter((row) => getWorkItemWarning(row) === "Quá hạn").length;
+    const progress = rows.length ? rows.reduce((sum, row) => sum + Number(row.progress || 0), 0) / rows.length : 0;
+    return { total: rows.length, done, inProgress, pendingApproval, overdue, progress };
+}
+
+function renderWorkInputsPage() {
+    const categories = getWorkCategories();
+    return `
+        <div class="work-plan-page input-catalog-grid">
+            <section class="panel input-catalog-main">
+                <div class="panel-head">
+                    <div class="panel-title"><i class="fa-solid fa-folder-tree"></i><div><h2>Nhóm công việc</h2><span>${e(categories.length)} nhóm · dùng để sinh Task ID và tổng hợp Dashboard</span></div></div>
+                    ${canManageWorkPlans() ? `<button class="primary-btn" data-action="open-category-create"><i class="fa-solid fa-plus"></i><span>Thêm nhóm</span></button>` : ""}
+                </div>
+                <div class="panel-body flush-mobile">
+                    <div class="catalog-table">
+                        <div class="catalog-row catalog-head"><span>Prefix</span><span>Tên nhóm</span><span>Mốc hoàn thành</span><span>Trạng thái</span><span>Thao tác</span></div>
+                        ${categories.map((category) => `
+                            <div class="catalog-row">
+                                <span>${tag(category.taskPrefix || "-", "teal")}</span>
+                                <span><strong>${e(category.name || "-")}</strong><small>${e(category.description || "")}</small></span>
+                                <span>${category.targetDate ? e(formatPlainDate(category.targetDate)) : `<span class="muted-value">-</span>`}</span>
+                                <span>${renderStatus(category.status)}</span>
+                                <span class="row-actions">
+                                    ${canManageWorkPlans() ? `<button class="icon-btn" data-action="open-category-edit" data-id="${e(category.id)}" title="Sửa nhóm"><i class="fa-solid fa-pen"></i></button>` : ""}
+                                    ${canManageWorkPlans() && category.id !== "pilot-t01" ? `<button class="icon-btn" data-action="delete-category" data-id="${e(category.id)}" title="Xóa nhóm"><i class="fa-solid fa-trash"></i></button>` : ""}
+                                </span>
+                            </div>
+                        `).join("")}
+                    </div>
+                </div>
+            </section>
+            <aside class="input-reference-stack">
+                <section class="panel reference-panel">
+                    <div class="panel-head"><div class="panel-title"><i class="fa-solid fa-users"></i><div><h2>Nguồn nhân sự</h2><span>${e(appState.personnel?.length || 0)} thành viên đang dùng để giao việc</span></div></div></div>
+                    <div class="panel-body"><button class="ghost-btn input-source-link" type="button" data-route="common/personnel/list"><i class="fa-solid fa-arrow-up-right-from-square"></i><span>Mở danh sách thành viên</span></button></div>
+                </section>
+                ${renderReferenceList("Trạng thái công việc", "fa-circle-half-stroke", workStatusOptions, renderWorkStatus)}
+                ${renderReferenceList("Mức ưu tiên", "fa-flag", workPriorityOptions, renderWorkPriority)}
+            </aside>
+        </div>
+    `;
+}
+
+function renderReferenceList(title, icon, values, renderer) {
+    return `<section class="panel reference-panel"><div class="panel-head"><div class="panel-title"><i class="fa-solid ${e(icon)}"></i><div><h2>${e(title)}</h2><span>Danh mục cố định</span></div></div></div><div class="panel-body reference-list">${values.map((value) => `<div>${renderer(value)}<span>${e(value)}</span></div>`).join("")}</div></section>`;
+}
+
+function renderPersonnelMapPage() {
+    const groups = new Map();
+    [...(appState.personnel || [])].sort(compareBySortOrderThenName).forEach((person) => {
+        const role = person.role || "Chưa cập nhật vai trò";
+        if (!groups.has(role)) groups.set(role, []);
+        groups.get(role).push(person);
+    });
+    return `
+        <div class="personnel-map">
+            ${[...groups.entries()].map(([role, people]) => `
+                <section class="panel role-lane">
+                    <div class="panel-head"><div class="panel-title"><i class="fa-solid fa-people-group"></i><div><h2>${e(role)}</h2><span>${e(people.length)} thành viên</span></div></div></div>
+                    <div class="panel-body member-card-grid">
+                        ${people.map((person) => `<article class="member-card"><span class="member-avatar">${e(userInitials({ name: person.name || "?" }))}</span><div><strong>${e(person.name || "-")}</strong><span>${e(person.unit || "Chưa cập nhật đơn vị")}</span><small>${e(person.scope || "Chưa cập nhật phạm vi")}</small></div></article>`).join("")}
+                    </div>
+                </section>
+            `).join("") || renderEmpty("fa-users", "Chưa có dữ liệu nhân sự", modules.personnel.emptyText)}
+        </div>
+    `;
+}
+
+function renderPersonnelKpiPage() {
+    const config = appState.kpiConfig?.[0] || {};
+    const inputs = appState.memberKpiInputs || [];
+    const weightRows = [
+        ["Tiến độ", config.progressWeight, config.progressTarget],
+        ["Hoàn thành đúng hạn", config.onTimeWeight, config.onTimeTarget],
+        ["Chất lượng", config.qualityWeight, config.qualityTarget],
+        ["Phối hợp / đóng góp", config.contributionWeight, config.contributionTarget],
+        ["Kỷ luật cập nhật", config.disciplineWeight, config.disciplineTarget]
+    ];
+    return `
+        <div class="kpi-config-grid">
+            <section class="panel">
+                <div class="panel-head"><div class="panel-title"><i class="fa-solid fa-sliders"></i><div><h2>Trọng số và mục tiêu</h2><span>Tổng trọng số phải bằng 100%</span></div></div>${canManageWorkPlans() ? `<button class="primary-btn" data-action="open-kpi-config"><i class="fa-solid fa-pen"></i><span>Chỉnh cấu hình</span></button>` : ""}</div>
+                <div class="panel-body"><div class="kpi-weight-table"><div><b>Tiêu chí</b><b>Trọng số</b><b>Mục tiêu</b></div>${weightRows.map(([name, weight, target]) => `<div><span>${e(name)}</span><strong>${e(formatKpiPercent(weight))}</strong><strong>${e(formatKpiPercent(target))}</strong></div>`).join("")}</div></div>
+            </section>
+            <section class="panel">
+                <div class="panel-head"><div class="panel-title"><i class="fa-solid fa-user-pen"></i><div><h2>Dữ liệu đánh giá thủ công</h2><span>${e(inputs.length)} thành viên đã cấu hình</span></div></div>${canManageWorkPlans() ? `<button class="primary-btn" data-action="open-member-kpi-create"><i class="fa-solid fa-plus"></i><span>Thêm đánh giá</span></button>` : ""}</div>
+                <div class="panel-body flush-mobile"><div class="manual-kpi-list">${inputs.map((row) => `<button type="button" data-action="open-member-kpi-edit" data-id="${e(row.id)}"><span><strong>${e(kpiMemberName(row.memberEmail))}</strong><small>${e(row.memberEmail)}</small></span><span>Capacity <b>${e(formatKpiValue(row.capacity))}</b></span><span>Chất lượng <b>${e(formatKpiPercent(row.qualityScore))}</b></span><i class="fa-solid fa-pen"></i></button>`).join("") || `<div class="work-task-empty"><i class="fa-solid fa-user-clock"></i><strong>Chưa có đánh giá thủ công</strong><span>KPI tổng sẽ hiện “Chưa chấm” cho đến khi có đủ dữ liệu.</span></div>`}</div></div>
+            </section>
+        </div>
+    `;
+}
+
+function renderMemberKpiPage() {
+    const rows = appState.memberKpiResults || [];
+    return `
+        <div class="work-plan-page">
+            <section class="panel member-kpi-panel">
+                <div class="panel-head"><div class="panel-title"><i class="fa-solid fa-chart-line"></i><div><h2>KPI theo từng thành viên Squad</h2><span>Số liệu công việc tự động; điểm chất lượng, đóng góp và kỷ luật lấy từ cấu hình</span></div></div></div>
+                <div class="panel-body flush-mobile">
+                    <div class="member-kpi-table-wrap"><table class="member-kpi-table"><thead><tr><th>Thành viên</th><th>Module phụ trách</th><th>Capacity</th><th>Tổng task</th><th>Hoàn thành</th><th>Đang xử lý</th><th>Quá hạn</th><th>% Tiến độ</th><th>% Đúng hạn</th><th>Chất lượng</th><th>Đóng góp</th><th>Kỷ luật</th><th>Workload</th><th>Xếp loại</th><th>KPI tổng</th></tr></thead><tbody>
+                        ${rows.map((row) => `<tr><td><strong>${e(row.memberName || row.memberEmail)}</strong><small>${e(row.memberEmail)}</small></td><td>${e(row.module || "-")}</td><td>${e(formatKpiValue(row.capacity))}</td><td>${e(row.totalTasks)}</td><td>${e(row.completed)}</td><td>${e(row.inProgress)}</td><td>${e(row.overdue)}</td><td>${e(formatKpiPercent(row.progress))}</td><td>${e(formatKpiPercent(row.onTimeRate))}</td><td>${e(formatKpiPercent(row.qualityScore))}</td><td>${e(formatKpiPercent(row.contributionScore))}</td><td>${e(formatKpiPercent(row.disciplineScore))}</td><td>${e(row.workload == null ? "-" : `${row.workload}x`)}</td><td>${row.scored ? renderKpiRank(row.rank) : `<span class="tag gray">Chưa chấm</span>`}</td><td><strong>${e(row.kpiTotal == null ? "-" : row.kpiTotal)}</strong></td></tr>`).join("") || `<tr><td colspan="15">Chưa có dữ liệu thành viên</td></tr>`}
+                    </tbody></table></div>
+                </div>
+            </section>
+        </div>
+    `;
+}
+
+function renderKpiRank(rank) {
+    const tone = rank === "Xuất sắc" || rank === "Tốt" ? "green" : rank === "Đạt" ? "yellow" : "red";
+    return tag(rank || "Chưa chấm", tone);
+}
+
+function formatKpiPercent(value) {
+    return value === "" || value == null || !Number.isFinite(Number(value)) ? "-" : `${Number(value)}%`;
+}
+
+function formatKpiValue(value) {
+    return value === "" || value == null || !Number.isFinite(Number(value)) ? "-" : Number(value);
+}
+
+function getKpiMemberOptions() {
+    return (appState.personnel || []).filter((row) => row.email).map((row) => ({ value: String(row.email).toLowerCase(), label: `${row.name || row.email} · ${row.email}` }));
+}
+
+function kpiMemberName(email) {
+    const normalized = String(email || "").toLowerCase();
+    return (appState.personnel || []).find((row) => String(row.email || "").toLowerCase() === normalized)?.name || email || "-";
 }
 
 function renderDashboard() {
@@ -2445,7 +2947,7 @@ function renderWorkViewTabs(stats) {
     const views = [
         { id: "all", label: "Tất cả", count: stats.total },
         { id: "mine", label: "Việc của tôi", count: stats.mine },
-        { id: "open", label: "Đang làm", count: stats.open },
+        { id: "open", label: "Chưa hoàn thành", count: stats.open },
         { id: "approval", label: "Chờ duyệt", count: stats.pendingApproval },
         { id: "overdue", label: "Quá hạn", count: stats.overdue },
         { id: "done", label: "Hoàn thành", count: stats.done }
@@ -2598,18 +3100,18 @@ function formatWorkCategoryDueShort(value) {
     return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function renderWorkPlanFilterBar() {
+function renderWorkPlanFilterBar(showGroup = true) {
     const categoryOptions = getWorkCategorySelectOptions();
     const assignees = uniqueTextValues(appState.workItems.map((row) => row.assignee));
     return `
         <div class="work-filter-bar">
-            <label>
+            ${showGroup ? `<label>
                 <span>Nhóm</span>
                 <select class="field-select" data-filter-key="categoryId">
                     <option value="">Tất cả nhóm</option>
                     ${categoryOptions.map((option) => `<option value="${e(optionValue(option))}" ${ui.filters["workItems:categoryId"] === optionValue(option) ? "selected" : ""}>${e(optionLabel(option))}</option>`).join("")}
                 </select>
-            </label>
+            </label>` : ""}
             <label>
                 <span>Trạng thái</span>
                 <select class="field-select" data-filter-key="status">
@@ -2648,11 +3150,12 @@ function getWorkPlanStats() {
     return { categories: categories.length, total: rows.length, mine, open, inProgress, pendingApproval, done, overdue, averageProgress };
 }
 
-function getFilteredWorkRows() {
+function getFilteredWorkRows(forcedCategoryId = "") {
     const mod = modules.workItems;
     const rows = getWorkRowsForDisplay();
     const query = ui.query.trim().toLowerCase();
     return rows.filter((row) => {
+        if (forcedCategoryId && String(row.categoryId || "") !== String(forcedCategoryId)) return false;
         const matchQuery = !query || Object.values(row).some((value) => String(value ?? "").toLowerCase().includes(query));
         if (!matchQuery) return false;
         const matchLegacyFilters = (mod.filters || []).every((filter) => {
@@ -4138,6 +4641,10 @@ function renderEmpty(icon, title, text, compact = false, mod = null) {
 function bindEvents() {
     bindAuthEvents();
 
+    document.querySelectorAll("[data-route]").forEach((button) => {
+        button.addEventListener("click", () => navigateToRoute(button.dataset.route, { push: true }));
+    });
+
     document.querySelectorAll("[data-tab]").forEach((button) => {
         button.addEventListener("click", () => {
             ui.activeTab = button.dataset.tab;
@@ -4976,6 +5483,22 @@ function handleAction(event) {
     if (action === "delete-category") return deleteWorkCategory(id);
     if (action === "set-work-category") return setWorkCategoryFilter(id);
     if (action === "set-work-view") return setWorkView(event.currentTarget.dataset.workView);
+    if (action === "toggle-sidebar") {
+        ui.sidebarMobileOpen = !ui.sidebarMobileOpen;
+        return render();
+    }
+    if (action === "toggle-sidebar-collapse") {
+        if (window.innerWidth <= 820) {
+            ui.sidebarMobileOpen = false;
+        } else {
+            ui.sidebarCollapsed = !ui.sidebarCollapsed;
+            localStorage.setItem("squad2-sidebar-collapsed", String(ui.sidebarCollapsed));
+        }
+        return render();
+    }
+    if (action === "open-kpi-config") return openKpiConfig();
+    if (action === "open-member-kpi-create") return openMemberKpiInput();
+    if (action === "open-member-kpi-edit") return openMemberKpiInput(id);
     if (action === "set-table-page") return setTablePage(event.currentTarget.dataset.collection, event.currentTarget.dataset.page);
     if (action === "open-work-progress") return openWorkProgress(id);
     if (action === "close-modal") return closeModal();
@@ -4991,6 +5514,18 @@ function handleAction(event) {
         if (authState.user?.role !== "admin") return showToast("Chỉ admin được nhập dữ liệu.");
         return document.getElementById("importDataInput")?.click();
     }
+}
+
+function openKpiConfig() {
+    if (!canManageWorkPlans()) return showToast("Chỉ admin được chỉnh cấu hình KPI.");
+    ui.modal = { tab: "kpiConfig", id: appState.kpiConfig?.[0]?.id || null };
+    render();
+}
+
+function openMemberKpiInput(id = null) {
+    if (!canManageWorkPlans()) return showToast("Chỉ admin được cập nhật dữ liệu KPI.");
+    ui.modal = { tab: "memberKpiInputs", id: id || null };
+    render();
 }
 
 function toggleColumnFilter(columnKey) {
@@ -6231,9 +6766,18 @@ window.addEventListener("storage", (event) => {
 });
 
 window.addEventListener("hashchange", () => {
-    ui.activeTab = getInitialTab();
+    const route = getInitialRoute();
+    if ((window.location.hash || "").replace(/^#\/?/, "") !== route.path) {
+        history.replaceState(null, "", `#${route.path}`);
+    }
+    ui.activeTab = route.activeTab;
+    ui.activeView = route.view;
+    ui.activeRoute = route.path;
+    ui.activeCategoryId = route.categoryId;
+    ui.t01Tab = route.t01Tab;
     ui.query = "";
     ui.openColumnFilter = null;
+    ui.sidebarMobileOpen = false;
     requestActiveTabScroll();
     render();
 });

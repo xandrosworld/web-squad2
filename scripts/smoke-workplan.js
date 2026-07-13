@@ -15,6 +15,7 @@ if (!password) {
   const stamp = Date.now();
   const categoryId = crypto.randomUUID();
   const itemId = crypto.randomUUID();
+  const selfItemId = crypto.randomUUID();
   const category = {
     id: categoryId,
     sortOrder: 9901,
@@ -51,11 +52,29 @@ if (!password) {
       body: { record: category }
     }), 201);
 
-    await expectStatus("admin create work item", request("/api/records/workItems", {
+    const itemCreated = await expectStatus("admin create work item", request("/api/records/workItems", {
       method: "POST",
       cookie: admin.cookie,
       body: { record: item }
     }), 201);
+
+    await expectStatus("category with linked work item cannot be deleted", request(`/api/records/workCategories/${categoryId}`, {
+      method: "DELETE",
+      cookie: admin.cookie
+    }), 409);
+
+    await expectStatus("system T01 category cannot be deleted", request("/api/records/workCategories/pilot-t01", {
+      method: "DELETE",
+      cookie: admin.cookie
+    }), 409);
+
+    const kpiConfig = itemCreated.data.state?.kpiConfig?.[0];
+    if (!kpiConfig) throw new Error("Default work KPI config is missing from state.");
+    await expectStatus("invalid KPI weight total is rejected", request(`/api/records/kpiConfig/${kpiConfig.id}`, {
+      method: "PUT",
+      cookie: admin.cookie,
+      body: { record: { ...kpiConfig, disciplineWeight: Number(kpiConfig.disciplineWeight || 0) - 1 } }
+    }), 400);
 
     await expectStatus("regular user cannot create category", request("/api/records/workCategories", {
       method: "POST",
@@ -63,11 +82,23 @@ if (!password) {
       body: { record: { ...category, id: crypto.randomUUID(), name: "Unauthorized category" } }
     }), 403);
 
-    await expectStatus("regular user cannot create item", request("/api/records/workItems", {
+    const selfCreated = await expectStatus("regular user creates self-assigned item", request("/api/records/workItems", {
       method: "POST",
       cookie: assignee.cookie,
-      body: { record: { ...item, id: crypto.randomUUID(), title: "Unauthorized item" } }
-    }), 403);
+      body: {
+        record: {
+          ...item,
+          id: selfItemId,
+          title: `Smoke self-assigned ${stamp}`,
+          assignee: admin.user.name,
+          assigneeEmail: admin.user.email
+        }
+      }
+    }), 201);
+    const selfItem = findRecord(selfCreated.data.state || {}, "workItems", selfItemId);
+    if (!selfItem || String(selfItem.assigneeEmail || "").toLowerCase() !== String(assignee.user.email || assignee.user.username).toLowerCase()) {
+      throw new Error("Regular user's new item was not self-assigned by the backend.");
+    }
 
     const attemptedOverreach = {
       ...item,
@@ -106,6 +137,11 @@ if (!password) {
       cookie: admin.cookie
     }), 200);
 
+    await expectStatus("admin cleanup self-assigned item", request(`/api/records/workItems/${selfItemId}`, {
+      method: "DELETE",
+      cookie: admin.cookie
+    }), 200);
+
     await expectStatus("admin delete work category", request(`/api/records/workCategories/${categoryId}`, {
       method: "DELETE",
       cookie: admin.cookie
@@ -114,6 +150,7 @@ if (!password) {
     console.log(`Work plan smoke passed: ${baseUrl}`);
   } finally {
     await request(`/api/records/workItems/${itemId}`, { method: "DELETE", cookie: admin.cookie });
+    await request(`/api/records/workItems/${selfItemId}`, { method: "DELETE", cookie: admin.cookie });
     await request(`/api/records/workCategories/${categoryId}`, { method: "DELETE", cookie: admin.cookie });
   }
 })().catch((error) => {
