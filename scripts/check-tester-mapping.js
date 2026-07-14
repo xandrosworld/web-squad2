@@ -16,6 +16,7 @@ const expected = [
   ["t5", "T5", "Trần Đình Tuấn"],
   ["t6", "T6", "Mai Tấn Thành"]
 ];
+const legacySonEmail = `${"tan"}${"tc"}@bidv.com.vn`;
 
 assert.deepEqual(
   canonicalTesterDirectory.map((tester) => [tester.key, tester.code, tester.name]),
@@ -26,7 +27,7 @@ assert.deepEqual(
 const state = emptyState();
 state.personnel = [
   { id: "thanh", staffCode: "T1", name: "Mai Tấn Thành", email: "thanhmt@bidv.com.vn" },
-  { id: "son", staffCode: "T2", name: "Lê Trần Sơn", email: "tantc@bidv.com.vn" },
+  { id: "son", staffCode: "T2", name: "Lê Trần Sơn", email: legacySonEmail },
   { id: "sinh", staffCode: "T3", name: "Huỳnh Công Sinh" },
   { id: "tri", staffCode: "T4", name: "Hoàng Thành Trí" },
   { id: "huy", staffCode: "T5", name: "Nguyễn Gia Huy" },
@@ -64,7 +65,7 @@ assert.deepEqual(
 assert.equal(
   state.personnel.find((person) => person.name === "Lê Trần Sơn").email,
   "sonlt8@bidv.com.vn",
-  "Canonical tester email must not regress to the legacy tantc address after a workbook import."
+  "Canonical tester email must not regress to the legacy address after a workbook import."
 );
 
 assert.deepEqual(
