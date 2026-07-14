@@ -95,6 +95,16 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await assertRoute(page, "common/guide", ".guide-page");
     await assertRoute(page, "work/group/pilot-t01/dashboard", ".t01-module-tabs");
     await page.waitForSelector(".sheet-dashboard");
+    const t01Expected = { all: 5, notStarted: 1, inProgress: 3, approval: 0, overdue: 0, done: 1 };
+    for (const [view, expected] of Object.entries(t01Expected)) {
+      const value = Number((await page.locator(`[data-action="set-work-metric"][data-work-view="${view}"] strong`).textContent() || "").trim());
+      if (value !== expected) throw new Error(`KPI T01 ${view} cần ${expected}, nhận ${value}.`);
+    }
+    await page.locator('[data-action="set-work-metric"][data-work-view="inProgress"]').click();
+    await page.waitForSelector('[data-resizable-table="features"]');
+    if (new URL(page.url()).hash !== "#work/group/pilot-t01/features") throw new Error("KPI T01 không mở DM_ChucNang.");
+    const t01FilteredRows = await page.locator('[data-resizable-table="features"] tbody tr').count();
+    if (t01FilteredRows !== 3) throw new Error(`KPI T01 Đang thực hiện cần lọc 3 chức năng, nhận ${t01FilteredRows}.`);
     await assertRoute(page, "work/group/pilot-t01/defects", ".secondary-tabs");
     await assertRoute(page, "work/group/pilot-t01/defectSummary", ".secondary-tabs .active");
     await assertRoute(page, "work/group/pilot-t03", ".standalone-work-items");
@@ -166,6 +176,13 @@ async function buildFixtureState() {
   state.personnel = [
     { id: "person-thanh", staffCode: "NV01", name: "Mai Tấn Thành", email: "thanhmt@bidv.com.vn", role: "Điều phối", status: "Hoạt động" },
     { id: "person-huy", staffCode: "NV02", name: "Nguyễn Gia Huy", email: "huyng@bidv.com.vn", role: "Tester", status: "Hoạt động" }
+  ];
+  state.features = [
+    { id: "feature-1", stt: 1, jiraCode: "SQ2-F01", name: "Chức năng chưa bắt đầu", status: "", completionRate: 0 },
+    { id: "feature-2", stt: 2, jiraCode: "SQ2-F02", name: "Chức năng Done RSD", status: "Done RSD", completionRate: 20 },
+    { id: "feature-3", stt: 3, jiraCode: "SQ2-F03", name: "Chức năng Done DEV", status: "Done DEV", completionRate: 40 },
+    { id: "feature-4", stt: 4, jiraCode: "SQ2-F04", name: "Chức năng Done SIT", status: "Done SIT", completionRate: 70 },
+    { id: "feature-5", stt: 5, jiraCode: "SQ2-F05", name: "Chức năng Done UAT", status: "Done UAT", completionRate: 100 }
   ];
   const now = new Date().toISOString();
   for (const row of buildPilotWorkPlanSeedRecords(now)) state[row.collection].push(row.data);

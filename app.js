@@ -1056,6 +1056,7 @@ let ui = {
     groupChatDraft: "",
     profileAvatarDraft: null,
     workView: "all",
+    t01FeatureView: "all",
     profileSaving: false,
     passwordSaving: false,
     toast: null,
@@ -1280,6 +1281,10 @@ function navigateToRoute(path, options = {}) {
     ui.query = "";
     ui.openColumnFilter = null;
     ui.sidebarMobileOpen = false;
+    if (route.view === "work-group" && route.categoryId === "pilot-t01" && !options.preserveT01FeatureView) {
+        ui.t01FeatureView = "all";
+        ui.workView = "all";
+    }
     if (route.view === "task-master" || route.view === "work-dashboard") {
         ui.filters["workItems:categoryId"] = options.preserveWorkCategoryId || "";
     } else if (route.view === "work-group" && route.categoryId !== "pilot-t01") {
@@ -1839,8 +1844,8 @@ function renderWorkItemsPanel({ title, subtitle, categoryId = "", showViews = tr
 function renderWorkGroupPage() {
     const category = getWorkCategories().find((row) => row.id === ui.activeCategoryId);
     if (!category) return `<div class="work-plan-page">${renderEmpty("fa-folder-open", "Không tìm thấy nhóm", "Nhóm công việc có thể đã được đổi hoặc xóa.", false)}</div>`;
+    if (category.id === "pilot-t01") return renderT01WorkGroup(category, getT01WorkStats());
     const stats = getWorkGroupStats(category.id);
-    if (category.id === "pilot-t01") return renderT01WorkGroup(category, stats);
     return `
         <div class="work-plan-page">
             ${renderWorkSummaryStrip(stats)}
@@ -1894,6 +1899,40 @@ function getWorkGroupStats(categoryId) {
     const overdue = rows.filter((row) => getWorkItemWarning(row) === "Quá hạn").length;
     const progress = rows.length ? rows.reduce((sum, row) => sum + Number(row.progress || 0), 0) / rows.length : 0;
     return { total: rows.length, done, notStarted, inProgress, pendingApproval, overdue, progress };
+}
+
+function getT01WorkStats() {
+    const rows = getDisplayRows("features");
+    const done = rows.filter((row) => getT01FeatureState(row) === "done").length;
+    const notStarted = rows.filter((row) => getT01FeatureState(row) === "notStarted").length;
+    const inProgress = rows.filter((row) => getT01FeatureState(row) === "inProgress").length;
+    const pendingApproval = rows.filter((row) => getT01FeatureState(row) === "approval").length;
+    const overdue = rows.filter(isT01FeatureOverdue).length;
+    const open = rows.length - done;
+    const averageProgress = rows.length
+        ? Math.round(rows.reduce((total, row) => total + Number(row.completionRate || 0), 0) / rows.length)
+        : 0;
+    return { total: rows.length, mine: 0, open, notStarted, inProgress, pendingApproval, done, overdue, averageProgress };
+}
+
+function getT01FeatureState(row) {
+    const status = String(row?.status || "").trim().toLowerCase();
+    if (!status || status === "chưa bắt đầu") return "notStarted";
+    if (status === "done uat" || status === "hoàn thành") return "done";
+    if (status === "chờ phê duyệt") return "approval";
+    return "inProgress";
+}
+
+function isT01FeatureOverdue(row) {
+    return String(row?.uatWarning || "").trim().toLowerCase().includes("quá hạn");
+}
+
+function matchesT01FeatureView(row, view) {
+    if (!view || view === "all") return true;
+    if (view === "overdue") return isT01FeatureOverdue(row);
+    if (view === "open") return getT01FeatureState(row) !== "done";
+    if (view === "mine") return false;
+    return getT01FeatureState(row) === view;
 }
 
 function renderWorkInputsPage() {
@@ -5713,6 +5752,20 @@ function setWorkView(view) {
 }
 
 function setWorkMetric(view) {
+    if (ui.activeView === "work-group" && ui.activeCategoryId === "pilot-t01") {
+        ui.t01FeatureView = view || "all";
+        ui.workView = view || "all";
+        ui.query = "";
+        ui.openColumnFilter = null;
+        Object.keys(ui.filters)
+            .filter((key) => key.startsWith("features:"))
+            .forEach((key) => delete ui.filters[key]);
+        Object.keys(ui.columnFilters)
+            .filter((key) => key.startsWith("features:"))
+            .forEach((key) => delete ui.columnFilters[key]);
+        resetTablePage("features");
+        return navigateToRoute("work/group/pilot-t01/features", { push: true, preserveT01FeatureView: true });
+    }
     const categoryId = ui.activeView === "work-group"
         ? ui.activeCategoryId
         : ui.filters["workItems:categoryId"] || "";
@@ -6093,6 +6146,7 @@ function getFilteredRows(mod) {
     const rows = getDisplayRows(mod.collection);
     const query = ui.query.trim().toLowerCase();
     return rows.filter((row) => {
+        if (mod.collection === "features" && ui.activeCategoryId === "pilot-t01" && !matchesT01FeatureView(row, ui.t01FeatureView)) return false;
         const matchQuery = !query || Object.values(row).some((value) => String(value ?? "").toLowerCase().includes(query));
         if (!matchQuery) return false;
         const matchLegacyFilters = (mod.filters || []).every((filter) => {
