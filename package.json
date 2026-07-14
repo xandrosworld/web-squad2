@@ -19,7 +19,8 @@
     "smoke:ui": "node scripts/smoke-ui.js",
     "smoke:sitemap-ui": "node scripts/smoke-sitemap-ui.js",
     "smoke:rbac": "node scripts/smoke-rbac.js",
-    "smoke:workplan": "node scripts/smoke-workplan.js"
+    "smoke:workplan": "node scripts/smoke-workplan.js",
+    "migrate:work-order": "node scripts/migrate-work-item-order.js"
   },
   "engines": {
     "node": ">=20"

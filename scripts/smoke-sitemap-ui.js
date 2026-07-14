@@ -3,15 +3,14 @@ const os = require("node:os");
 const path = require("node:path");
 const { chromium } = require("playwright-core");
 const {
-  parseWorkbookImportState,
   applyWorkbookRules,
   __testApplyWorkKpiRules: applyWorkKpiRules,
   __testDefaultWorkKpiConfig: defaultKpiConfig,
-  __testBuildPilotWorkPlanSeedRecords: buildPilotWorkPlanSeedRecords
+  __testBuildPilotWorkPlanSeedRecords: buildPilotWorkPlanSeedRecords,
+  __testEmptyState: emptyState
 } = require("../server");
 
 const baseUrl = process.env.SMOKE_URL || "http://localhost:3100";
-const workbookPath = path.join(__dirname, "..", "SQ02_UAT_Squad2_QuanLy_US_Date-2.7.xlsx");
 const chromePaths = [
   "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
@@ -43,8 +42,27 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
 
     await assertRoute(page, "work/dashboard", ".work-dashboard-grid");
     await assertNoPageOverflow(page, "dashboard desktop");
+    const metricLabels = await page.locator(".work-plan-summary .work-metric span").allTextContents();
+    for (const expectedLabel of ["Tổng công việc", "Chưa bắt đầu", "Đang thực hiện", "Chờ phê duyệt", "Quá hạn", "Hoàn thành"]) {
+      if (!metricLabels.includes(expectedLabel)) throw new Error(`Thiếu KPI ${expectedLabel}.`);
+    }
     await page.screenshot({ path: dashboardShot, fullPage: true });
+    await page.locator('[data-action="set-work-metric"][data-work-view="notStarted"]').click();
+    await page.waitForSelector('.work-view-tab.active[data-work-view="notStarted"]');
+    if (new URL(page.url()).hash !== "#work/task-master") throw new Error("KPI Dashboard không mở Task_Master.");
     await assertRoute(page, "work/task-master", ".standalone-work-items");
+    await page.locator('[data-page-size="workItems"]').selectOption("50");
+    const visibleWorkOrders = await page.locator('[data-resizable-table="workItems"] tbody tr').evaluateAll((rows) => rows.map((row) => ({
+      order: row.cells[0]?.textContent?.trim() || "",
+      category: row.cells[2]?.textContent?.trim() || ""
+    })));
+    const firstOrderByCategory = new Map();
+    visibleWorkOrders.forEach((row) => {
+      if (row.category && !firstOrderByCategory.has(row.category)) firstOrderByCategory.set(row.category, row.order);
+    });
+    if (firstOrderByCategory.size < 2 || [...firstOrderByCategory.values()].some((order) => order !== "1")) {
+      throw new Error(`STT chưa reset từ 1 theo từng nhóm: ${JSON.stringify([...firstOrderByCategory.entries()])}`);
+    }
     await page.screenshot({ path: taskMasterShot, fullPage: true });
     await page.locator('[data-action="open-create"]').first().click();
     await page.waitForSelector("#recordForm");
@@ -52,8 +70,12 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await assertOptionCount(page, "status", 6);
     await assertOptionCount(page, "priority", 4);
     await assertOptionCount(page, "assignee", 11);
+    await assertOptionCount(page, "collaborators", 11);
+    await assertFieldLabel(page, "assignee", "Người thực hiện");
+    await assertFieldLabel(page, "collaborators", "Đầu mối nghiệp vụ");
+    await assertFieldLabel(page, "startDate", "Ngày giao việc");
     if (await page.locator('[name="assigneeEmail"]').count()) {
-      throw new Error("Email phụ trách là field kỹ thuật và không được hiện trong form người dùng.");
+      throw new Error("Email người thực hiện là field kỹ thuật và không được hiện trong form người dùng.");
     }
     await page.locator('[data-action="close-modal"]').first().click();
     await assertRoute(page, "work/inputs", ".input-catalog-grid");
@@ -75,8 +97,21 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await page.waitForSelector(".sheet-dashboard");
     await assertRoute(page, "work/group/pilot-t01/defects", ".secondary-tabs");
     await assertRoute(page, "work/group/pilot-t01/defectSummary", ".secondary-tabs .active");
-    await assertRoute(page, "work/group/pilot-t02", ".standalone-work-items");
+    await assertRoute(page, "work/group/pilot-t03", ".standalone-work-items");
+    const firstLocalOrder = (await page.locator('[data-resizable-table="workItems"] tbody tr').first().locator("td").first().textContent() || "").trim();
+    if (firstLocalOrder !== "1") throw new Error(`STT đầu nhóm T03 phải là 1, nhận ${firstLocalOrder || "trống"}.`);
     await page.screenshot({ path: groupShot, fullPage: true });
+
+    const sidebarScrollBefore = await page.locator(".sidebar-menu").evaluate((sidebar) => {
+      sidebar.scrollTop = sidebar.scrollHeight;
+      return sidebar.scrollTop;
+    });
+    await page.locator('[data-route="work/group/pilot-t09"]').click();
+    await page.waitForSelector(".standalone-work-items");
+    const sidebarScrollAfter = await page.locator(".sidebar-menu").evaluate((sidebar) => sidebar.scrollTop);
+    if (sidebarScrollBefore > 0 && sidebarScrollAfter < Math.max(1, sidebarScrollBefore - 4)) {
+      throw new Error(`Sidebar bị nhảy lên trên: ${sidebarScrollBefore} -> ${sidebarScrollAfter}.`);
+    }
 
     const categoryLinks = await page.locator(".tree-category-list .tree-link").count();
     if (categoryLinks !== 10) throw new Error(`Sidebar cần đúng 10 nhóm seed, nhận ${categoryLinks}.`);
@@ -127,9 +162,11 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
 });
 
 async function buildFixtureState() {
-  const state = await parseWorkbookImportState(await fs.promises.readFile(workbookPath));
-  state.workCategories = [];
-  state.workItems = [];
+  const state = emptyState();
+  state.personnel = [
+    { id: "person-thanh", staffCode: "NV01", name: "Mai Tấn Thành", email: "thanhmt@bidv.com.vn", role: "Điều phối", status: "Hoạt động" },
+    { id: "person-huy", staffCode: "NV02", name: "Nguyễn Gia Huy", email: "huyng@bidv.com.vn", role: "Tester", status: "Hoạt động" }
+  ];
   const now = new Date().toISOString();
   for (const row of buildPilotWorkPlanSeedRecords(now)) state[row.collection].push(row.data);
   state.kpiConfig = [{ ...defaultKpiConfig }];
@@ -191,6 +228,11 @@ async function assertRoute(page, route, selector) {
 async function assertOptionCount(page, name, expected) {
   const count = await page.locator(`select[name="${name}"] option`).count();
   if (count !== expected) throw new Error(`Dropdown ${name} cần ${expected} lựa chọn (gồm lựa chọn trống), nhận ${count}.`);
+}
+
+async function assertFieldLabel(page, name, expected) {
+  const label = (await page.locator(`.field:has([name="${name}"]) > label`).textContent() || "").trim();
+  if (label !== expected) throw new Error(`Field ${name} cần nhãn "${expected}", nhận "${label}".`);
 }
 
 async function assertNoPageOverflow(page, label) {

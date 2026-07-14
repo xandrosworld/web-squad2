@@ -57,6 +57,10 @@ if (!password) {
       cookie: admin.cookie,
       body: { record: item }
     }), 201);
+    const createdItem = findRecord(itemCreated.data.state || {}, "workItems", itemId);
+    if (!createdItem || Number(createdItem.sortOrder) !== 1) {
+      throw new Error(`Work item đầu tiên trong nhóm phải có STT 1, nhận ${createdItem?.sortOrder ?? "trống"}.`);
+    }
 
     await expectStatus("category with linked work item cannot be deleted", request(`/api/records/workCategories/${categoryId}`, {
       method: "DELETE",
@@ -130,6 +134,9 @@ if (!password) {
     const updatedForAdmin = findRecord(adminUpdate.data.state || {}, "workItems", itemId);
     if (!updatedForAdmin || updatedForAdmin.title !== `Smoke đầu việc admin sửa ${stamp}` || updatedForAdmin.progress !== 100) {
       throw new Error("Admin full update did not persist expected fields.");
+    }
+    if (Number(updatedForAdmin.sortOrder) !== 1) {
+      throw new Error(`Backend không bảo vệ STT theo nhóm; nhận ${updatedForAdmin.sortOrder}.`);
     }
 
     await expectStatus("admin delete work item", request(`/api/records/workItems/${itemId}`, {

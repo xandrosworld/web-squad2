@@ -1020,6 +1020,9 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
   try {
     await client.query("begin");
     stripComputedFields(collection, record);
+    if (collection === "workItems") {
+      delete record.sortOrder;
+    }
     if (collection === "workItems" && req.user.role !== "admin") {
       assignWorkItemToUser(record, req.user);
     }
@@ -1070,6 +1073,14 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
       assignWorkItemToUser(record, req.user);
     }
     stripComputedFields(collection, record);
+    if (collection === "workItems") {
+      if (String(record.categoryId || "") !== String(current.data?.categoryId || "")) {
+        delete record.sortOrder;
+        delete record.taskId;
+      } else {
+        record.sortOrder = current.data?.sortOrder;
+      }
+    }
     record.createdAt = current.data?.createdAt || current.created_at?.toISOString?.() || record.createdAt;
     record.updatedAt = new Date().toISOString();
     await applyRecordDefaults(client, collection, record);
@@ -1199,7 +1210,8 @@ module.exports = {
   __testApplyWorkKpiRules: applyWorkKpiRules,
   __testDefaultWorkKpiConfig: defaultWorkKpiConfig,
   __testValidateRecordForCollection: validateRecordForCollection,
-  __testBuildPilotWorkPlanSeedRecords: buildPilotWorkPlanSeedRecords
+  __testBuildPilotWorkPlanSeedRecords: buildPilotWorkPlanSeedRecords,
+  __testEmptyState: emptyState
 };
 
 function getPool() {
@@ -2564,13 +2576,13 @@ function addWorkPlanWorksheet(workbook, state) {
     ["categoryName", "Nhóm công việc", 28],
     ["title", "Tên công việc", 34],
     ["description", "Mô tả", 42],
-    ["assignee", "Người phụ trách", 22],
-    ["assigneeEmail", "Email phụ trách", 28],
-    ["collaborators", "Người phối hợp", 26],
+    ["assignee", "Người thực hiện", 22],
+    ["assigneeEmail", "Email người thực hiện", 28],
+    ["collaborators", "Đầu mối nghiệp vụ", 26],
     ["status", "Trạng thái", 18],
     ["progress", "% hoàn thành", 14, "number"],
     ["priority", "Ưu tiên", 14],
-    ["startDate", "Ngày bắt đầu", 16, "date"],
+    ["startDate", "Ngày giao việc", 16, "date"],
     ["dueDate", "Deadline", 16, "date"],
     ["completedDate", "Ngày hoàn thành", 18, "date"],
     ["warning", "Cảnh báo", 18],
@@ -2621,13 +2633,13 @@ function addWorkPlanWorksheet(workbook, state) {
       note: category.note || "",
       updatedAt: category.updatedAt || category.createdAt || ""
     });
-    (itemsByCategory.get(String(category.id)) || []).forEach((item) => {
-      rows.push(workPlanExportRow(item, categoryMap));
+    (itemsByCategory.get(String(category.id)) || []).forEach((item, index) => {
+      rows.push(workPlanExportRow(item, categoryMap, index + 1));
     });
     itemsByCategory.delete(String(category.id));
   });
   for (const ungroupedItems of itemsByCategory.values()) {
-    ungroupedItems.forEach((item) => rows.push(workPlanExportRow(item, categoryMap)));
+    ungroupedItems.forEach((item, index) => rows.push(workPlanExportRow(item, categoryMap, index + 1)));
   }
 
   rows.forEach((rowData, index) => {
@@ -2655,11 +2667,11 @@ function addWorkPlanWorksheet(workbook, state) {
   });
 }
 
-function workPlanExportRow(item, categoryMap) {
+function workPlanExportRow(item, categoryMap, localSortOrder) {
   const category = categoryMap.get(String(item.categoryId || ""));
   return {
     recordType: "Công việc",
-    sortOrder: item.sortOrder || "",
+    sortOrder: localSortOrder || item.sortOrder || "",
     taskPrefix: category?.taskPrefix || "",
     taskId: item.taskId || "",
     categoryName: category?.name || item.categoryName || "Chưa phân nhóm",
@@ -2941,6 +2953,7 @@ function getDefectPrioritySummaryRows(state) {
 function getWorkPlanKpiRows(state) {
   const items = collectionRows(state, "workItems");
   const done = items.filter((row) => row.status === "Hoàn thành").length;
+  const notStarted = items.filter((row) => row.status === "Chưa bắt đầu").length;
   const inProgress = items.filter((row) => row.status === "Đang thực hiện").length;
   const pendingApproval = items.filter((row) => row.status === "Chờ phê duyệt").length;
   const overdue = items.filter((row) => getWorkItemWarning(row) === "Quá hạn").length;
@@ -2948,9 +2961,10 @@ function getWorkPlanKpiRows(state) {
   return [
     ["Nhóm công việc", collectionRows(state, "workCategories").length],
     ["Tổng đầu việc", items.length],
+    ["Chưa bắt đầu", notStarted],
     ["Đang thực hiện", inProgress],
     ["Chờ phê duyệt", pendingApproval],
-    ["Quá hạn", overdue],
+    ["Quá hạn (cảnh báo giao cắt)", overdue],
     ["Đã hoàn thành", done],
     ["Tiến độ trung bình", `${progress}%`]
   ];
@@ -3106,8 +3120,16 @@ async function readState(db, viewer = null) {
 
 function sortStateCollections(state) {
   for (const collection of collections) {
+    if (collection === "workItems") continue;
     state[collection].sort(compareStateRecords);
   }
+  const categoryOrder = new Map((state.workCategories || []).map((category, index) => [String(category.id), index]));
+  state.workItems.sort((a, b) => {
+    const categoryA = categoryOrder.get(String(a?.categoryId || "")) ?? Number.MAX_SAFE_INTEGER;
+    const categoryB = categoryOrder.get(String(b?.categoryId || "")) ?? Number.MAX_SAFE_INTEGER;
+    if (categoryA !== categoryB) return categoryA - categoryB;
+    return compareStateRecords(a, b);
+  });
 }
 
 function compareStateRecords(a, b) {
@@ -3445,6 +3467,8 @@ function normalizeState(input) {
   applyWorkbookRules(state);
   applyWorkKpiRules(state);
   assignSortOrder(state);
+  sortStateCollections(state);
+  normalizeWorkItemSortOrders(state);
   state.updatedAt = typeof source.updatedAt === "string" ? source.updatedAt : new Date().toISOString();
   return state;
 }
@@ -3453,7 +3477,19 @@ function applyWorkbookRulesForResponse(state) {
   applyWorkbookRules(state);
   applyWorkKpiRules(state);
   assignSortOrder(state);
+  sortStateCollections(state);
+  normalizeWorkItemSortOrders(state);
   return state;
+}
+
+function normalizeWorkItemSortOrders(state) {
+  const nextOrderByCategory = new Map();
+  (state.workItems || []).forEach((item) => {
+    const categoryId = String(item.categoryId || "");
+    const nextOrder = (nextOrderByCategory.get(categoryId) || 0) + 1;
+    nextOrderByCategory.set(categoryId, nextOrder);
+    item.sortOrder = nextOrder;
+  });
 }
 
 function applyWorkKpiRules(state) {
@@ -3599,7 +3635,7 @@ async function applyRecordDefaults(client, collection, record) {
     if (isBlank(record.status)) record.status = "Đang theo dõi";
   }
   if (collection === "workItems") {
-    if (isBlank(record.sortOrder)) record.sortOrder = await getNextCollectionSortOrder(client, collection);
+    if (isBlank(record.sortOrder)) record.sortOrder = await getNextWorkItemSortOrder(client, record.categoryId);
     if (isBlank(record.taskId)) record.taskId = await getNextWorkItemTaskId(client, record.categoryId);
     if (isBlank(record.status)) record.status = "Chưa bắt đầu";
     record.status = normalizeWorkStatus(record.status);
@@ -3650,6 +3686,19 @@ async function getNextWorkItemTaskId(client, categoryId) {
     return Number.isFinite(value) ? Math.max(max, value) : max;
   }, 0);
   return `${prefix}-${String(maxIndex + 1).padStart(3, "0")}`;
+}
+
+async function getNextWorkItemSortOrder(client, categoryId) {
+  const normalizedCategoryId = String(categoryId || "");
+  await client.query("select pg_advisory_xact_lock(hashtext($1))", [`workItems:${normalizedCategoryId}`]);
+  const result = await client.query(`
+    select coalesce(max((data->>'sortOrder')::numeric), 0) as max_sort_order
+    from uat_records
+    where collection = 'workItems'
+      and data->>'categoryId' = $1
+      and (data->>'sortOrder') ~ '^[0-9]+(\\.[0-9]+)?$'
+  `, [normalizedCategoryId]);
+  return Math.trunc(Number(result.rows[0]?.max_sort_order || 0)) + 1;
 }
 
 async function getNextFeatureStt(client) {
@@ -3849,7 +3898,7 @@ function buildPilotWorkPlanSeedRecords(nowIso) {
 
   const categoryById = new Map(pilotWorkCategories.map((category) => [category.id, category]));
   const indexByCategory = new Map();
-  const items = pilotWorkSeedItems.map((item, globalIndex) => {
+  const items = pilotWorkSeedItems.map((item) => {
     const category = categoryById.get(item.categoryId);
     const nextIndex = (indexByCategory.get(item.categoryId) || 0) + 1;
     indexByCategory.set(item.categoryId, nextIndex);
@@ -3860,7 +3909,7 @@ function buildPilotWorkPlanSeedRecords(nowIso) {
       id: `pilot-${taskId.toLowerCase()}`,
       data: {
         id: `pilot-${taskId.toLowerCase()}`,
-        sortOrder: globalIndex + 1,
+        sortOrder: nextIndex,
         taskId,
         categoryId: item.categoryId,
         title: item.title,
