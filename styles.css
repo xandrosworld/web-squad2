@@ -5249,9 +5249,9 @@ body.is-column-resizing * {
 }
 
 .navigation-tree .sidebar-menu {
-    padding: 10px 8px 18px;
+    padding: 8px 8px 18px;
     align-items: stretch;
-    gap: 14px;
+    gap: 8px;
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
@@ -5259,23 +5259,31 @@ body.is-column-resizing * {
 
 .tree-section {
     display: grid;
-    gap: 3px;
+    gap: 2px;
 }
 
 .tree-section + .tree-section {
-    padding-top: 12px;
+    padding-top: 8px;
     border-top: 1px solid rgba(255, 255, 255, 0.16);
 }
 
 .tree-section-title,
 .tree-parent {
-    min-height: 32px;
+    width: 100%;
+    min-height: 34px;
     display: flex;
     align-items: center;
     gap: 10px;
     color: #ffffff;
     padding: 0 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    font-family: inherit;
+    text-align: left;
     white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.16s ease, background 0.16s ease;
 }
 
 .tree-section-title {
@@ -5289,6 +5297,27 @@ body.is-column-resizing * {
     font-weight: 750;
 }
 
+.tree-section-title:hover,
+.tree-parent:hover,
+.tree-section-title:focus-visible,
+.tree-parent:focus-visible {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.09);
+}
+
+.tree-section-title:focus-visible,
+.tree-parent:focus-visible,
+.tree-link:focus-visible {
+    outline: 2px solid rgba(245, 200, 66, 0.95);
+    outline-offset: -2px;
+}
+
+.tree-section-title.branch-active,
+.tree-parent.branch-active {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.07);
+}
+
 .tree-section-title i,
 .tree-parent i,
 .tree-link > i {
@@ -5297,21 +5326,74 @@ body.is-column-resizing * {
     flex: 0 0 18px;
 }
 
+.tree-section-title .tree-toggle-chevron,
+.tree-parent .tree-toggle-chevron {
+    width: 12px;
+    margin-left: auto;
+    flex: 0 0 12px;
+    color: rgba(255, 255, 255, 0.64);
+    font-size: 9px;
+    transition: transform 0.18s ease, color 0.16s ease;
+}
+
+.tree-section-title.is-expanded .tree-toggle-chevron,
+.tree-parent.is-expanded .tree-toggle-chevron {
+    transform: rotate(90deg);
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.tree-section-title.branch-active:not(.is-expanded) .tree-toggle-chevron,
+.tree-parent.branch-active:not(.is-expanded) .tree-toggle-chevron {
+    color: #f5c842;
+}
+
+.tree-accordion-panel {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    visibility: hidden;
+    transition: grid-template-rows 0.18s ease, opacity 0.14s ease, visibility 0s linear 0.18s;
+}
+
+.tree-accordion-panel.is-expanded {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+}
+
+.tree-accordion-inner {
+    min-height: 0;
+    display: grid;
+    gap: 2px;
+    overflow: hidden;
+}
+
+.tree-section-content > .tree-accordion-inner {
+    padding-top: 1px;
+}
+
+.tree-group-content > .tree-accordion-inner {
+    padding: 1px 0 2px;
+}
+
 .tree-link {
     width: 100%;
-    min-height: 34px;
+    min-height: 32px;
     display: flex;
     align-items: center;
     gap: 9px;
-    padding: 7px 10px;
+    padding: 6px 10px;
     border-radius: 6px;
     color: rgba(255, 255, 255, 0.8);
     background: transparent;
     text-align: left;
     font-size: 12px;
     font-weight: 650;
-    line-height: 17px;
+    line-height: 16px;
     cursor: pointer;
+    transition: color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
 
 .tree-link.level-2 {
@@ -5331,11 +5413,19 @@ body.is-column-resizing * {
     color: #ffffff;
     background: #0d9690;
     box-shadow: inset 3px 0 0 #f5c842;
+    font-weight: 800;
 }
 
 .tree-category-list {
     display: grid;
     gap: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tree-accordion-panel,
+    .tree-toggle-chevron {
+        transition: none;
+    }
 }
 
 .navigation-tree.collapsed {
@@ -5367,6 +5457,12 @@ body.is-column-resizing * {
 
 .navigation-tree.collapsed .tree-category-list .tree-link:not(.active) {
     display: none;
+}
+
+@media (min-width: 821px) {
+    .navigation-tree.collapsed .tree-toggle-chevron {
+        display: none;
+    }
 }
 
 .navigation-tree.collapsed .sidebar-collapse-toggle::after {
@@ -5946,6 +6042,12 @@ body.is-column-resizing * {
 
     .sidebar.navigation-tree.collapsed .tree-category-list .tree-link:not(.active) {
         display: flex;
+    }
+
+    .navigation-tree .tree-section-title,
+    .navigation-tree .tree-parent,
+    .navigation-tree .tree-link {
+        min-height: 42px;
     }
 
     .sidebar.navigation-tree .sidebar-collapse-toggle {

@@ -40,7 +40,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     const page = await desktop.newPage();
     const errors = collectErrors(page);
     await page.goto(`${baseUrl}/#work/dashboard`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector(".navigation-tree .tree-link", { timeout: 15000 });
+    await page.waitForSelector('.navigation-tree [data-route="work/dashboard"]', { state: "visible", timeout: 15000 });
 
     const sidebarToggle = page.locator('[data-action="toggle-sidebar-collapse"]');
     if (!await sidebarToggle.isVisible() || await sidebarToggle.locator("svg").count() !== 1) {
@@ -88,6 +88,33 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await page.keyboard.press("Enter");
     await page.waitForFunction(() => Math.abs((document.querySelector(".navigation-tree")?.getBoundingClientRect().width || 0) - 258) < 1);
     await page.setViewportSize({ width: 1600, height: 1000 });
+
+    const commonSectionToggle = page.locator('[data-sidebar-section="common"]');
+    const workSectionToggle = page.locator('[data-sidebar-section="work"]');
+    const workGroupToggle = page.locator('[data-sidebar-group="workGroups"]');
+    if (await commonSectionToggle.getAttribute("aria-expanded") !== "false"
+      || await workSectionToggle.getAttribute("aria-expanded") !== "true"
+      || await workGroupToggle.getAttribute("aria-expanded") !== "false") {
+      throw new Error("Sidebar không tự mở đúng nhánh của Dashboard công việc.");
+    }
+    if (await page.locator('.tree-link[aria-current="page"]').count() !== 1
+      || !await page.locator('[data-route="work/dashboard"][aria-current="page"]').isVisible()) {
+      throw new Error("Sidebar phải chỉ đánh dấu mạnh đúng một màn hình hiện tại.");
+    }
+    await workGroupToggle.click();
+    await page.waitForFunction(() => document.querySelector('[data-sidebar-group="workGroups"]')?.getAttribute("aria-expanded") === "true");
+    const storedAccordion = await page.evaluate(() => JSON.parse(localStorage.getItem("squad2-sidebar-accordion") || "null"));
+    if (storedAccordion?.openSection !== "work" || storedAccordion?.openGroups?.workGroups !== true) {
+      throw new Error(`Sidebar chưa ghi nhớ trạng thái accordion: ${JSON.stringify(storedAccordion)}`);
+    }
+    await workGroupToggle.click();
+    await commonSectionToggle.focus();
+    await page.keyboard.press("Enter");
+    if (await commonSectionToggle.getAttribute("aria-expanded") !== "true"
+      || await workSectionToggle.getAttribute("aria-expanded") !== "false") {
+      throw new Error("Các khu vực sidebar cùng cấp chưa hoạt động theo accordion.");
+    }
+    await workSectionToggle.click();
 
     await assertRoute(page, "work/dashboard", ".work-dashboard-grid");
     await assertNoPageOverflow(page, "dashboard desktop");
@@ -508,6 +535,7 @@ function collectErrors(page) {
 }
 
 async function assertRoute(page, route, selector) {
+  await revealSidebarRoute(page, route);
   await page.locator(`[data-route="${route}"]`).first().click();
   try {
     await page.waitForSelector(selector, { timeout: 10000 });
@@ -517,6 +545,21 @@ async function assertRoute(page, route, selector) {
   }
   const hash = new URL(page.url()).hash.replace(/^#/, "");
   if (hash !== route) throw new Error(`Route ${route} mở sai hash ${hash}.`);
+}
+
+async function revealSidebarRoute(page, route) {
+  const target = page.locator(`[data-route="${route}"]`).first();
+  if (await target.isVisible().catch(() => false)) return;
+  const section = route.startsWith("common/") ? "common" : "work";
+  const sectionToggle = page.locator(`[data-sidebar-section="${section}"]`);
+  if (await sectionToggle.getAttribute("aria-expanded") !== "true") await sectionToggle.click();
+  const group = route.startsWith("common/personnel/")
+    ? "personnel"
+    : route.startsWith("work/group/") ? "workGroups" : null;
+  if (group) {
+    const groupToggle = page.locator(`[data-sidebar-group="${group}"]`);
+    if (await groupToggle.getAttribute("aria-expanded") !== "true") await groupToggle.click();
+  }
 }
 
 async function assertOptionCount(page, name, expected) {

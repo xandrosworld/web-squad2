@@ -1042,6 +1042,8 @@ const initialRoute = getInitialRoute();
 if ((window.location.hash || "").replace(/^#\/?/, "") !== initialRoute.path) {
     history.replaceState(null, "", `#${initialRoute.path}`);
 }
+const SIDEBAR_ACCORDION_STORAGE_KEY = "squad2-sidebar-accordion";
+const initialSidebarAccordion = getInitialSidebarAccordionState(initialRoute);
 let ui = {
     activeTab: initialRoute.activeTab,
     activeView: initialRoute.view,
@@ -1050,6 +1052,8 @@ let ui = {
     t01Tab: initialRoute.t01Tab,
     sidebarCollapsed: localStorage.getItem("squad2-sidebar-collapsed") === "true",
     sidebarMobileOpen: false,
+    sidebarOpenSection: initialSidebarAccordion.openSection,
+    sidebarOpenGroups: initialSidebarAccordion.openGroups,
     query: "",
     filters: {},
     columnFilters: {},
@@ -1072,6 +1076,90 @@ let ui = {
     toast: null,
     saving: false
 };
+
+function getSidebarRouteBranch(route) {
+    const view = String(route?.view || "");
+    const path = String(route?.path || "");
+    if (path.startsWith("common/")) {
+        return {
+            section: "common",
+            group: ["personnel-list", "personnel-map", "personnel-kpi"].includes(view) ? "personnel" : null
+        };
+    }
+    return {
+        section: "work",
+        group: view === "work-group" ? "workGroups" : null
+    };
+}
+
+function readSidebarAccordionPreference() {
+    try {
+        const stored = JSON.parse(localStorage.getItem(SIDEBAR_ACCORDION_STORAGE_KEY) || "null");
+        return {
+            openSection: ["common", "work"].includes(stored?.openSection) ? stored.openSection : null,
+            openGroups: {
+                personnel: Boolean(stored?.openGroups?.personnel),
+                workGroups: Boolean(stored?.openGroups?.workGroups)
+            }
+        };
+    } catch {
+        return { openSection: null, openGroups: { personnel: false, workGroups: false } };
+    }
+}
+
+function getInitialSidebarAccordionState(route) {
+    const stored = readSidebarAccordionPreference();
+    const branch = getSidebarRouteBranch(route);
+    const openGroups = { ...stored.openGroups };
+    if (branch.group) openGroups[branch.group] = true;
+    return { openSection: branch.section, openGroups };
+}
+
+function persistSidebarAccordionState() {
+    localStorage.setItem(SIDEBAR_ACCORDION_STORAGE_KEY, JSON.stringify({
+        openSection: ui.sidebarOpenSection,
+        openGroups: ui.sidebarOpenGroups
+    }));
+}
+
+function syncSidebarAccordionForRoute(route) {
+    const branch = getSidebarRouteBranch(route);
+    ui.sidebarOpenSection = branch.section;
+    ui.sidebarOpenGroups = {
+        personnel: branch.group === "personnel",
+        workGroups: branch.group === "workGroups"
+    };
+    persistSidebarAccordionState();
+}
+
+function applySidebarAccordionDomState() {
+    const sectionStates = {
+        common: ui.sidebarOpenSection === "common",
+        work: ui.sidebarOpenSection === "work"
+    };
+    Object.entries(sectionStates).forEach(([key, expanded]) => {
+        const toggle = document.querySelector(`[data-sidebar-section="${key}"]`);
+        const panel = document.getElementById(`sidebar-section-${key}`);
+        toggle?.setAttribute("aria-expanded", String(expanded));
+        toggle?.classList.toggle("is-expanded", expanded);
+        panel?.classList.toggle("is-expanded", expanded);
+        panel?.setAttribute("aria-hidden", String(!expanded));
+        if (panel) panel.inert = !expanded;
+    });
+    const groupStates = {
+        personnel: ui.sidebarOpenGroups.personnel,
+        workGroups: ui.sidebarOpenGroups.workGroups
+    };
+    Object.entries(groupStates).forEach(([key, expanded]) => {
+        const toggle = document.querySelector(`[data-sidebar-group="${key}"]`);
+        const panel = document.getElementById(`sidebar-group-${key}`);
+        toggle?.setAttribute("aria-expanded", String(expanded));
+        toggle?.classList.toggle("is-expanded", expanded);
+        panel?.classList.toggle("is-expanded", expanded);
+        panel?.setAttribute("aria-hidden", String(!expanded));
+        if (panel) panel.inert = !expanded;
+    });
+}
 let dataStatus = {
     mode: "loading",
     message: "Đang kết nối Railway DB",
@@ -1291,6 +1379,7 @@ function navigateToRoute(path, options = {}) {
     ui.query = "";
     ui.openColumnFilter = null;
     ui.sidebarMobileOpen = false;
+    syncSidebarAccordionForRoute(route);
     if (route.view === "work-group" && route.categoryId === "pilot-t01" && !options.preserveT01MetricView) {
         ui.t01MetricView = "all";
     }
@@ -1599,6 +1688,15 @@ function renderLoginPage() {
 function renderSidebar() {
     const categories = getWorkCategories();
     const sidebarToggleLabel = ui.sidebarCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên";
+    const railMode = ui.sidebarCollapsed && window.innerWidth > 820;
+    const commonActive = ui.activeRoute.startsWith("common/");
+    const workActive = !commonActive;
+    const personnelActive = ["personnel-list", "personnel-map", "personnel-kpi"].includes(ui.activeView);
+    const workGroupsActive = ui.activeView === "work-group";
+    const commonExpanded = railMode || ui.sidebarOpenSection === "common";
+    const workExpanded = railMode || ui.sidebarOpenSection === "work";
+    const personnelExpanded = railMode || ui.sidebarOpenGroups.personnel;
+    const workGroupsExpanded = railMode || ui.sidebarOpenGroups.workGroups;
     return `
         <aside class="sidebar navigation-tree ${ui.sidebarCollapsed ? "collapsed" : ""} ${ui.sidebarMobileOpen ? "mobile-open" : ""}" aria-label="Điều hướng chính" data-sidebar-state="${ui.sidebarCollapsed ? "collapsed" : "expanded"}">
             <div class="sidebar-logo">
@@ -1614,29 +1712,51 @@ function renderSidebar() {
                 </button>
             </div>
             <nav class="sidebar-menu tree-menu" id="sidebarMenu">
-                <div class="tree-section">
-                    <span class="tree-section-title"><i class="fa-solid fa-users-viewfinder"></i><b>THÔNG TIN CHUNG</b></span>
-                    <span class="tree-parent"><i class="fa-regular fa-user"></i><b>Nhân sự</b></span>
-                    ${renderSidebarRouteButton("common/personnel/list", "fa-address-book", "Danh sách thành viên", 2)}
-                    ${renderSidebarRouteButton("common/personnel/map", "fa-sitemap", "Sơ đồ hoạt động", 2)}
-                    ${renderSidebarRouteButton("common/personnel/kpi", "fa-chart-column", "KPI", 2)}
-                    ${renderSidebarRouteButton("common/guide", "fa-book-open", "Hướng dẫn UAT", 1)}
+                <div class="tree-section ${commonActive ? "contains-active" : ""}">
+                    <button id="sidebar-section-common-toggle" class="tree-section-title tree-section-toggle ${commonActive ? "branch-active" : ""} ${commonExpanded ? "is-expanded" : ""}" type="button" data-action="toggle-sidebar-section" data-sidebar-section="common" aria-expanded="${commonExpanded}" aria-controls="sidebar-section-common" title="Thông tin chung">
+                        <i class="fa-solid fa-users-viewfinder"></i><b>THÔNG TIN CHUNG</b><i class="fa-solid fa-chevron-right tree-toggle-chevron" aria-hidden="true"></i>
+                    </button>
+                    <div id="sidebar-section-common" class="tree-accordion-panel tree-section-content ${commonExpanded ? "is-expanded" : ""}" aria-hidden="${!commonExpanded}" ${commonExpanded ? "" : "inert"}>
+                        <div class="tree-accordion-inner">
+                            <button id="sidebar-group-personnel-toggle" class="tree-parent tree-group-toggle ${personnelActive ? "branch-active" : ""} ${personnelExpanded ? "is-expanded" : ""}" type="button" data-action="toggle-sidebar-group" data-sidebar-group="personnel" aria-expanded="${personnelExpanded}" aria-controls="sidebar-group-personnel" title="Nhân sự">
+                                <i class="fa-regular fa-user"></i><b>Nhân sự</b><i class="fa-solid fa-chevron-right tree-toggle-chevron" aria-hidden="true"></i>
+                            </button>
+                            <div id="sidebar-group-personnel" class="tree-accordion-panel tree-group-content ${personnelExpanded ? "is-expanded" : ""}" aria-hidden="${!personnelExpanded}" ${personnelExpanded ? "" : "inert"}>
+                                <div class="tree-accordion-inner">
+                                    ${renderSidebarRouteButton("common/personnel/list", "fa-address-book", "Danh sách thành viên", 2)}
+                                    ${renderSidebarRouteButton("common/personnel/map", "fa-sitemap", "Sơ đồ hoạt động", 2)}
+                                    ${renderSidebarRouteButton("common/personnel/kpi", "fa-chart-column", "KPI", 2)}
+                                </div>
+                            </div>
+                            ${renderSidebarRouteButton("common/guide", "fa-book-open", "Hướng dẫn UAT", 1)}
+                        </div>
+                    </div>
                 </div>
-                <div class="tree-section">
-                    <span class="tree-section-title"><i class="fa-solid fa-clipboard-list"></i><b>CÔNG VIỆC</b></span>
-                    ${renderSidebarRouteButton("work/task-master", "fa-table-list", "Task_Master", 1)}
-                    ${renderSidebarRouteButton("work/dashboard", "fa-chart-pie", "Dashboard", 1)}
-                    ${renderSidebarRouteButton("work/inputs", "fa-file-circle-plus", "Thông tin đầu vào", 1)}
-                    ${renderSidebarRouteButton("work/member-kpi", "fa-chart-line", "KPI_Thành viên", 1)}
-                    <span class="tree-parent"><i class="fa-regular fa-folder-open"></i><b>Nhóm công việc</b></span>
-                    <div class="tree-category-list">
-                        ${categories.map((category) => renderSidebarRouteButton(
-                            `work/group/${category.id}${category.id === "pilot-t01" ? `/${ui.t01Tab || "dashboard"}` : ""}`,
-                            "fa-circle",
-                            `${Math.max(0, Math.trunc(Number(category.sortOrder || 1)) - 1)}. ${getWorkCategoryShortName(category)}`,
-                            2,
-                            ui.activeView === "work-group" && ui.activeCategoryId === category.id
-                        )).join("")}
+                <div class="tree-section ${workActive ? "contains-active" : ""}">
+                    <button id="sidebar-section-work-toggle" class="tree-section-title tree-section-toggle ${workActive ? "branch-active" : ""} ${workExpanded ? "is-expanded" : ""}" type="button" data-action="toggle-sidebar-section" data-sidebar-section="work" aria-expanded="${workExpanded}" aria-controls="sidebar-section-work" title="Công việc">
+                        <i class="fa-solid fa-clipboard-list"></i><b>CÔNG VIỆC</b><i class="fa-solid fa-chevron-right tree-toggle-chevron" aria-hidden="true"></i>
+                    </button>
+                    <div id="sidebar-section-work" class="tree-accordion-panel tree-section-content ${workExpanded ? "is-expanded" : ""}" aria-hidden="${!workExpanded}" ${workExpanded ? "" : "inert"}>
+                        <div class="tree-accordion-inner">
+                            ${renderSidebarRouteButton("work/task-master", "fa-table-list", "Task_Master", 1)}
+                            ${renderSidebarRouteButton("work/dashboard", "fa-chart-pie", "Dashboard", 1)}
+                            ${renderSidebarRouteButton("work/inputs", "fa-file-circle-plus", "Thông tin đầu vào", 1)}
+                            ${renderSidebarRouteButton("work/member-kpi", "fa-chart-line", "KPI_Thành viên", 1)}
+                            <button id="sidebar-group-workGroups-toggle" class="tree-parent tree-group-toggle ${workGroupsActive ? "branch-active" : ""} ${workGroupsExpanded ? "is-expanded" : ""}" type="button" data-action="toggle-sidebar-group" data-sidebar-group="workGroups" aria-expanded="${workGroupsExpanded}" aria-controls="sidebar-group-workGroups" title="Nhóm công việc">
+                                <i class="fa-regular fa-folder-open"></i><b>Nhóm công việc</b><i class="fa-solid fa-chevron-right tree-toggle-chevron" aria-hidden="true"></i>
+                            </button>
+                            <div id="sidebar-group-workGroups" class="tree-accordion-panel tree-group-content ${workGroupsExpanded ? "is-expanded" : ""}" aria-hidden="${!workGroupsExpanded}" ${workGroupsExpanded ? "" : "inert"}>
+                                <div class="tree-accordion-inner tree-category-list">
+                                    ${categories.map((category) => renderSidebarRouteButton(
+                                        `work/group/${category.id}${category.id === "pilot-t01" ? `/${ui.t01Tab || "dashboard"}` : ""}`,
+                                        "fa-circle",
+                                        `${Math.max(0, Math.trunc(Number(category.sortOrder || 1)) - 1)}. ${getWorkCategoryShortName(category)}`,
+                                        2,
+                                        ui.activeView === "work-group" && ui.activeCategoryId === category.id
+                                    )).join("")}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </nav>
@@ -1647,7 +1767,7 @@ function renderSidebar() {
 function renderSidebarRouteButton(route, icon, label, level = 1, forceActive = false) {
     const active = forceActive || ui.activeRoute === route;
     return `
-        <button class="tree-link level-${e(level)} ${active ? "active" : ""}" type="button" data-route="${e(route)}" title="${e(label)}">
+        <button class="tree-link level-${e(level)} ${active ? "active" : ""}" type="button" data-route="${e(route)}" title="${e(label)}" ${active ? `aria-current="page"` : ""}>
             <i class="fa-solid ${e(icon)}"></i><span>${e(label)}</span>
         </button>
     `;
@@ -6002,6 +6122,41 @@ function handleAction(event) {
         if (event.detail === 0) requestAnimationFrame(() => document.querySelector('[data-action="toggle-sidebar-collapse"]')?.focus());
         return;
     }
+    if (action === "toggle-sidebar-section") {
+        const section = event.currentTarget.dataset.sidebarSection;
+        if (!["common", "work"].includes(section)) return;
+        if (ui.sidebarCollapsed && window.innerWidth > 820) {
+            ui.sidebarCollapsed = false;
+            localStorage.setItem("squad2-sidebar-collapsed", "false");
+            ui.sidebarOpenSection = section;
+            persistSidebarAccordionState();
+            render();
+            return;
+        }
+        ui.sidebarOpenSection = ui.sidebarOpenSection === section ? null : section;
+        persistSidebarAccordionState();
+        applySidebarAccordionDomState();
+        return;
+    }
+    if (action === "toggle-sidebar-group") {
+        const group = event.currentTarget.dataset.sidebarGroup;
+        if (!["personnel", "workGroups"].includes(group)) return;
+        const section = group === "personnel" ? "common" : "work";
+        if (ui.sidebarCollapsed && window.innerWidth > 820) {
+            ui.sidebarCollapsed = false;
+            localStorage.setItem("squad2-sidebar-collapsed", "false");
+            ui.sidebarOpenSection = section;
+            ui.sidebarOpenGroups[group] = true;
+            persistSidebarAccordionState();
+            render();
+            return;
+        }
+        ui.sidebarOpenSection = section;
+        ui.sidebarOpenGroups[group] = !ui.sidebarOpenGroups[group];
+        persistSidebarAccordionState();
+        applySidebarAccordionDomState();
+        return;
+    }
     if (action === "open-kpi-config") return openKpiConfig();
     if (action === "open-member-kpi-create") return openMemberKpiInput();
     if (action === "open-member-kpi-edit") return openMemberKpiInput(id);
@@ -7368,10 +7523,18 @@ document.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("storage", (event) => {
-    if (event.key !== STORAGE_KEY) return;
-    appState = loadCachedState();
-    ui.modal = null;
-    render();
+    if (event.key === STORAGE_KEY) {
+        appState = loadCachedState();
+        ui.modal = null;
+        render();
+        return;
+    }
+    if (event.key === SIDEBAR_ACCORDION_STORAGE_KEY) {
+        const stored = readSidebarAccordionPreference();
+        ui.sidebarOpenSection = stored.openSection;
+        ui.sidebarOpenGroups = stored.openGroups;
+        render();
+    }
 });
 
 window.addEventListener("hashchange", () => {
@@ -7388,6 +7551,7 @@ window.addEventListener("hashchange", () => {
     ui.openColumnFilter = null;
     ui.t01MetricView = "all";
     ui.sidebarMobileOpen = false;
+    syncSidebarAccordionForRoute(route);
     requestActiveTabScroll();
     render();
 });
