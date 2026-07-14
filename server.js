@@ -817,6 +817,17 @@ app.post("/api/auth/change-password", asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
+app.get("/api/directory/users", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const result = await getPool().query(`
+    select id, username, email, name, role, active, avatar_data
+    from app_users
+    where active = true
+    order by name asc, username asc
+  `);
+  res.json({ users: result.rows.map(toPublicUser) });
+}));
+
 app.get("/api/auth/users", requireAdmin, asyncHandler(async (req, res) => {
   await ensureSchema();
   const result = await getPool().query(`

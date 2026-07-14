@@ -5598,6 +5598,19 @@ body.is-column-resizing * {
     background: var(--bidv-teal-soft);
     font-size: 12px;
     font-weight: 850;
+    overflow: hidden;
+}
+
+.member-avatar.has-image {
+    background: #ffffff;
+    border: 1px solid var(--line);
+}
+
+.member-avatar img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
 }
 
 .member-card strong,

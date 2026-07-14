@@ -29,6 +29,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
   const dashboardShot = path.join(os.tmpdir(), "squad2-work-dashboard.png");
   const taskMasterShot = path.join(os.tmpdir(), "squad2-task-master.png");
   const inputsShot = path.join(os.tmpdir(), "squad2-work-inputs.png");
+  const personnelMapShot = path.join(os.tmpdir(), "squad2-personnel-map.png");
   const memberKpiShot = path.join(os.tmpdir(), "squad2-member-kpi.png");
   const groupShot = path.join(os.tmpdir(), "squad2-group-t02.png");
   const mobileShot = path.join(os.tmpdir(), "squad2-sitemap-mobile.png");
@@ -59,6 +60,13 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await page.screenshot({ path: inputsShot, fullPage: true });
     await assertRoute(page, "common/personnel/list", "[data-resizable-table=personnel]");
     await assertRoute(page, "common/personnel/map", ".personnel-map");
+    if (await page.locator(".personnel-map .member-avatar img").count() !== 1) {
+      throw new Error("Sơ đồ nhân sự không hiển thị avatar tài khoản đã được cấu hình.");
+    }
+    if (await page.locator(".personnel-map .member-avatar:not(.has-image)").count() < 1) {
+      throw new Error("Sơ đồ nhân sự thiếu fallback chữ viết tắt cho tài khoản chưa có avatar.");
+    }
+    await page.screenshot({ path: personnelMapShot, fullPage: true });
     await assertRoute(page, "common/personnel/kpi", ".kpi-config-grid");
     await assertRoute(page, "work/member-kpi", ".member-kpi-table");
     await page.screenshot({ path: memberKpiShot, fullPage: true });
@@ -105,6 +113,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       dashboardScreenshot: dashboardShot,
       taskMasterScreenshot: taskMasterShot,
       inputsScreenshot: inputsShot,
+      personnelMapScreenshot: personnelMapShot,
       memberKpiScreenshot: memberKpiShot,
       groupScreenshot: groupShot,
       mobileScreenshot: mobileShot
@@ -138,6 +147,18 @@ async function mockApi(context, state) {
     body: JSON.stringify({ authenticated: true, user: { id: "smoke-admin", username: "thanhmt", email: "thanhmt@bidv.com.vn", name: "Mai Tấn Thành", role: "admin" } })
   }));
   await context.route("**/api/state", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ state }) }));
+  await context.route("**/api/directory/users", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ users: [{
+      id: "smoke-admin",
+      username: "thanhmt",
+      email: "thanhmt@bidv.com.vn",
+      name: "Mai Tấn Thành",
+      role: "admin",
+      avatarData: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    }] })
+  }));
 }
 
 function collectErrors(page) {

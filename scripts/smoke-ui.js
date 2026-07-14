@@ -208,6 +208,9 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   await page.waitForSelector('[data-resizable-table="personnel"]', { timeout: 5000 });
   await goToRoute(page, "common/personnel/map");
   await page.waitForSelector(".personnel-map", { timeout: 5000 });
+  if (await page.locator(".personnel-map .member-avatar img").count() < 1) {
+    throw new Error("Personnel map did not render the configured account avatar.");
+  }
   await goToRoute(page, "common/personnel/kpi");
   await page.waitForSelector(".kpi-config-grid", { timeout: 5000 });
   await goToRoute(page, "work/member-kpi");

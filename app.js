@@ -1026,6 +1026,7 @@ let authState = {
     user: null,
     error: null
 };
+let accountDirectory = [];
 let lastRenderedTab = null;
 let pendingActiveTabScroll = null;
 const initialRoute = getInitialRoute();
@@ -1219,6 +1220,7 @@ async function requestJson(path, options = {}) {
         if (response.status === 401 && !skipAuthRedirect && authState.status === "authenticated") {
             authState = { status: "guest", user: null, error: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." };
             appState = emptyState();
+            accountDirectory = [];
             ui.aiChatOpen = false;
             ui.aiChatDraft = "";
             ui.groupChatOpen = false;
@@ -1928,12 +1930,33 @@ function renderPersonnelMapPage() {
                 <section class="panel role-lane">
                     <div class="panel-head"><div class="panel-title"><i class="fa-solid fa-people-group"></i><div><h2>${e(role)}</h2><span>${e(people.length)} thành viên</span></div></div></div>
                     <div class="panel-body member-card-grid">
-                        ${people.map((person) => `<article class="member-card"><span class="member-avatar">${e(userInitials({ name: person.name || "?" }))}</span><div><strong>${e(person.name || "-")}</strong><span>${e(person.unit || "Chưa cập nhật đơn vị")}</span><small>${e(person.scope || "Chưa cập nhật phạm vi")}</small></div></article>`).join("")}
+                        ${people.map((person) => `<article class="member-card">${renderPersonnelAvatar(person)}<div><strong>${e(person.name || "-")}</strong><span>${e(person.unit || "Chưa cập nhật đơn vị")}</span><small>${e(person.scope || "Chưa cập nhật phạm vi")}</small></div></article>`).join("")}
                     </div>
                 </section>
             `).join("") || renderEmpty("fa-users", "Chưa có dữ liệu nhân sự", modules.personnel.emptyText)}
         </div>
     `;
+}
+
+function renderPersonnelAvatar(person) {
+    const account = findPersonnelAccount(person);
+    const label = person?.name || account?.name || "Thành viên";
+    if (account?.avatarData) {
+        return `<span class="member-avatar has-image"><img src="${e(account.avatarData)}" alt="Avatar ${e(label)}"></span>`;
+    }
+    return `<span class="member-avatar">${e(userInitials({ name: label || "?" }))}</span>`;
+}
+
+function findPersonnelAccount(person) {
+    const candidates = accountDirectory.length ? accountDirectory : (authState.user ? [authState.user] : []);
+    const email = String(person?.email || "").trim().toLowerCase();
+    if (email) {
+        const byEmail = candidates.find((account) => [account?.email, account?.username]
+            .some((value) => String(value || "").trim().toLowerCase() === email));
+        if (byEmail) return byEmail;
+    }
+    const nameKey = normalizeLookupKey(person?.name || "");
+    return nameKey ? candidates.find((account) => normalizeLookupKey(account?.name || "") === nameKey) || null : null;
 }
 
 function renderPersonnelKpiPage() {
@@ -5095,6 +5118,15 @@ function bindAuthEvents() {
     }
 }
 
+async function hydrateAccountDirectory() {
+    try {
+        const data = await requestJson("/directory/users", { skipAuthRedirect: true });
+        accountDirectory = Array.isArray(data.users) ? data.users : [];
+    } catch {
+        accountDirectory = authState.user ? [authState.user] : [];
+    }
+}
+
 async function initAuth() {
     authState = { status: "checking", user: null, error: null };
     render();
@@ -5102,10 +5134,12 @@ async function initAuth() {
         const data = await requestJson("/auth/me", { skipAuthRedirect: true });
         authState = { status: "authenticated", user: data.user, error: null };
         render();
-        await hydrateState(true);
+        await Promise.all([hydrateState(true), hydrateAccountDirectory()]);
+        render();
     } catch {
         authState = { status: "guest", user: null, error: null };
         appState = emptyState();
+        accountDirectory = [];
         ui.aiChatOpen = false;
         ui.aiChatDraft = "";
         ui.groupChatOpen = false;
@@ -5137,10 +5171,12 @@ async function handleLogin(event) {
         });
         authState = { status: "authenticated", user: data.user, error: null };
         render();
-        await hydrateState(true);
+        await Promise.all([hydrateState(true), hydrateAccountDirectory()]);
+        render();
     } catch (error) {
         authState = { status: "guest", user: null, error: error.message || "Không đăng nhập được." };
         appState = emptyState();
+        accountDirectory = [];
         ui.aiChatOpen = false;
         ui.aiChatDraft = "";
         ui.groupChatOpen = false;
@@ -5180,6 +5216,7 @@ async function handleAuthAction(event) {
     }
     authState = { status: "guest", user: null, error: null };
     appState = emptyState();
+    accountDirectory = [];
     localStorage.removeItem(STORAGE_KEY);
     ui.modal = null;
     ui.profileOpen = false;
@@ -5372,6 +5409,13 @@ function syncCurrentUserInGroupChat(user) {
     });
 }
 
+function syncCurrentUserInDirectory(user) {
+    if (!user?.id) return;
+    const index = accountDirectory.findIndex((account) => account.id === user.id);
+    if (index >= 0) accountDirectory[index] = { ...accountDirectory[index], ...user };
+    else accountDirectory.push(user);
+}
+
 function closeProfile() {
     ui.profileOpen = false;
     ui.profileAvatarDraft = null;
@@ -5399,6 +5443,7 @@ async function handleProfileSubmit(event) {
         });
         authState = { ...authState, user: data.user };
         syncCurrentUserInGroupChat(data.user);
+        syncCurrentUserInDirectory(data.user);
         ui.profileAvatarDraft = null;
         showToast("Đã cập nhật hồ sơ.");
         if (ui.groupChatOpen) fetchGroupChat({ silent: true });
