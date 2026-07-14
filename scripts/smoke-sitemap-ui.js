@@ -160,6 +160,36 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     if (errors.length) throw new Error(`Lỗi trình duyệt desktop: ${errors.join(" | ")}`);
     await desktop.close();
 
+    const scopedEditor = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+    await mockScopedEditorApi(scopedEditor, state);
+    const scopedEditorPage = await scopedEditor.newPage();
+    const scopedEditorErrors = collectErrors(scopedEditorPage);
+    await scopedEditorPage.goto(`${baseUrl}/#work/group/pilot-t07`, { waitUntil: "domcontentloaded" });
+    await scopedEditorPage.waitForSelector('[data-resizable-table="workItems"] tbody tr', { timeout: 15000 });
+    const t07Rows = await scopedEditorPage.locator('[data-resizable-table="workItems"] tbody tr').count();
+    const expectedT07Rows = state.workItems.filter((row) => row.categoryId === "pilot-t07").length;
+    if (t07Rows !== expectedT07Rows) throw new Error(`T07 scoped editor expected ${expectedT07Rows} rows, received ${t07Rows}.`);
+    if (await scopedEditorPage.locator('[data-action="open-edit"]').count() !== t07Rows) {
+      throw new Error("T07 scoped editor cannot fully edit every T07 work item.");
+    }
+    if (await scopedEditorPage.locator('[data-action="open-work-progress"]').count() !== t07Rows) {
+      throw new Error("T07 scoped editor cannot update progress for every T07 work item.");
+    }
+    if (await scopedEditorPage.locator('[data-action="delete-row"], .permission-lock').count()) {
+      throw new Error("T07 scoped editor unexpectedly received delete access or a locked row.");
+    }
+    await scopedEditorPage.goto(`${baseUrl}/#work/group/pilot-t08`, { waitUntil: "domcontentloaded" });
+    await scopedEditorPage.waitForSelector('[data-resizable-table="workItems"] tbody tr', { timeout: 15000 });
+    const t08Rows = await scopedEditorPage.locator('[data-resizable-table="workItems"] tbody tr').count();
+    if (!t08Rows || await scopedEditorPage.locator('.permission-lock').count() !== t08Rows) {
+      throw new Error("T07 scoped editor has unexpected edit access outside T07.");
+    }
+    if (await scopedEditorPage.locator('[data-action="open-edit"], [data-action="open-work-progress"], [data-action="delete-row"]').count()) {
+      throw new Error("T07 scoped editor action buttons leaked into T08.");
+    }
+    if (scopedEditorErrors.length) throw new Error(`Scoped editor browser errors: ${scopedEditorErrors.join(" | ")}`);
+    await scopedEditor.close();
+
     const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
     await mockApi(mobile, state);
     const mobilePage = await mobile.newPage();
@@ -276,6 +306,46 @@ async function mockApi(context, state) {
       role: "admin",
       avatarData: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
     }] })
+  }));
+}
+
+async function mockScopedEditorApi(context, state) {
+  const scopedState = JSON.parse(JSON.stringify(state));
+  scopedState.workItems = scopedState.workItems.map((row) => {
+    const isGroupEditor = row.categoryId === "pilot-t07";
+    return {
+      ...row,
+      _ownership: {
+        isOwner: false,
+        isLinkedOwner: false,
+        isGroupEditor,
+        canManage: isGroupEditor,
+        canEdit: isGroupEditor,
+        canDelete: false
+      }
+    };
+  });
+  const user = {
+    id: "smoke-phuongbtm",
+    username: "phuongbtm",
+    email: "phuongbtm@bidv.com.vn",
+    name: "Bui Thi Mai Phuong",
+    role: "user"
+  };
+  await context.route("**/api/auth/me", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ authenticated: true, user })
+  }));
+  await context.route("**/api/state", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ state: scopedState })
+  }));
+  await context.route("**/api/directory/users", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ users: [user] })
   }));
 }
 

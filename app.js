@@ -7083,7 +7083,7 @@ function canCreateWorkItems() {
 }
 
 function canFullyManageWorkItem(row) {
-    return canManageWorkPlans() || row?._ownership?.isOwner === true;
+    return canManageWorkPlans() || row?._ownership?.canManage === true || row?._ownership?.isOwner === true;
 }
 
 function isAssignedWorkItem(row) {

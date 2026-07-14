@@ -43,6 +43,9 @@ const defaultUsers = [
   { username: "tuantd3@bidv.com.vn", email: "tuantd3@bidv.com.vn", name: "Trần Đình Tuấn", password: "123456" }
 ];
 const adminIdentities = ["yenuth@bidv.com.vn", "thanhmt@bidv.com.vn", "huyng@bidv.com.vn"];
+const workItemGroupEditors = {
+  "pilot-t07": ["phuongbtm@bidv.com.vn"]
+};
 
 const workbookCollections = [
   "features",
@@ -1056,6 +1059,8 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     await client.query("begin");
     const current = await getRecordForUpdate(client, collection, req.params.id);
     assertCanModifyRecord(req.user, current);
+    const scopedWorkItemEditor = collection === "workItems"
+      && enforceWorkItemGroupEditorScope(req.user, current, record);
     if (collection === "workCategories" && !canManageWorkCategories(req.user)) {
       throw httpError(403, "Chỉ admin được sửa nhóm công việc.");
     }
@@ -1066,10 +1071,10 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
       record.taskPrefix = current.data?.taskPrefix || "SQ2-T01";
       record.sortOrder = current.data?.sortOrder || 1;
     }
-    if (collection === "workItems" && !canFullyManageWorkItem(req.user, current)) {
+    if (collection === "workItems" && !scopedWorkItemEditor && !canFullyManageWorkItem(req.user, current)) {
       record = mergeWorkItemProgressUpdate(current.data, record);
     }
-    if (collection === "workItems" && req.user.role !== "admin") {
+    if (collection === "workItems" && req.user.role !== "admin" && !scopedWorkItemEditor) {
       assignWorkItemToUser(record, req.user);
     }
     stripComputedFields(collection, record);
@@ -1211,7 +1216,12 @@ module.exports = {
   __testDefaultWorkKpiConfig: defaultWorkKpiConfig,
   __testValidateRecordForCollection: validateRecordForCollection,
   __testBuildPilotWorkPlanSeedRecords: buildPilotWorkPlanSeedRecords,
-  __testEmptyState: emptyState
+  __testEmptyState: emptyState,
+  __testCanEditRecord: canEditRecord,
+  __testCanDeleteRecord: canDeleteRecord,
+  __testCanFullyManageWorkItem: canFullyManageWorkItem,
+  __testDecorateRecord: decorateRecord,
+  __testEnforceWorkItemGroupEditorScope: enforceWorkItemGroupEditorScope
 };
 
 function getPool() {
@@ -3216,7 +3226,8 @@ function canEditRecord(user, record) {
   if (!user) return false;
   return user.role === "admin"
     || Boolean(record.created_by && record.created_by === user.id)
-    || isLinkedOwnerUser(user, record.data);
+    || isLinkedOwnerUser(user, record.data)
+    || isWorkItemGroupEditor(user, record.data);
 }
 
 function canDeleteRecord(user, record) {
@@ -3226,7 +3237,9 @@ function canDeleteRecord(user, record) {
 
 function canFullyManageWorkItem(user, record) {
   if (!user) return false;
-  return user.role === "admin" || Boolean(record.created_by && record.created_by === user.id);
+  return user.role === "admin"
+    || Boolean(record.created_by && record.created_by === user.id)
+    || isWorkItemGroupEditor(user, record.data);
 }
 
 function canManageWorkCategories(user) {
@@ -3265,7 +3278,9 @@ function decorateRecord(row, viewer) {
   const isOwner = Boolean(row.created_by && row.created_by === viewer?.id);
   const linkedOwner = ownerAccountLinkForRecord(row.data);
   const isLinkedOwner = Boolean(viewer && isOwnerAccountLinkForUser(linkedOwner, viewer));
-  const canEdit = Boolean(viewer && (viewer.role === "admin" || isOwner || isLinkedOwner));
+  const isGroupEditor = Boolean(viewer && isWorkItemGroupEditor(viewer, row.data));
+  const canManage = Boolean(viewer && (viewer.role === "admin" || isOwner || isGroupEditor));
+  const canEdit = Boolean(viewer && (canManage || isLinkedOwner));
   const canDelete = Boolean(viewer && (viewer.role === "admin" || isOwner));
   return {
     ...(row.data || {}),
@@ -3277,6 +3292,8 @@ function decorateRecord(row, viewer) {
       linkedOwnerEmail: linkedOwner?.email || "",
       isOwner,
       isLinkedOwner,
+      isGroupEditor,
+      canManage,
       canEdit,
       canDelete
     }
@@ -3480,6 +3497,30 @@ function applyWorkbookRulesForResponse(state) {
   sortStateCollections(state);
   normalizeWorkItemSortOrders(state);
   return state;
+}
+
+function enforceWorkItemGroupEditorScope(user, current, incomingRecord) {
+  const scopedEditor = Boolean(
+    user
+    && user.role !== "admin"
+    && !Boolean(current?.created_by && current.created_by === user.id)
+    && isWorkItemGroupEditor(user, current?.data)
+  );
+  if (scopedEditor && incomingRecord) {
+    incomingRecord.categoryId = current.data?.categoryId;
+  }
+  return scopedEditor;
+}
+
+function isWorkItemGroupEditor(user, record) {
+  if (!user || !record || typeof record !== "object") return false;
+  const categoryId = String(record.categoryId || "").trim().toLowerCase();
+  const allowedIdentities = workItemGroupEditors[categoryId] || [];
+  if (!allowedIdentities.length) return false;
+  const identities = [user.email, user.username]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+  return allowedIdentities.some((identity) => identities.includes(identity));
 }
 
 function normalizeWorkItemSortOrders(state) {
