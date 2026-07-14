@@ -5726,14 +5726,18 @@ body.is-column-resizing * {
 .member-avatar {
     width: 38px;
     height: 38px;
-    display: grid;
-    place-items: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex: 0 0 38px;
     border-radius: 50%;
     color: var(--bidv-teal);
     background: var(--bidv-teal-soft);
     font-size: 12px;
     font-weight: 850;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
     overflow: hidden;
 }
 
@@ -5750,7 +5754,7 @@ body.is-column-resizing * {
 }
 
 .member-card strong,
-.member-card span,
+.member-card > div > span,
 .member-card small {
     display: block;
 }

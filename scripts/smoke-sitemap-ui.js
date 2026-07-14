@@ -137,6 +137,29 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     if (await page.locator(".personnel-map .member-avatar:not(.has-image)").count() < 1) {
       throw new Error("Sơ đồ nhân sự thiếu fallback chữ viết tắt cho tài khoản chưa có avatar.");
     }
+    const avatarAlignment = await page.locator(".personnel-map .member-avatar:not(.has-image)").evaluateAll((avatars) => avatars.map((avatar) => {
+      const style = getComputedStyle(avatar);
+      const avatarRect = avatar.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(avatar);
+      const textRect = range.getBoundingClientRect();
+      return {
+        text: avatar.textContent?.trim() || "",
+        display: style.display,
+        alignItems: style.alignItems,
+        justifyContent: style.justifyContent,
+        offsetX: Math.abs((avatarRect.left + avatarRect.width / 2) - (textRect.left + textRect.width / 2)),
+        offsetY: Math.abs((avatarRect.top + avatarRect.height / 2) - (textRect.top + textRect.height / 2))
+      };
+    }));
+    const misalignedAvatar = avatarAlignment.find((avatar) => !["flex", "inline-flex"].includes(avatar.display)
+      || avatar.alignItems !== "center"
+      || avatar.justifyContent !== "center"
+      || avatar.offsetX > 2
+      || avatar.offsetY > 2);
+    if (misalignedAvatar) {
+      throw new Error(`Chữ viết tắt trong avatar chưa căn giữa: ${JSON.stringify(misalignedAvatar)}`);
+    }
     await page.screenshot({ path: personnelMapShot, fullPage: true });
     await assertRoute(page, "common/personnel/kpi", ".kpi-config-grid");
     await assertRoute(page, "work/member-kpi", ".member-kpi-table");
