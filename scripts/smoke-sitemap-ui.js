@@ -95,19 +95,44 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await assertRoute(page, "common/guide", ".guide-page");
     await assertRoute(page, "work/group/pilot-t01/dashboard", ".t01-module-tabs");
     await page.waitForSelector(".sheet-dashboard");
-    const t01Expected = { all: 5, notStarted: 1, inProgress: 3, approval: 0, overdue: 0, done: 1 };
-    for (const [view, expected] of Object.entries(t01Expected)) {
-      const value = Number((await page.locator(`[data-action="set-work-metric"][data-work-view="${view}"] strong`).textContent() || "").trim());
-      if (value !== expected) throw new Error(`KPI T01 ${view} cần ${expected}, nhận ${value}.`);
-    }
-    await page.locator('[data-action="set-work-metric"][data-work-view="inProgress"]').click();
-    await page.waitForSelector('[data-resizable-table="features"]');
-    if (new URL(page.url()).hash !== "#work/group/pilot-t01/features") throw new Error("KPI T01 không mở DM_ChucNang.");
+    const t01MetricSignatures = [];
+    t01MetricSignatures.push(await assertT01MetricLabels(page, ["Tổng chức năng", "Tổng testcase", "TC Passed", "TC Failed", "Đang xử lý", "Hoàn thành UAT"]));
+    await assertRoute(page, "work/group/pilot-t01/defectDashboard", ".defect-dashboard-panel");
+    t01MetricSignatures.push(await assertT01MetricLabels(page, ["Tổng defect", "Đang mở", "Đã xử lý", "Tỷ lệ xử lý", "Blocker/Critical", "Reopen"]));
+    await assertRoute(page, "work/group/pilot-t01/features", '[data-resizable-table="features"]');
+    t01MetricSignatures.push(await assertT01MetricLabels(page, ["Tổng chức năng", "Chưa bắt đầu", "Đang thực hiện", "Chưa bàn giao", "Quá hạn", "Hoàn thành"]));
+    const inProgressValue = Number((await page.locator('[data-action="set-t01-metric"][data-t01-view="inProgress"] strong').textContent() || "").trim());
+    if (inProgressValue !== 3) throw new Error(`KPI DM_ChucNang Đang thực hiện cần 3, nhận ${inProgressValue}.`);
+    await page.locator('[data-action="set-t01-metric"][data-t01-view="inProgress"]').click();
     const t01FilteredRows = await page.locator('[data-resizable-table="features"] tbody tr').count();
     if (t01FilteredRows !== 3) throw new Error(`KPI T01 Đang thực hiện cần lọc 3 chức năng, nhận ${t01FilteredRows}.`);
     await assertFeatureTableHorizontalAccess(page, "desktop");
+    await assertRoute(page, "work/group/pilot-t01/handoffs", '[data-resizable-table="handoffs"]');
+    t01MetricSignatures.push(await assertT01MetricLabels(page, ["Tổng User Story", "Đã bàn giao", "Chưa bàn giao", "Chưa bắt đầu UAT", "Đang UAT", "Hoàn thành UAT"]));
+    await page.locator('[data-action="set-t01-metric"][data-t01-view="notHandedOff"]').click();
+    if (await page.locator('[data-resizable-table="handoffs"] tbody tr').count() !== 1) throw new Error("KPI Lich_BG_US Chưa bàn giao lọc sai dữ liệu.");
+    await assertRoute(page, "work/group/pilot-t01/plans", '[data-resizable-table="plans"]');
+    t01MetricSignatures.push(await assertT01MetricLabels(page, ["Tổng chức năng", "Tổng testcase", "Đã phân công", "Chưa phân công", "Đang kiểm thử", "Hoàn thành"]));
+    await assertT01MetricRowFilter(page, "plans", "unassigned", 1);
+    await assertRoute(page, "work/group/pilot-t01/daily", '[data-resizable-table="daily"]');
+    t01MetricSignatures.push(await assertT01MetricLabels(page, ["Lượt cập nhật", "Tổng testcase", "TC Passed", "TC Failed", "Dòng có lỗi mở", "Có blocker"]));
+    await assertT01MetricRowFilter(page, "daily", "blocker", 1);
     await assertRoute(page, "work/group/pilot-t01/defects", ".secondary-tabs");
+    t01MetricSignatures.push(await assertT01MetricLabels(page, ["Tổng defect", "Open", "In Progress", "Pending/Reopen", "Resolved/SIT Pass", "Closed/Cancelled"]));
+    await assertT01MetricRowFilter(page, "defects", "pendingOrReopen", 1);
     await assertRoute(page, "work/group/pilot-t01/defectSummary", ".secondary-tabs .active");
+    t01MetricSignatures.push(await assertT01MetricLabels(page, ["Tổng User Story", "US có lỗi", "Tổng lỗi", "Lỗi đang mở", "Lỗi đã xử lý", "Lỗi nghiêm trọng"]));
+    await assertT01MetricRowFilter(page, "defectSummary", "hasBugs", 5);
+    await assertRoute(page, "work/group/pilot-t01/weekly", '[data-resizable-table="weekly"]');
+    t01MetricSignatures.push(await assertT01MetricLabels(page, ["Số tuần", "Coverage TB", "Pass Rate TB", "Blocker Open", "Critical Open", "Tuần chưa đạt"]));
+    await assertT01MetricRowFilter(page, "weekly", "notMet", 1);
+    await assertRoute(page, "work/group/pilot-t01/readiness", '[data-resizable-table="readiness"]');
+    t01MetricSignatures.push(await assertT01MetricLabels(page, ["Tổng Sprint", "Coverage TB", "Pass Rate TB", "Có thể GO", "NO GO", "Sprint còn lỗi nặng"]));
+    await assertT01MetricRowFilter(page, "readiness", "noGo", 1);
+    await assertRoute(page, "work/group/pilot-t01/matrix", '[data-resizable-table="matrix"]');
+    t01MetricSignatures.push(await assertT01MetricLabels(page, ["Nhóm chức năng", "Tổng lượt tham gia", "Tổng mục tiêu", "Tester có tham gia", "Nhóm đạt", "Thiếu luân chuyển"]));
+    await assertT01MetricRowFilter(page, "matrix", "insufficient", 1);
+    if (new Set(t01MetricSignatures).size !== t01MetricSignatures.length) throw new Error("Các sheet T01 còn dùng trùng bộ dashboard KPI.");
     await assertRoute(page, "work/group/pilot-t03", ".standalone-work-items");
     const firstLocalOrder = (await page.locator('[data-resizable-table="workItems"] tbody tr').first().locator("td").first().textContent() || "").trim();
     if (firstLocalOrder !== "1") throw new Error(`STT đầu nhóm T03 phải là 1, nhận ${firstLocalOrder || "trống"}.`);
@@ -183,11 +208,45 @@ async function buildFixtureState() {
     { id: "person-huy", staffCode: "NV02", name: "Nguyễn Gia Huy", email: "huyng@bidv.com.vn", role: "Tester", status: "Hoạt động" }
   ];
   state.features = [
-    { id: "feature-1", stt: 1, jiraCode: "SQ2-F01", name: "Chức năng chưa bắt đầu", status: "", completionRate: 0 },
-    { id: "feature-2", stt: 2, jiraCode: "SQ2-F02", name: "Chức năng Done RSD", status: "Done RSD", completionRate: 20 },
-    { id: "feature-3", stt: 3, jiraCode: "SQ2-F03", name: "Chức năng Done DEV", status: "Done DEV", completionRate: 40 },
-    { id: "feature-4", stt: 4, jiraCode: "SQ2-F04", name: "Chức năng Done SIT", status: "Done SIT", completionRate: 70 },
-    { id: "feature-5", stt: 5, jiraCode: "SQ2-F05", name: "Chức năng Done UAT", status: "Done UAT", completionRate: 100 }
+    { id: "feature-1", stt: 1, jiraCode: "SQ2-F01", name: "Chức năng chưa bắt đầu", sprint: "Sprint 1", status: "", handoffStatus: "⏯️Chưa bàn giao", totalCases: 10, passedCases: 0, failedCases: 0, completionRate: 0 },
+    { id: "feature-2", stt: 2, jiraCode: "SQ2-F02", name: "Chức năng Done RSD", sprint: "Sprint 1", status: "Done RSD", handoffStatus: "⏯️Chưa bàn giao", totalCases: 10, passedCases: 2, failedCases: 1, completionRate: 20 },
+    { id: "feature-3", stt: 3, jiraCode: "SQ2-F03", name: "Chức năng Done DEV", sprint: "Sprint 1", status: "Done DEV", handoffStatus: "✅ Đã bàn giao", totalCases: 10, passedCases: 5, failedCases: 1, completionRate: 40 },
+    { id: "feature-4", stt: 4, jiraCode: "SQ2-F04", name: "Chức năng Done SIT", sprint: "Sprint 1", status: "Done SIT", handoffStatus: "✅ Đã bàn giao", totalCases: 10, passedCases: 8, failedCases: 2, completionRate: 70 },
+    { id: "feature-5", stt: 5, jiraCode: "SQ2-F05", name: "Chức năng Done UAT", sprint: "Sprint 1", status: "Done UAT", handoffStatus: "✅ Đã bàn giao", totalCases: 10, passedCases: 10, failedCases: 0, completionRate: 100 }
+  ];
+  state.handoffs = [
+    { id: "handoff-1", jiraCode: "SQ2-F01", name: "Chức năng chưa bắt đầu", sprint: "Sprint 1", handoffStatus: "⏯️Chưa bàn giao", uatStatus: "Done RSD" },
+    { id: "handoff-2", jiraCode: "SQ2-F03", name: "Chức năng Done DEV", sprint: "Sprint 1", uatHandoff: "2026-07-10", handoffStatus: "✅ Đã bàn giao", uatStatus: "Done DEV" },
+    { id: "handoff-3", jiraCode: "SQ2-F05", name: "Chức năng Done UAT", sprint: "Sprint 1", uatHandoff: "2026-07-08", handoffStatus: "✅ Đã bàn giao", uatStatus: "Done UAT" }
+  ];
+  state.plans = [
+    { id: "plan-1", code: "SQ2-F01", jiraCode: "SQ2-F01", feature: "Chức năng chưa bắt đầu", uatStatus: "Chưa bắt đầu" },
+    { id: "plan-2", code: "SQ2-F03", jiraCode: "SQ2-F03", feature: "Chức năng Done DEV", t1: 20, uatStatus: "Đang kiểm thử", progress: 50 },
+    { id: "plan-3", code: "SQ2-F05", jiraCode: "SQ2-F05", feature: "Chức năng Done UAT", t2: 30, uatStatus: "Hoàn thành", progress: 100 }
+  ];
+  state.daily = [
+    { id: "daily-1", date: "2026-07-13", jiraCode: "SQ2-F03", feature: "Chức năng Done DEV", sprint: "Sprint 1", tester: "T1", totalCases: 10, passedCases: 8, failedCases: 2, bugStatus: "Open", maxBugSeverity: "Critical", blocker: "Chờ xử lý lỗi" },
+    { id: "daily-2", date: "2026-07-14", jiraCode: "SQ2-F05", feature: "Chức năng Done UAT", sprint: "Sprint 1", tester: "T2", totalCases: 5, passedCases: 5, failedCases: 0, bugStatus: "Resolved", maxBugSeverity: "Minor", blocker: "" }
+  ];
+  state.defects = [
+    { id: "defect-1", stt: 1, bugId: "BUG-1", featureJiraCode: "SQ2-F01", sprint: "Sprint 1", severity: "Critical", status: "Open" },
+    { id: "defect-2", stt: 2, bugId: "BUG-2", featureJiraCode: "SQ2-F02", sprint: "Sprint 1", severity: "Major", status: "In Progress" },
+    { id: "defect-3", stt: 3, bugId: "BUG-3", featureJiraCode: "SQ2-F03", sprint: "Sprint 1", severity: "Major", status: "Reopen" },
+    { id: "defect-4", stt: 4, bugId: "BUG-4", featureJiraCode: "SQ2-F03", sprint: "Sprint 1", severity: "Minor", status: "Resolved" },
+    { id: "defect-5", stt: 5, bugId: "BUG-5", featureJiraCode: "SQ2-F04", sprint: "Sprint 1", severity: "Minor", status: "SIT Pass" },
+    { id: "defect-6", stt: 6, bugId: "BUG-6", featureJiraCode: "SQ2-F05", sprint: "Sprint 1", severity: "Minor", status: "Closed" }
+  ];
+  state.weekly = [
+    { id: "weekly-1", week: "Tuần 1", sprint: "Sprint 1", assessment: "Đạt có điều kiện" },
+    { id: "weekly-2", week: "Tuần 2", sprint: "Sprint 2", assessment: "Chưa đạt" }
+  ];
+  state.readiness = [
+    { id: "readiness-1", sprint: "Sprint 1", decision: "CONDITIONAL GO" },
+    { id: "readiness-2", sprint: "Sprint 2", decision: "NO GO" }
+  ];
+  state.matrix = [
+    { id: "matrix-1", group: "Luồng xử lý", t1: 2, t2: 1, target: 3 },
+    { id: "matrix-2", group: "Thông tin KH", t1: 1, target: 3 }
   ];
   const now = new Date().toISOString();
   for (const row of buildPilotWorkPlanSeedRecords(now)) state[row.collection].push(row.data);
@@ -255,6 +314,26 @@ async function assertOptionCount(page, name, expected) {
 async function assertFieldLabel(page, name, expected) {
   const label = (await page.locator(`.field:has([name="${name}"]) > label`).textContent() || "").trim();
   if (label !== expected) throw new Error(`Field ${name} cần nhãn "${expected}", nhận "${label}".`);
+}
+
+async function assertT01MetricLabels(page, expected) {
+  const labels = (await page.locator(".t01-context-summary .work-metric span").allTextContents()).map((label) => label.trim());
+  if (JSON.stringify(labels) !== JSON.stringify(expected)) {
+    throw new Error(`Dashboard KPI không đúng ngữ cảnh: cần ${JSON.stringify(expected)}, nhận ${JSON.stringify(labels)}.`);
+  }
+  return labels.join("|");
+}
+
+async function assertT01MetricRowFilter(page, collection, view, expectedRows) {
+  const metric = page.locator(`[data-action="set-t01-metric"][data-t01-view="${view}"]`);
+  await metric.click();
+  if (!(await metric.getAttribute("class")).includes("active")) {
+    throw new Error(`KPI ${collection}:${view} không được đánh dấu đang lọc.`);
+  }
+  const rowCount = await page.locator(`[data-resizable-table="${collection}"] tbody tr`).count();
+  if (rowCount !== expectedRows) {
+    throw new Error(`KPI ${collection}:${view} cần lọc ${expectedRows} dòng, nhận ${rowCount}.`);
+  }
 }
 
 async function assertFeatureTableHorizontalAccess(page, label) {

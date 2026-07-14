@@ -1057,7 +1057,7 @@ let ui = {
     groupChatDraft: "",
     profileAvatarDraft: null,
     workView: "all",
-    t01FeatureView: "all",
+    t01MetricView: "all",
     profileSaving: false,
     passwordSaving: false,
     toast: null,
@@ -1282,9 +1282,8 @@ function navigateToRoute(path, options = {}) {
     ui.query = "";
     ui.openColumnFilter = null;
     ui.sidebarMobileOpen = false;
-    if (route.view === "work-group" && route.categoryId === "pilot-t01" && !options.preserveT01FeatureView) {
-        ui.t01FeatureView = "all";
-        ui.workView = "all";
+    if (route.view === "work-group" && route.categoryId === "pilot-t01" && !options.preserveT01MetricView) {
+        ui.t01MetricView = "all";
     }
     if (route.view === "task-master" || route.view === "work-dashboard") {
         ui.filters["workItems:categoryId"] = options.preserveWorkCategoryId || "";
@@ -1845,7 +1844,7 @@ function renderWorkItemsPanel({ title, subtitle, categoryId = "", showViews = tr
 function renderWorkGroupPage() {
     const category = getWorkCategories().find((row) => row.id === ui.activeCategoryId);
     if (!category) return `<div class="work-plan-page">${renderEmpty("fa-folder-open", "Không tìm thấy nhóm", "Nhóm công việc có thể đã được đổi hoặc xóa.", false)}</div>`;
-    if (category.id === "pilot-t01") return renderT01WorkGroup(category, getT01WorkStats());
+    if (category.id === "pilot-t01") return renderT01WorkGroup(category);
     const stats = getWorkGroupStats(category.id);
     return `
         <div class="work-plan-page">
@@ -1861,12 +1860,12 @@ function renderWorkGroupPage() {
     `;
 }
 
-function renderT01WorkGroup(category, stats) {
+function renderT01WorkGroup(category) {
     const activeTab = ui.t01Tab || "dashboard";
     const effectiveParent = activeTab === "defectSummary" ? "defects" : activeTab;
     return `
         <div class="work-plan-page t01-workspace">
-            ${renderWorkSummaryStrip(stats)}
+            ${renderT01SheetSummary(activeTab)}
             <nav class="t01-module-tabs" aria-label="Phân hệ kiểm thử chức năng">
                 ${t01ModuleTabs.map((tab) => `
                     <button class="${effectiveParent === tab.id ? "active" : ""}" type="button" data-route="work/group/${e(category.id)}/${e(tab.id)}">
@@ -1902,18 +1901,289 @@ function getWorkGroupStats(categoryId) {
     return { total: rows.length, done, notStarted, inProgress, pendingApproval, overdue, progress };
 }
 
-function getT01WorkStats() {
-    const rows = getDisplayRows("features");
-    const done = rows.filter((row) => getT01FeatureState(row) === "done").length;
-    const notStarted = rows.filter((row) => getT01FeatureState(row) === "notStarted").length;
-    const inProgress = rows.filter((row) => getT01FeatureState(row) === "inProgress").length;
-    const pendingApproval = rows.filter((row) => getT01FeatureState(row) === "approval").length;
-    const overdue = rows.filter(isT01FeatureOverdue).length;
-    const open = rows.length - done;
-    const averageProgress = rows.length
-        ? Math.round(rows.reduce((total, row) => total + Number(row.completionRate || 0), 0) / rows.length)
-        : 0;
-    return { total: rows.length, mine: 0, open, notStarted, inProgress, pendingApproval, done, overdue, averageProgress };
+function renderT01SheetSummary(tabId) {
+    const dashboard = getT01SheetDashboard(tabId);
+    return `
+        <section class="work-plan-summary t01-context-summary" aria-label="Tổng quan ${e(dashboard.label)}">
+            ${dashboard.metrics.map((metric) => renderT01SheetMetric(tabId, metric)).join("")}
+        </section>
+    `;
+}
+
+function renderT01SheetMetric(tabId, metric) {
+    const clickable = typeof metric.predicate === "function";
+    const active = clickable && (ui.t01MetricView || "all") === metric.view;
+    if (!clickable) {
+        return renderWorkMetric(metric.label, metric.value, metric.icon, metric.tone);
+    }
+    return `
+        <button class="work-metric is-clickable ${e(metric.tone)} ${active ? "active" : ""}" type="button" data-action="set-t01-metric" data-t01-tab="${e(tabId)}" data-t01-view="${e(metric.view)}" aria-pressed="${active ? "true" : "false"}" ${metric.title ? `title="${e(metric.title)}"` : ""}>
+            <i class="fa-solid ${e(metric.icon)}"></i>
+            <div>
+                <span>${e(metric.label)}</span>
+                <strong>${e(metric.value)}</strong>
+            </div>
+        </button>
+    `;
+}
+
+function getT01SheetDashboard(tabId) {
+    const normalizedTab = tabId === "defectSummary" ? "defectSummary" : (tabId || "dashboard");
+    const metric = (view, label, value, icon, tone, predicate = null, title = "") => ({
+        view,
+        label,
+        value,
+        icon,
+        tone,
+        predicate,
+        title
+    });
+    const statusIs = (value, target) => normalizeWorkbookFormulaText(value) === normalizeWorkbookFormulaText(target);
+    const statusIn = (value, targets) => targets.some((target) => statusIs(value, target));
+    const hasText = (value, target) => normalizeWorkbookFormulaText(value).includes(normalizeWorkbookFormulaText(target));
+
+    if (normalizedTab === "dashboard") {
+        const rows = getDisplayRows("features");
+        return {
+            label: "Dashboard UAT",
+            collection: "features",
+            metrics: [
+                metric("all", "Tổng chức năng", rows.length, "fa-layer-group", "teal"),
+                metric("hasCases", "Tổng testcase", sum(rows, "totalCases"), "fa-list-check", "blue"),
+                metric("hasPassed", "TC Passed", sum(rows, "passedCases"), "fa-circle-check", "green"),
+                metric("hasFailed", "TC Failed", sum(rows, "failedCases"), "fa-circle-xmark", "red"),
+                metric("inProgress", "Đang xử lý", rows.filter((row) => getT01FeatureState(row) === "inProgress").length, "fa-person-running", "blue"),
+                metric("done", "Hoàn thành UAT", rows.filter((row) => getT01FeatureState(row) === "done").length, "fa-flag-checkered", "green")
+            ]
+        };
+    }
+
+    if (normalizedTab === "defectDashboard") {
+        const rows = getDisplayRows("defects");
+        const active = rows.filter(isT01ActiveDefect);
+        const handled = rows.filter(isT01HandledDefect);
+        const severe = rows.filter((row) => statusIn(row.severity, ["Blocker", "Critical"]));
+        const reopened = rows.filter((row) => statusIn(row.status, ["Reopen", "Reopened"]));
+        return {
+            label: "Dashboard Defect",
+            collection: "defects",
+            metrics: [
+                metric("all", "Tổng defect", rows.length, "fa-bugs", "blue"),
+                metric("active", "Đang mở", active.length, "fa-bug", "red"),
+                metric("handled", "Đã xử lý", handled.length, "fa-screwdriver-wrench", "green"),
+                metric("handledRate", "Tỷ lệ xử lý", `${percent(handled.length, rows.length)}%`, "fa-chart-pie", "teal"),
+                metric("severe", "Blocker/Critical", severe.length, "fa-triangle-exclamation", "red"),
+                metric("reopen", "Reopen", reopened.length, "fa-rotate-left", "yellow")
+            ]
+        };
+    }
+
+    if (normalizedTab === "features") {
+        const rows = getDisplayRows("features");
+        const predicates = {
+            all: () => true,
+            notStarted: (row) => getT01FeatureState(row) === "notStarted",
+            inProgress: (row) => getT01FeatureState(row) === "inProgress",
+            notHandedOff: (row) => hasText(row.handoffStatus, "chưa bàn giao") || !isFilled(row.handoffStatus),
+            overdue: isT01FeatureOverdue,
+            done: (row) => getT01FeatureState(row) === "done"
+        };
+        return {
+            label: "Danh mục chức năng",
+            collection: "features",
+            metrics: [
+                metric("all", "Tổng chức năng", rows.length, "fa-layer-group", "teal", predicates.all),
+                metric("notStarted", "Chưa bắt đầu", rows.filter(predicates.notStarted).length, "fa-circle-pause", "gray", predicates.notStarted),
+                metric("inProgress", "Đang thực hiện", rows.filter(predicates.inProgress).length, "fa-person-running", "blue", predicates.inProgress),
+                metric("notHandedOff", "Chưa bàn giao", rows.filter(predicates.notHandedOff).length, "fa-truck-ramp-box", "yellow", predicates.notHandedOff),
+                metric("overdue", "Quá hạn", rows.filter(predicates.overdue).length, "fa-triangle-exclamation", "red", predicates.overdue),
+                metric("done", "Hoàn thành", rows.filter(predicates.done).length, "fa-circle-check", "green", predicates.done)
+            ]
+        };
+    }
+
+    if (normalizedTab === "handoffs") {
+        const rows = getDisplayRows("handoffs");
+        const predicates = {
+            all: () => true,
+            handedOff: (row) => hasText(row.handoffStatus, "đã bàn giao") && !hasText(row.handoffStatus, "chưa bàn giao"),
+            notHandedOff: (row) => hasText(row.handoffStatus, "chưa bàn giao") || !isFilled(row.handoffStatus),
+            notStarted: (row) => !isFilled(row.uatStatus) || statusIs(row.uatStatus, "Done RSD") || statusIs(row.uatStatus, "Chưa bắt đầu"),
+            inProgress: (row) => statusIn(row.uatStatus, ["Done DEV", "Done SIT", "Đang kiểm thử", "Đang thực hiện"]),
+            done: (row) => statusIn(row.uatStatus, ["Done UAT", "Hoàn thành"])
+        };
+        return {
+            label: "Lịch bàn giao US",
+            collection: "handoffs",
+            metrics: [
+                metric("all", "Tổng User Story", rows.length, "fa-list-check", "blue", predicates.all),
+                metric("handedOff", "Đã bàn giao", rows.filter(predicates.handedOff).length, "fa-truck-fast", "green", predicates.handedOff),
+                metric("notHandedOff", "Chưa bàn giao", rows.filter(predicates.notHandedOff).length, "fa-clock", "yellow", predicates.notHandedOff),
+                metric("notStarted", "Chưa bắt đầu UAT", rows.filter(predicates.notStarted).length, "fa-circle-pause", "gray", predicates.notStarted),
+                metric("inProgress", "Đang UAT", rows.filter(predicates.inProgress).length, "fa-person-running", "blue", predicates.inProgress),
+                metric("done", "Hoàn thành UAT", rows.filter(predicates.done).length, "fa-circle-check", "green", predicates.done)
+            ]
+        };
+    }
+
+    if (normalizedTab === "plans") {
+        const rows = getDisplayRows("plans");
+        const hasAssignment = (row) => ["nv", "t1", "t2", "t3", "t4", "t5", "t6"].some((key) => Number(row[key] || 0) > 0);
+        const predicates = {
+            all: () => true,
+            hasCases: (row) => Number(row.totalCases || 0) > 0,
+            assigned: hasAssignment,
+            unassigned: (row) => !hasAssignment(row),
+            inProgress: (row) => statusIn(row.uatStatus, ["Đang kiểm thử", "Đang thực hiện"]) || (Number(row.progress || 0) > 0 && Number(row.progress || 0) < 100),
+            done: (row) => statusIn(row.uatStatus, ["Hoàn thành", "Done UAT"]) || Number(row.progress || 0) >= 100
+        };
+        return {
+            label: "Phân công UAT",
+            collection: "plans",
+            metrics: [
+                metric("all", "Tổng chức năng", rows.length, "fa-layer-group", "teal", predicates.all),
+                metric("hasCases", "Tổng testcase", sum(rows, "totalCases"), "fa-list-check", "blue", predicates.hasCases, "Hiển thị các chức năng đã có testcase"),
+                metric("assigned", "Đã phân công", rows.filter(predicates.assigned).length, "fa-user-check", "green", predicates.assigned),
+                metric("unassigned", "Chưa phân công", rows.filter(predicates.unassigned).length, "fa-user-clock", "yellow", predicates.unassigned),
+                metric("inProgress", "Đang kiểm thử", rows.filter(predicates.inProgress).length, "fa-vial-circle-check", "blue", predicates.inProgress),
+                metric("done", "Hoàn thành", rows.filter(predicates.done).length, "fa-circle-check", "green", predicates.done)
+            ]
+        };
+    }
+
+    if (normalizedTab === "daily") {
+        const rows = getDisplayRows("daily");
+        const predicates = {
+            all: () => true,
+            hasCases: (row) => Number(row.totalCases || 0) > 0,
+            passed: (row) => Number(row.passedCases || 0) > 0,
+            failed: (row) => Number(row.failedCases || 0) > 0,
+            openBug: (row) => isT01ActiveDefect({ status: row.bugStatus }),
+            blocker: (row) => isFilled(row.blocker)
+        };
+        return {
+            label: "Điều hành hằng ngày",
+            collection: "daily",
+            metrics: [
+                metric("all", "Lượt cập nhật", rows.length, "fa-calendar-day", "teal", predicates.all),
+                metric("hasCases", "Tổng testcase", sum(rows, "totalCases"), "fa-list-check", "blue", predicates.hasCases, "Hiển thị các dòng có testcase"),
+                metric("passed", "TC Passed", sum(rows, "passedCases"), "fa-circle-check", "green", predicates.passed, "Hiển thị các dòng có testcase Passed"),
+                metric("failed", "TC Failed", sum(rows, "failedCases"), "fa-circle-xmark", "red", predicates.failed, "Hiển thị các dòng có testcase Failed"),
+                metric("openBug", "Dòng có lỗi mở", rows.filter(predicates.openBug).length, "fa-bug", "yellow", predicates.openBug),
+                metric("blocker", "Có blocker", rows.filter(predicates.blocker).length, "fa-triangle-exclamation", "red", predicates.blocker)
+            ]
+        };
+    }
+
+    if (normalizedTab === "defects") {
+        const rows = getDisplayRows("defects");
+        const predicates = {
+            all: () => true,
+            open: (row) => statusIs(row.status, "Open"),
+            inProgress: (row) => statusIs(row.status, "In Progress"),
+            pendingOrReopen: (row) => statusIn(row.status, ["Pending", "Reopen", "Reopened"]),
+            resolved: (row) => statusIn(row.status, ["Resolved", "SIT Pass"]),
+            closed: (row) => statusIn(row.status, ["Closed", "Cancelled", "Canceled"])
+        };
+        return {
+            label: "Danh sách defect",
+            collection: "defects",
+            metrics: [
+                metric("all", "Tổng defect", rows.length, "fa-bugs", "blue", predicates.all),
+                metric("open", "Open", rows.filter(predicates.open).length, "fa-circle-exclamation", "red", predicates.open),
+                metric("inProgress", "In Progress", rows.filter(predicates.inProgress).length, "fa-person-digging", "blue", predicates.inProgress),
+                metric("pendingOrReopen", "Pending/Reopen", rows.filter(predicates.pendingOrReopen).length, "fa-rotate-left", "yellow", predicates.pendingOrReopen),
+                metric("resolved", "Resolved/SIT Pass", rows.filter(predicates.resolved).length, "fa-screwdriver-wrench", "teal", predicates.resolved),
+                metric("closed", "Closed/Cancelled", rows.filter(predicates.closed).length, "fa-circle-check", "green", predicates.closed)
+            ]
+        };
+    }
+
+    if (normalizedTab === "defectSummary") {
+        const rows = getDisplayRows("defectSummary");
+        const predicates = {
+            all: () => true,
+            hasBugs: (row) => Number(row.totalBugs || 0) > 0,
+            active: (row) => Number(row.activeBugs || 0) > 0,
+            handled: (row) => Number(row.handledBugs || 0) > 0,
+            severe: (row) => Number(row.severeBugs || 0) > 0
+        };
+        return {
+            label: "Tổng hợp lỗi",
+            collection: "defectSummary",
+            metrics: [
+                metric("all", "Tổng User Story", rows.length, "fa-list-check", "blue", predicates.all),
+                metric("hasBugs", "US có lỗi", rows.filter(predicates.hasBugs).length, "fa-bug", "yellow", predicates.hasBugs),
+                metric("totalBugs", "Tổng lỗi", sum(rows, "totalBugs"), "fa-bugs", "red", predicates.hasBugs),
+                metric("active", "Lỗi đang mở", sum(rows, "activeBugs"), "fa-circle-exclamation", "red", predicates.active),
+                metric("handled", "Lỗi đã xử lý", sum(rows, "handledBugs"), "fa-circle-check", "green", predicates.handled),
+                metric("severe", "Lỗi nghiêm trọng", sum(rows, "severeBugs"), "fa-triangle-exclamation", "yellow", predicates.severe)
+            ]
+        };
+    }
+
+    if (normalizedTab === "weekly") {
+        const rows = getDisplayRows("weekly");
+        const notMet = (row) => hasText(row.assessment || row.gateResult, "chưa đạt");
+        return {
+            label: "Chất lượng tuần",
+            collection: "weekly",
+            metrics: [
+                metric("all", "Số tuần", rows.length, "fa-calendar-week", "teal", () => true),
+                metric("coverage", "Coverage TB", `${round(averageAll(rows.map((row) => row.coverageRate)))}%`, "fa-chart-area", "blue", (row) => Number(row.coverageRate || 0) > 0),
+                metric("success", "Pass Rate TB", `${round(averageAll(rows.map((row) => row.successRate)))}%`, "fa-chart-line", "green", (row) => Number(row.successRate || 0) > 0),
+                metric("blocker", "Blocker Open", sum(rows, "blockerBugs"), "fa-ban", "red", (row) => Number(row.blockerBugs || 0) > 0),
+                metric("critical", "Critical Open", sum(rows, "criticalBugs"), "fa-triangle-exclamation", "yellow", (row) => Number(row.criticalBugs || 0) > 0),
+                metric("notMet", "Tuần chưa đạt", rows.filter(notMet).length, "fa-circle-xmark", "red", notMet)
+            ]
+        };
+    }
+
+    if (normalizedTab === "readiness") {
+        const rows = getDisplayRows("readiness");
+        const noGo = (row) => hasText(row.decision, "no go");
+        const canGo = (row) => isFilled(row.decision) && !noGo(row);
+        const hasSevere = (row) => Number(row.openBlockerBugs || 0) + Number(row.openCriticalBugs || 0) + Number(row.openMajorBugs || 0) > 0;
+        return {
+            label: "Kết thúc Sprint",
+            collection: "readiness",
+            metrics: [
+                metric("all", "Tổng Sprint", rows.length, "fa-flag-checkered", "teal", () => true),
+                metric("coverage", "Coverage TB", `${round(averageAll(rows.map((row) => row.coverageRate)))}%`, "fa-chart-area", "blue", (row) => Number(row.coverageRate || 0) > 0),
+                metric("success", "Pass Rate TB", `${round(averageAll(rows.map((row) => row.successRate)))}%`, "fa-chart-line", "green", (row) => Number(row.successRate || 0) > 0),
+                metric("canGo", "Có thể GO", rows.filter(canGo).length, "fa-circle-check", "green", canGo),
+                metric("noGo", "NO GO", rows.filter(noGo).length, "fa-circle-xmark", "red", noGo),
+                metric("severe", "Sprint còn lỗi nặng", rows.filter(hasSevere).length, "fa-triangle-exclamation", "yellow", hasSevere)
+            ]
+        };
+    }
+
+    const rows = getDisplayRows("matrix");
+    const reached = (row) => statusIs(row.warning, "Đạt") || (Number(row.target || 0) > 0 && Number(row.totalParticipation || 0) >= Number(row.target || 0));
+    const insufficient = (row) => !reached(row);
+    const activeTesterCount = ["t1", "t2", "t3", "t4", "t5", "t6"].filter((key) => rows.some((row) => Number(row[key] || 0) > 0)).length;
+    return {
+        label: "Năng suất Tester",
+        collection: "matrix",
+        metrics: [
+            metric("all", "Nhóm chức năng", rows.length, "fa-layer-group", "teal", () => true),
+            metric("participation", "Tổng lượt tham gia", sum(rows, "totalParticipation"), "fa-users", "blue", (row) => Number(row.totalParticipation || 0) > 0),
+            metric("target", "Tổng mục tiêu", sum(rows, "target"), "fa-bullseye", "yellow", (row) => Number(row.target || 0) > 0),
+            metric("testers", "Tester có tham gia", activeTesterCount, "fa-user-check", "blue", (row) => ["t1", "t2", "t3", "t4", "t5", "t6"].some((key) => Number(row[key] || 0) > 0)),
+            metric("reached", "Nhóm đạt", rows.filter(reached).length, "fa-circle-check", "green", reached),
+            metric("insufficient", "Thiếu luân chuyển", rows.filter(insufficient).length, "fa-triangle-exclamation", "red", insufficient)
+        ]
+    };
+}
+
+function isT01ActiveDefect(row) {
+    return ["Open", "In Progress", "Pending", "Reopen", "Reopened"]
+        .some((status) => isBugStatus(row?.status, status));
+}
+
+function isT01HandledDefect(row) {
+    return ["Resolved", "SIT Pass", "Closed", "Cancelled", "Canceled"]
+        .some((status) => isBugStatus(row?.status, status));
 }
 
 function getT01FeatureState(row) {
@@ -1926,14 +2196,6 @@ function getT01FeatureState(row) {
 
 function isT01FeatureOverdue(row) {
     return String(row?.uatWarning || "").trim().toLowerCase().includes("quá hạn");
-}
-
-function matchesT01FeatureView(row, view) {
-    if (!view || view === "all") return true;
-    if (view === "overdue") return isT01FeatureOverdue(row);
-    if (view === "open") return getT01FeatureState(row) !== "done";
-    if (view === "mine") return false;
-    return getT01FeatureState(row) === view;
 }
 
 function renderWorkInputsPage() {
@@ -5662,6 +5924,7 @@ function handleAction(event) {
     if (action === "set-work-category") return setWorkCategoryFilter(id);
     if (action === "set-work-view") return setWorkView(event.currentTarget.dataset.workView);
     if (action === "set-work-metric") return setWorkMetric(event.currentTarget.dataset.workView);
+    if (action === "set-t01-metric") return setT01Metric(event.currentTarget.dataset.t01Tab, event.currentTarget.dataset.t01View);
     if (action === "toggle-sidebar") {
         ui.sidebarMobileOpen = !ui.sidebarMobileOpen;
         return render();
@@ -5788,20 +6051,6 @@ function setWorkView(view) {
 }
 
 function setWorkMetric(view) {
-    if (ui.activeView === "work-group" && ui.activeCategoryId === "pilot-t01") {
-        ui.t01FeatureView = view || "all";
-        ui.workView = view || "all";
-        ui.query = "";
-        ui.openColumnFilter = null;
-        Object.keys(ui.filters)
-            .filter((key) => key.startsWith("features:"))
-            .forEach((key) => delete ui.filters[key]);
-        Object.keys(ui.columnFilters)
-            .filter((key) => key.startsWith("features:"))
-            .forEach((key) => delete ui.columnFilters[key]);
-        resetTablePage("features");
-        return navigateToRoute("work/group/pilot-t01/features", { push: true, preserveT01FeatureView: true });
-    }
     const categoryId = ui.activeView === "work-group"
         ? ui.activeCategoryId
         : ui.filters["workItems:categoryId"] || "";
@@ -5821,6 +6070,27 @@ function setWorkMetric(view) {
     if (!stayInPlace) {
         return navigateToRoute("work/task-master", { push: true, preserveWorkCategoryId: categoryId });
     }
+    render();
+}
+
+function setT01Metric(tabId, view) {
+    if (ui.activeView !== "work-group" || ui.activeCategoryId !== "pilot-t01") return;
+    const activeTab = ui.t01Tab || "dashboard";
+    if (tabId && tabId !== activeTab) return;
+    const dashboard = getT01SheetDashboard(activeTab);
+    const selectedMetric = dashboard.metrics.find((metric) => metric.view === (view || "all") && typeof metric.predicate === "function");
+    if (!selectedMetric) return;
+
+    ui.t01MetricView = selectedMetric.view;
+    ui.query = "";
+    ui.openColumnFilter = null;
+    Object.keys(ui.filters)
+        .filter((key) => key.startsWith(`${dashboard.collection}:`))
+        .forEach((key) => delete ui.filters[key]);
+    Object.keys(ui.columnFilters)
+        .filter((key) => key.startsWith(`${dashboard.collection}:`))
+        .forEach((key) => delete ui.columnFilters[key]);
+    resetTablePage(dashboard.collection);
     render();
 }
 
@@ -6181,8 +6451,9 @@ async function importExcelFile(file, input) {
 function getFilteredRows(mod) {
     const rows = getDisplayRows(mod.collection);
     const query = ui.query.trim().toLowerCase();
+    const t01MetricPredicate = getT01MetricPredicate(mod.collection);
     return rows.filter((row) => {
-        if (mod.collection === "features" && ui.activeCategoryId === "pilot-t01" && !matchesT01FeatureView(row, ui.t01FeatureView)) return false;
+        if (t01MetricPredicate && !t01MetricPredicate(row)) return false;
         const matchQuery = !query || Object.values(row).some((value) => String(value ?? "").toLowerCase().includes(query));
         if (!matchQuery) return false;
         const matchLegacyFilters = (mod.filters || []).every((filter) => {
@@ -6377,6 +6648,15 @@ function getWorkItemWarning(row) {
 function uniqueTextValues(values) {
     return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b, "vi"));
+}
+
+function getT01MetricPredicate(collection) {
+    if (ui.activeCategoryId !== "pilot-t01") return null;
+    const dashboard = getT01SheetDashboard(ui.t01Tab || "dashboard");
+    if (dashboard.collection !== collection) return null;
+    const activeView = ui.t01MetricView || "all";
+    const metric = dashboard.metrics.find((item) => item.view === activeView);
+    return typeof metric?.predicate === "function" ? metric.predicate : null;
 }
 
 function getWorkPeopleOptions() {
@@ -6999,6 +7279,7 @@ window.addEventListener("hashchange", () => {
     ui.t01Tab = route.t01Tab;
     ui.query = "";
     ui.openColumnFilter = null;
+    ui.t01MetricView = "all";
     ui.sidebarMobileOpen = false;
     requestActiveTabScroll();
     render();
