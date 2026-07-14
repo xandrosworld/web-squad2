@@ -276,7 +276,7 @@ const collectionRules = {
     }
   },
   daily: {
-    required: [],
+    required: ["date", "tester"],
     numbers: ["totalCases", "executedCases", "passedCases", "failedCases", "criticalBugs", "highBugs"],
     percents: [],
     enums: {
@@ -891,20 +891,21 @@ app.post("/api/import/excel", requireAdmin, express.raw({
     throw httpError(400, "Không tìm thấy dữ liệu UAT hợp lệ trong file Excel.");
   }
   validateWorkbookImportState(importState);
+  prepareWorkbookImportState(importState);
 
   const client = await getPool().connect();
   try {
     await client.query("begin");
-    await client.query("delete from uat_records where collection = any($1)", [workbookCollections]);
-    for (const collection of workbookCollections) {
-      for (const record of importState[collection]) {
-        await createRecord(client, collection, record, req.user);
-      }
-    }
+    const mergeSummary = await mergeWorkbookImportRecords(client, importState, req.user);
     await touchMeta(client);
     const state = applyWorkbookRulesForResponse(await readState(client, req.user));
     await client.query("commit");
-    res.json({ state, imported: summarizeImportState(importState, workbookCollections) });
+    res.json({
+      state,
+      imported: summarizeImportState(importState, workbookCollections),
+      preserved: mergeSummary.preserved,
+      replaced: mergeSummary.replaced
+    });
   } catch (error) {
     await client.query("rollback");
     throw error;
@@ -1212,6 +1213,8 @@ module.exports = {
   tryAnswerAiShortcut,
   summarizeTesterAssignments,
   validateWorkbookImportState,
+  prepareWorkbookImportState,
+  isWorkbookManagedRecord,
   __testApplyWorkKpiRules: applyWorkKpiRules,
   __testDefaultWorkKpiConfig: defaultWorkKpiConfig,
   __testValidateRecordForCollection: validateRecordForCollection,
@@ -1221,7 +1224,8 @@ module.exports = {
   __testCanDeleteRecord: canDeleteRecord,
   __testCanFullyManageWorkItem: canFullyManageWorkItem,
   __testDecorateRecord: decorateRecord,
-  __testEnforceWorkItemGroupEditorScope: enforceWorkItemGroupEditorScope
+  __testEnforceWorkItemGroupEditorScope: enforceWorkItemGroupEditorScope,
+  __testToImportCellDate: toImportCellDate
 };
 
 function getPool() {
@@ -1603,7 +1607,7 @@ function parsePlanSheet(worksheet) {
 function parseDailySheet(worksheet) {
   if (!worksheet) return [];
   return parseRows(worksheet, 4, (row) => {
-    const date = toImportDate(cellValueAt(row, 1));
+    const date = toImportCellDate(row.getCell(1));
     const jiraCode = cellTextAt(row, 2);
     const feature = cellTextAt(row, 3);
     const sprint = cellTextAt(row, 4);
@@ -1636,7 +1640,7 @@ function parseDailySheet(worksheet) {
       blocker,
       blockerLinks,
       handler: cellTextAt(row, 13),
-      dueDate: toImportDate(cellValueAt(row, 14))
+      dueDate: toImportCellDate(row.getCell(14))
     };
   });
 }
@@ -1996,6 +2000,23 @@ function extractUrls(value) {
 
 function toImportDate(value) {
   return normalizeImportedDate(value);
+}
+
+function toImportCellDate(cell) {
+  const value = unwrapExcelCellValue(cell?.value);
+  const format = String(cell?.numFmt || "")
+    .toLowerCase()
+    .replace(/["'\\]/g, "");
+  const isMonthFirst = /^m{1,2}[./-]d{1,2}(?:[./-]y{2,4})?$/.test(format);
+  if (value instanceof Date && isMonthFirst) {
+    const year = value.getUTCFullYear();
+    const displayedDay = value.getUTCMonth() + 1;
+    const displayedMonth = value.getUTCDate();
+    if (displayedMonth >= 1 && displayedMonth <= 12) {
+      return formatDateForInput(new Date(Date.UTC(year, displayedMonth - 1, displayedDay)));
+    }
+  }
+  return toImportDate(value);
 }
 
 function toImportNumber(value) {
@@ -2499,6 +2520,58 @@ function summarizeImportState(state, targetCollections = collections) {
     summary[collection] = Array.isArray(state?.[collection]) ? state[collection].length : 0;
     return summary;
   }, {});
+}
+
+function prepareWorkbookImportState(state, importedAt = new Date().toISOString()) {
+  const sheetByCollection = new Map(excelSheets.map((sheet) => [sheet.collection, sheet.name]));
+  for (const collection of workbookCollections) {
+    for (const record of state[collection] || []) {
+      record._import = {
+        source: "workbook",
+        sheet: sheetByCollection.get(collection) || collection,
+        importedAt
+      };
+    }
+  }
+  return state;
+}
+
+function isWorkbookManagedRecord(row) {
+  const data = row?.data && typeof row.data === "object" ? row.data : row;
+  const id = String(row?.id || data?.id || "").trim();
+  return data?._import?.source === "workbook" || /^[a-f0-9]{40}$/i.test(id);
+}
+
+async function mergeWorkbookImportRecords(client, importState, actor) {
+  const existing = await client.query(`
+    select collection, id, data
+    from uat_records
+    where collection = any($1::text[])
+  `, [workbookCollections]);
+  const idsToReplace = new Map(workbookCollections.map((collection) => [collection, []]));
+  const preserved = Object.fromEntries(workbookCollections.map((collection) => [collection, 0]));
+
+  for (const row of existing.rows) {
+    if (isWorkbookManagedRecord(row)) idsToReplace.get(row.collection)?.push(row.id);
+    else preserved[row.collection] = Number(preserved[row.collection] || 0) + 1;
+  }
+
+  const replaced = {};
+  for (const collection of workbookCollections) {
+    const ids = idsToReplace.get(collection) || [];
+    replaced[collection] = ids.length;
+    if (ids.length) {
+      await client.query(
+        "delete from uat_records where collection = $1 and id = any($2::text[])",
+        [collection, ids]
+      );
+    }
+    for (const record of importState[collection] || []) {
+      await createRecord(client, collection, record, actor);
+    }
+  }
+
+  return { preserved, replaced };
 }
 
 function buildExcelWorkbook(state) {

@@ -93,6 +93,14 @@ const personnelNameOptions = [
     "Phạm Anh Tuấn",
     "Trần Đình Tuấn"
 ];
+const dailyTesterLabels = {
+    "1": "T1 – Lê Trần Sơn",
+    "2": "T2 – Huỳnh Công Sinh",
+    "3": "T3 – Hoàng Thành Trí",
+    "4": "T4 – Nguyễn Gia Huy",
+    "5": "T5 – Trần Đình Tuấn",
+    "6": "T6 – Mai Tấn Thành"
+};
 const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
 const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Done UAT"];
 const handoffSectionDefaults = [
@@ -512,11 +520,11 @@ const modules = {
         emptyTitle: "Chưa có dữ liệu điều hành hằng ngày",
         emptyText: "Dữ liệu điều hành sẽ hiển thị tại đây sau khi có bản ghi.",
         fields: [
-            { key: "date", label: "Ngày", type: "date" },
+            { key: "date", label: "Ngày", type: "date", required: true },
             { key: "jiraCode", label: "Mã Jira", type: "text" },
             { key: "feature", label: "Tên chức năng", type: "text", full: true },
             { key: "sprint", label: "Sprint", type: "text" },
-            { key: "tester", label: "Tester", type: "text" },
+            { key: "tester", label: "Tester", type: "select", options: () => getDailyTesterOptions(), required: true },
             { key: "totalCases", label: "Tổng TC", type: "number" },
             { key: "passedCases", label: "TC Passed", type: "number" },
             { key: "failedCases", label: "TC Failed", type: "number" },
@@ -528,6 +536,7 @@ const modules = {
             { key: "dueDate", label: "Thời hạn xử lý", type: "date" }
         ],
         filters: [
+            { key: "date", label: "Ngày" },
             { key: "sprint", label: "Sprint" },
             { key: "tester", label: "Tester" }
         ],
@@ -536,7 +545,7 @@ const modules = {
             { key: "jiraCode", label: "Mã Jira", width: "140px" },
             { key: "feature", label: "Tên chức năng", width: "260px", render: (row) => strongText(row.feature) },
             { key: "sprint", label: "Sprint", width: "100px" },
-            { key: "tester", label: "Tester", width: "120px" },
+            { key: "tester", label: "Tester", width: "190px", render: (row) => e(formatDailyTesterLabel(row.tester)) },
             { key: "totalCases", label: "Tổng TC", width: "100px", render: (row) => numberText(row.totalCases) },
             { key: "passedCases", label: "TC Passed", width: "110px", render: (row) => numberText(row.passedCases) },
             { key: "failedCases", label: "TC Failed", width: "110px", render: (row) => numberText(row.failedCases) },
@@ -3626,10 +3635,46 @@ function renderModule(mod) {
                     </div>
                 </div>
                 <div class="panel-body">
+                    ${renderModuleDataTools(mod)}
                     ${renderPaginationControls(mod.collection, pageState)}
                     ${renderTable(mod, rows)}
                 </div>
             </section>
+        </div>
+    `;
+}
+
+function renderModuleDataTools(mod) {
+    if (mod.collection !== "daily") return "";
+    const dateValue = ui.filters[`${mod.collection}:date`] || "";
+    const sprintValue = ui.filters[`${mod.collection}:sprint`] || "";
+    const testerValue = ui.filters[`${mod.collection}:tester`] || "";
+    const sprintOptions = uniqueValues(getDisplayRows(mod.collection), "sprint");
+    const testerOptions = getDailyTesterOptions();
+    return `
+        <div class="module-data-tools" aria-label="Tìm kiếm và lọc Điều hành hằng ngày">
+            <label class="work-task-search module-data-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input id="searchInput" value="${e(ui.query)}" placeholder="Tìm ngày, Jira, chức năng, Tester, lỗi..." aria-label="Tìm bản ghi Điều hành hằng ngày">
+            </label>
+            <label class="module-data-filter">
+                <span>Ngày</span>
+                <input class="field-input" type="date" data-filter-key="date" value="${e(dateValue)}">
+            </label>
+            <label class="module-data-filter">
+                <span>Sprint</span>
+                <select class="field-select" data-filter-key="sprint">
+                    <option value="">Tất cả Sprint</option>
+                    ${sprintOptions.map((option) => `<option value="${e(option)}" ${String(option) === String(sprintValue) ? "selected" : ""}>${e(option)}</option>`).join("")}
+                </select>
+            </label>
+            <label class="module-data-filter">
+                <span>Tester</span>
+                <select class="field-select" data-filter-key="tester">
+                    <option value="">Tất cả Tester</option>
+                    ${testerOptions.map((option) => `<option value="${e(option.value)}" ${String(option.value) === String(testerValue) ? "selected" : ""}>${e(option.label)}</option>`).join("")}
+                </select>
+            </label>
         </div>
     `;
 }
@@ -4444,7 +4489,7 @@ function renderColumnFilterControl(mod, col, autofocus = false) {
         return `
             <select id="${e(inputId)}" class="column-filter" data-column-filter="${e(col.key)}"${autofocusAttr} aria-label="Lọc ${e(col.label)}">
                 <option value="">Tất cả</option>
-                ${options.map((option) => `<option value="${e(option)}" ${String(option) === String(value) ? "selected" : ""}>${e(option)}</option>`).join("")}
+                ${options.map((option) => `<option value="${e(option)}" ${String(option) === String(value) ? "selected" : ""}>${e(formatModuleFilterOption(mod, col, option))}</option>`).join("")}
             </select>
         `;
     }
@@ -5380,6 +5425,12 @@ function syncStickyColumnOffsets(table) {
     });
     table.classList.toggle("has-sticky-columns", stickyCount > 0);
     table.dataset.stickyColumnCount = String(stickyCount);
+}
+
+function formatModuleFilterOption(mod, col, value) {
+    if (mod?.collection === "daily" && col?.key === "tester") return formatDailyTesterLabel(value);
+    if (mod?.collection === "daily" && col?.key === "date") return formatDateText(value);
+    return value;
 }
 
 function syncResponsiveTables() {
@@ -6423,12 +6474,12 @@ function importJsonFile(file, input) {
 }
 
 async function importExcelFile(file, input) {
-    if (!confirm("Nhập Excel sẽ thay thế toàn bộ dữ liệu UAT hiện tại trên Railway DB bằng các sheet trong workbook. Tiếp tục?")) {
+    if (!confirm("Đồng bộ Excel sẽ cập nhật lại các bản ghi có nguồn từ workbook. Các bản ghi nhập trực tiếp trên app vẫn được giữ nguyên. Tiếp tục?")) {
         input.value = "";
         return;
     }
     ui.saving = true;
-    showToast("Đang nhập toàn bộ workbook Excel...");
+    showToast("Đang đồng bộ workbook Excel...");
     try {
         const response = await fetch(`${API_BASE}/import/excel`, {
             method: "POST",
@@ -6450,7 +6501,8 @@ async function importExcelFile(file, input) {
         setDataStatus("online", "Railway Postgres đang hoạt động");
         localStorage.setItem(MIGRATION_FLAG_KEY, "uploaded");
         cacheState();
-        showToast(`Đã nhập workbook Excel vào Railway DB.`);
+        const preservedCount = Object.values(data.preserved || {}).reduce((total, value) => total + Number(value || 0), 0);
+        showToast(`Đã đồng bộ workbook Excel${preservedCount ? `, giữ lại ${preservedCount} bản ghi nhập trên app` : ""}.`);
     } catch (error) {
         setDataStatus("offline", error.message || "Không nhập được Excel");
         showToast(error.message ? `Không nhập được Excel: ${error.message}` : "File Excel không hợp lệ.");
@@ -6467,7 +6519,11 @@ function getFilteredRows(mod) {
     const t01MetricPredicate = getT01MetricPredicate(mod.collection);
     return rows.filter((row) => {
         if (t01MetricPredicate && !t01MetricPredicate(row)) return false;
-        const matchQuery = !query || Object.values(row).some((value) => String(value ?? "").toLowerCase().includes(query));
+        const searchableValues = Object.values(row);
+        if (mod.collection === "daily") {
+            searchableValues.push(formatDateText(row.date), formatDailyTesterLabel(row.tester));
+        }
+        const matchQuery = !query || searchableValues.some((value) => String(value ?? "").toLowerCase().includes(query));
         if (!matchQuery) return false;
         const matchLegacyFilters = (mod.filters || []).every((filter) => {
             const selected = ui.filters[`${mod.collection}:${filter.key}`];
@@ -6520,7 +6576,18 @@ async function deleteWorkCategory(id) {
 }
 
 function getDisplayRows(collection) {
-    return (appState[collection] || []).filter(shouldDisplaySourceRow);
+    const rows = (appState[collection] || []).filter(shouldDisplaySourceRow);
+    return collection === "daily" ? [...rows].sort(compareDailyRows) : rows;
+}
+
+function compareDailyRows(a, b) {
+    const dateA = parseDateOnly(a?.date)?.getTime() || 0;
+    const dateB = parseDateOnly(b?.date)?.getTime() || 0;
+    if (dateA !== dateB) return dateB - dateA;
+    const orderA = Number(a?.sortOrder);
+    const orderB = Number(b?.sortOrder);
+    if (Number.isFinite(orderA) && Number.isFinite(orderB) && orderA !== orderB) return orderA - orderB;
+    return String(a?.jiraCode || a?.feature || "").localeCompare(String(b?.jiraCode || b?.feature || ""), "vi", { numeric: true });
 }
 
 function shouldDisplaySourceRow(row) {
@@ -6534,7 +6601,7 @@ function countActiveFilters(mod) {
     const columnCount = Object.keys(ui.columnFilters)
         .filter((key) => key.startsWith(`${mod.collection}:`) && ui.columnFilters[key])
         .length;
-    return legacyCount + columnCount;
+    return legacyCount + columnCount + (ui.query.trim() ? 1 : 0);
 }
 
 function columnFilterKey(mod, col) {
@@ -6663,6 +6730,17 @@ function uniqueTextValues(values) {
         .sort((a, b) => a.localeCompare(b, "vi"));
 }
 
+function getDailyTesterOptions() {
+    return Object.entries(dailyTesterLabels).map(([value, label]) => ({ value, label }));
+}
+
+function formatDailyTesterLabel(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "-";
+    const key = raw.replace(/^T/i, "");
+    return dailyTesterLabels[key] || raw;
+}
+
 function getT01MetricPredicate(collection) {
     if (ui.activeCategoryId !== "pilot-t01") return null;
     const dashboard = getT01SheetDashboard(ui.t01Tab || "dashboard");
@@ -6712,6 +6790,9 @@ function getColumnRawValue(row, col) {
 
 function validateRecord(mod, payload) {
     const errors = [];
+    getEditableFields(mod).filter((field) => field.required).forEach((field) => {
+        if (!isFilled(payload[field.key])) errors.push(`${field.label} là trường bắt buộc.`);
+    });
     const percentFields = getEditableFields(mod).filter((field) => field.type === "percent");
     percentFields.forEach((field) => {
         const value = payload[field.key];
@@ -7226,6 +7307,13 @@ function formatDate(value) {
     const date = new Date(`${value}T00:00:00`);
     if (Number.isNaN(date.getTime())) return e(value);
     return e(new Intl.DateTimeFormat("vi-VN").format(date));
+}
+
+function formatDateText(value) {
+    if (!value) return "";
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat("vi-VN").format(date);
 }
 
 function formatShortDateTime(value) {

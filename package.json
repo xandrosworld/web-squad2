@@ -12,6 +12,7 @@
     "check:hd-uat": "node scripts/check-hd-uat-mapping.js",
     "check:excel-formulas": "node scripts/check-excel-formulas.js",
     "check:automation": "node scripts/check-automation-rules.js",
+    "check:daily-import": "node scripts/check-daily-import.js",
     "check:work-kpi": "node scripts/check-work-kpi.js",
     "check:group-editor": "node scripts/check-group-editor-policy.js",
     "import:workbook:db": "node scripts/import-workbook-to-db.js",

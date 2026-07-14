@@ -5,7 +5,11 @@ require("dotenv").config();
 
 const { Pool } = require("pg");
 
-const { parseWorkbookImportState } = require("../server");
+const {
+  parseWorkbookImportState,
+  prepareWorkbookImportState,
+  isWorkbookManagedRecord
+} = require("../server");
 
 const workbookPath = path.resolve(process.argv[2] || "SQ02_UAT_Squad2_QuanLy_HoanChinh_US_Date.xlsm");
 const databaseUrl = process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
@@ -22,6 +26,7 @@ async function main() {
 
   const workbookBuffer = fs.readFileSync(workbookPath);
   const importState = await parseWorkbookImportState(workbookBuffer);
+  prepareWorkbookImportState(importState);
   const expectedCounts = countCollections(importState);
 
   const pool = new Pool({
@@ -42,11 +47,23 @@ async function main() {
     const backupPath = writeBackup(backup.rows);
     const actor = await resolveActor(client);
     const now = new Date();
+    const idsToReplace = new Map(collections.map((collection) => [collection, []]));
+    const preservedCounts = Object.fromEntries(collections.map((collection) => [collection, 0]));
+    backup.rows.forEach((row) => {
+      if (isWorkbookManagedRecord(row)) idsToReplace.get(row.collection)?.push(row.id);
+      else preservedCounts[row.collection] = Number(preservedCounts[row.collection] || 0) + 1;
+    });
 
     await client.query("begin");
-    await client.query("delete from uat_records where collection = any($1)", [collections]);
 
     for (const collection of collections) {
+      const ids = idsToReplace.get(collection) || [];
+      if (ids.length) {
+        await client.query(
+          "delete from uat_records where collection = $1 and id = any($2::text[])",
+          [collection, ids]
+        );
+      }
       for (const record of importState[collection] || []) {
         const data = {
           ...record,
@@ -70,7 +87,7 @@ async function main() {
     `, [JSON.stringify({ updatedAt })]);
 
     const dbCounts = await countDbRecords(client);
-    validateCounts(expectedCounts, dbCounts);
+    validateCounts(expectedCounts, dbCounts, preservedCounts);
     const sample = await client.query(`
       select data->>'group' as group_name,
              data->>'sprint' as sprint,
@@ -91,6 +108,7 @@ async function main() {
       backupPath,
       updatedAt,
       expectedCounts,
+      preservedCounts,
       dbCounts,
       sampleFeature: sample.rows[0] || null
     }, null, 2));
@@ -141,12 +159,14 @@ function countCollections(state) {
   }, {});
 }
 
-function validateCounts(expected, actual) {
-  const mismatches = collections.filter((collection) => Number(expected[collection] || 0) !== Number(actual[collection] || 0));
+function validateCounts(expected, actual, preserved = {}) {
+  const mismatches = collections.filter((collection) => (
+    Number(expected[collection] || 0) + Number(preserved[collection] || 0)
+  ) !== Number(actual[collection] || 0));
   if (mismatches.length) {
     throw new Error([
       "Imported DB counts do not match workbook counts.",
-      ...mismatches.map((collection) => `${collection}: expected ${expected[collection]}, got ${actual[collection] || 0}`)
+      ...mismatches.map((collection) => `${collection}: expected ${Number(expected[collection] || 0) + Number(preserved[collection] || 0)}, got ${actual[collection] || 0}`)
     ].join("\n"));
   }
 }

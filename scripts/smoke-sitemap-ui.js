@@ -32,6 +32,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
   const personnelMapShot = path.join(os.tmpdir(), "squad2-personnel-map.png");
   const memberKpiShot = path.join(os.tmpdir(), "squad2-member-kpi.png");
   const groupShot = path.join(os.tmpdir(), "squad2-group-t02.png");
+  const dailyShot = path.join(os.tmpdir(), "squad2-daily-control.png");
   const mobileShot = path.join(os.tmpdir(), "squad2-sitemap-mobile.png");
   try {
     const desktop = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
@@ -164,6 +165,44 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await assertT01MetricRowFilter(page, "plans", "unassigned", 1);
     await assertRoute(page, "work/group/pilot-t01/daily", '[data-resizable-table="daily"]');
     t01MetricSignatures.push(await assertT01MetricLabels(page, ["Lượt cập nhật", "Tổng testcase", "TC Passed", "TC Failed", "Dòng có lỗi mở", "Có blocker"]));
+    if (!await page.locator(".module-data-tools").isVisible()) {
+      throw new Error("Điều hành hằng ngày thiếu thanh tìm kiếm/lọc chuyên dụng.");
+    }
+    const initialDailyDates = await page.locator('[data-resizable-table="daily"] tbody tr td:first-child').allTextContents();
+    if (!initialDailyDates[0]?.includes("14/7/2026")) {
+      throw new Error(`Điều hành hằng ngày chưa sắp xếp ngày mới nhất trước: ${JSON.stringify(initialDailyDates)}`);
+    }
+    const firstDailyTester = (await page.locator('[data-resizable-table="daily"] tbody tr').first().locator("td").nth(4).textContent() || "").trim();
+    if (firstDailyTester !== "T2 – Huỳnh Công Sinh") {
+      throw new Error(`Tester chưa hiển thị mã kèm họ tên: ${firstDailyTester || "trống"}.`);
+    }
+    const testerFilterLabel = await page.locator('[data-filter-key="tester"] option[value="5"]').textContent();
+    if ((testerFilterLabel || "").trim() !== "T5 – Trần Đình Tuấn") {
+      throw new Error("Bộ lọc Tester chưa hiển thị danh tính T5 – Trần Đình Tuấn.");
+    }
+    await page.locator("#searchInput").fill("Huỳnh Công Sinh");
+    if (await page.locator('[data-resizable-table="daily"] tbody tr').count() !== 1) {
+      throw new Error("Tìm Điều hành hằng ngày theo tên Tester trả sai kết quả.");
+    }
+    await page.locator('[data-action="reset-filters"]').click();
+    await page.locator('[data-filter-key="date"]').fill("2026-07-13");
+    await page.locator('[data-filter-key="date"]').press("Tab");
+    if (await page.locator('[data-resizable-table="daily"] tbody tr').count() !== 1) {
+      throw new Error("Lọc Điều hành hằng ngày theo ngày trả sai kết quả.");
+    }
+    await page.locator('[data-action="reset-filters"]').click();
+    await page.locator('[data-action="open-create"]').first().click();
+    await page.waitForSelector("#recordForm");
+    const dailyRequiredFields = await page.locator('[name="date"], [name="tester"]').evaluateAll((fields) => fields.map((field) => field.required));
+    if (dailyRequiredFields.length !== 2 || dailyRequiredFields.some((required) => !required)) {
+      throw new Error("Form Điều hành hằng ngày chưa bắt buộc Ngày và Tester.");
+    }
+    if ((await page.locator('[name="tester"] option[value="5"]').textContent() || "").trim() !== "T5 – Trần Đình Tuấn") {
+      throw new Error("Form Điều hành hằng ngày chưa dùng dropdown Tester có họ tên.");
+    }
+    await page.locator('[data-action="close-modal"]').first().click();
+    await assertNoPageOverflow(page, "Điều hành hằng ngày desktop");
+    await page.screenshot({ path: dailyShot, fullPage: true });
     await assertT01MetricRowFilter(page, "daily", "blocker", 1);
     await assertRoute(page, "work/group/pilot-t01/defects", ".secondary-tabs");
     t01MetricSignatures.push(await assertT01MetricLabels(page, ["Tổng defect", "Open", "In Progress", "Pending/Reopen", "Resolved/SIT Pass", "Closed/Cancelled"]));
@@ -292,6 +331,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       personnelMapScreenshot: personnelMapShot,
       memberKpiScreenshot: memberKpiShot,
       groupScreenshot: groupShot,
+      dailyScreenshot: dailyShot,
       mobileScreenshot: mobileShot
     }, null, 2));
   } finally {
