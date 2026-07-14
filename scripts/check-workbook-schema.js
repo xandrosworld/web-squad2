@@ -79,7 +79,7 @@ async function main() {
   if (state.features.length !== 77) throw new Error(`Expected 77 DM_ChucNang source rows, got ${state.features.length}`);
   if (state.handoffs.length !== 77) throw new Error(`Expected 77 Lich_BG_US source rows, got ${state.handoffs.length}`);
   if (state.plans.length !== 77) throw new Error(`Expected 77 PhanCong_UAT source rows, got ${state.plans.length}`);
-  if (state.daily.length !== 26) throw new Error(`Expected 26 DieuHanh_Ngay rows, got ${state.daily.length}`);
+  if (state.daily.length !== 30) throw new Error(`Expected 30 DieuHanh_Ngay rows, got ${state.daily.length}`);
   if (state.defects.length !== 64) throw new Error(`Expected 64 DEFECT_LOG rows, got ${state.defects.length}`);
   if (state.userStories.length !== 84) throw new Error(`Expected 84 DS_US rows, got ${state.userStories.length}`);
   if (state.bugSources.length !== 64) throw new Error(`Expected 64 DS.Loi rows, got ${state.bugSources.length}`);
@@ -91,11 +91,11 @@ async function main() {
   if (!state.guide.some((row) => row.category === "Blocker" && row.note)) throw new Error("HD_UAT priority convention column was not imported.");
   if (!state.daily.some((row) => Array.isArray(row.blockerLinks) && row.blockerLinks.length)) throw new Error("DieuHanh_Ngay blocker hyperlinks were not imported.");
   if (deliveredStories !== 47) throw new Error(`Expected 47 delivered stories, got ${deliveredStories}`);
-  if (totalCases !== 2704) {
-    throw new Error(`Expected PhanCong_UAT total testcase 2704, got plans=${totalCases}`);
+  if (totalCases !== 2754) {
+    throw new Error(`Expected PhanCong_UAT total testcase 2754, got plans=${totalCases}`);
   }
-  if (featureTotalCases !== 186) {
-    throw new Error(`Expected DM_ChucNang daily-driven total testcase 186, got features=${featureTotalCases}`);
+  if (featureTotalCases !== 224) {
+    throw new Error(`Expected DM_ChucNang daily-driven total testcase 224, got features=${featureTotalCases}`);
   }
   assertUpdatedWorkbookCalculations(state);
   assertHandoffSections(state.handoffs);

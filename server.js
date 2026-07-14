@@ -102,6 +102,19 @@ const ownerAccountLinks = [
   { code: "NV2", label: ownerOptions[1], email: "giangnc2@bidv.com.vn" },
   { code: "NV3", label: ownerOptions[2], email: "tuanpa13@bidv.com.vn" }
 ];
+// PhanCong_UAT is the source of truth for tester assignments.  The personnel
+// sheet has historically used a shifted T1-T6 sequence, so never infer a plan
+// column from that unverified staff code.  Normalize known tester identities by
+// their full name and keep this directory aligned with the visible plan header.
+const canonicalTesterDirectory = Object.freeze([
+  Object.freeze({ key: "t1", code: "T1", shortName: "Sơn", name: "Lê Trần Sơn", email: "sonlt8@bidv.com.vn" }),
+  Object.freeze({ key: "t2", code: "T2", shortName: "Sinh", name: "Huỳnh Công Sinh", email: "sinhhc@bidv.com.vn" }),
+  Object.freeze({ key: "t3", code: "T3", shortName: "Trí", name: "Hoàng Thành Trí", email: "triht@bidv.com.vn" }),
+  Object.freeze({ key: "t4", code: "T4", shortName: "Huy", name: "Nguyễn Gia Huy", email: "huyng@bidv.com.vn" }),
+  Object.freeze({ key: "t5", code: "T5", shortName: "Tuấn", name: "Trần Đình Tuấn", email: "tuantd3@bidv.com.vn" }),
+  Object.freeze({ key: "t6", code: "T6", shortName: "Thành", name: "Mai Tấn Thành", email: "thanhmt@bidv.com.vn" })
+]);
+const canonicalTesterByName = new Map(canonicalTesterDirectory.map((tester) => [testerIdentityKey(tester.name), tester]));
 const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
 const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Done UAT"];
 const planStatusOptions = ["Chưa bắt đầu", "Đang kiểm thử", "Hoàn thành", "Tạm dừng/Blocked", "Chờ sửa lỗi", "Đã ký UAT"];
@@ -1212,6 +1225,7 @@ module.exports = {
   loginIdentifierCandidates,
   tryAnswerAiShortcut,
   summarizeTesterAssignments,
+  canonicalTesterDirectory,
   validateWorkbookImportState,
   prepareWorkbookImportState,
   isWorkbookManagedRecord,
@@ -1419,6 +1433,7 @@ function formatDateForInput(date) {
 async function parseWorkbookImportState(buffer) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
+  validatePlanTesterHeader(workbook.getWorksheet("PhanCong_UAT"));
   const state = emptyState();
   state.features = parseDmChucNangSheet(workbook.getWorksheet("DM_ChucNang"));
   state.personnel = parsePersonnelSheet(workbook.getWorksheet("NhanSu_UAT"));
@@ -1483,9 +1498,10 @@ function parseDmChucNangSheet(worksheet) {
 function parsePersonnelSheet(worksheet) {
   if (!worksheet) return [];
   return parseRows(worksheet, 4, (row) => {
-    const staffCode = cellTextAt(row, 1);
+    const sourceStaffCode = cellTextAt(row, 1);
     const name = cellTextAt(row, 2);
-    if (!staffCode || !name) return null;
+    if (!sourceStaffCode || !name) return null;
+    const staffCode = canonicalTesterCodeForName(name) || sourceStaffCode;
     return {
       id: importId("personnel", staffCode),
       staffCode,
@@ -2002,6 +2018,21 @@ function toImportDate(value) {
   return normalizeImportedDate(value);
 }
 
+function validatePlanTesterHeader(worksheet) {
+  if (!worksheet) return;
+  const actualNames = canonicalTesterDirectory.map((_, index) => cellTextAt(worksheet.getRow(2), 9 + index));
+  const expectedNames = canonicalTesterDirectory.map((tester) => tester.shortName);
+  const mismatches = expectedNames
+    .map((expected, index) => ({ expected, actual: actualNames[index], code: canonicalTesterDirectory[index].code }))
+    .filter((item) => testerIdentityKey(item.actual) !== testerIdentityKey(item.expected));
+  if (!mismatches.length) return;
+  throw httpError(400, [
+    "Tên Tester trên đầu cột PhanCong_UAT không khớp danh mục đang dùng trên web.",
+    ...mismatches.map((item) => `${item.code}: cần '${item.expected}', file đang ghi '${item.actual || "trống"}'.`),
+    "Dừng import để tránh gán nhầm testcase cho người khác."
+  ].join(" "));
+}
+
 function toImportCellDate(cell) {
   const value = unwrapExcelCellValue(cell?.value);
   const format = String(cell?.numFmt || "")
@@ -2037,6 +2068,7 @@ function normalizeSeverityCount(severity, targets, status) {
 }
 
 function applyWorkbookRules(state) {
+  const personnel = collectionRows(state, "personnel");
   const schedule = collectionRows(state, "schedule");
   const handoffs = collectionRows(state, "handoffs");
   const features = collectionRows(state, "features");
@@ -2048,6 +2080,8 @@ function applyWorkbookRules(state) {
   const weekly = collectionRows(state, "weekly");
   const readiness = collectionRows(state, "readiness");
   const matrix = collectionRows(state, "matrix");
+
+  applyCanonicalTesterPersonnelRules(personnel);
 
   applyScheduleRules(schedule);
 
@@ -2234,6 +2268,30 @@ function applyWorkbookRules(state) {
 }
 
 const testerKeys = ["t1", "t2", "t3", "t4", "t5", "t6"];
+
+function testerIdentityKey(value) {
+  return String(value || "")
+    .normalize("NFC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("vi");
+}
+
+function canonicalTesterForName(name) {
+  return canonicalTesterByName.get(testerIdentityKey(name)) || null;
+}
+
+function canonicalTesterCodeForName(name) {
+  return canonicalTesterForName(name)?.code || "";
+}
+
+function applyCanonicalTesterPersonnelRules(personnel) {
+  for (const row of personnel || []) {
+    const tester = canonicalTesterForName(row?.name);
+    if (!tester) continue;
+    row.staffCode = tester.code;
+  }
+}
 
 function collectionRows(state, collection) {
   if (!state || typeof state !== "object") return [];
