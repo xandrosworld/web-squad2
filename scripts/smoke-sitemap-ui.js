@@ -137,6 +137,15 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     if (await page.locator(".personnel-map .member-avatar:not(.has-image)").count() < 1) {
       throw new Error("Sơ đồ nhân sự thiếu fallback chữ viết tắt cho tài khoản chưa có avatar.");
     }
+    const huyCard = page.locator(".personnel-map .member-card", { hasText: "Nguyễn Gia Huy" });
+    if ((await huyCard.locator(".member-avatar").textContent() || "").trim() !== "GH") {
+      throw new Error("Avatar chữ phải lấy hai thành phần cuối của họ tên: Nguyễn Gia Huy cần hiển thị GH.");
+    }
+    const thanhCard = page.locator(".personnel-map .member-card", { hasText: "Mai Tấn Thành" });
+    if (await thanhCard.locator(".member-avatar.has-image img").count() !== 1
+      || (await thanhCard.locator(".member-avatar").textContent() || "").trim()) {
+      throw new Error("Người đã có ảnh đại diện phải tiếp tục dùng ảnh, không thay bằng chữ viết tắt.");
+    }
     const avatarAlignment = await page.locator(".personnel-map .member-avatar:not(.has-image)").evaluateAll((avatars) => avatars.map((avatar) => {
       const style = getComputedStyle(avatar);
       const avatarRect = avatar.getBoundingClientRect();

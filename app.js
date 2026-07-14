@@ -4957,7 +4957,7 @@ function renderUserAvatar(user, size = "small") {
 function userInitials(user) {
     const source = String(user?.name || user?.email || user?.username || "U").trim();
     const words = source.includes("@") ? [source.split("@")[0]] : source.split(/\s+/);
-    const initials = words.slice(0, 2).map((word) => word[0]).join("");
+    const initials = words.slice(-2).map((word) => word[0]).join("");
     return initials.toUpperCase() || "U";
 }
 
