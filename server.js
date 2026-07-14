@@ -2290,6 +2290,7 @@ function applyCanonicalTesterPersonnelRules(personnel) {
     const tester = canonicalTesterForName(row?.name);
     if (!tester) continue;
     row.staffCode = tester.code;
+    row.email = tester.email;
   }
 }
 

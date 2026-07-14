@@ -25,8 +25,8 @@ assert.deepEqual(
 
 const state = emptyState();
 state.personnel = [
-  { id: "thanh", staffCode: "T1", name: "Mai Tấn Thành" },
-  { id: "son", staffCode: "T2", name: "Lê Trần Sơn" },
+  { id: "thanh", staffCode: "T1", name: "Mai Tấn Thành", email: "thanhmt@bidv.com.vn" },
+  { id: "son", staffCode: "T2", name: "Lê Trần Sơn", email: "tantc@bidv.com.vn" },
   { id: "sinh", staffCode: "T3", name: "Huỳnh Công Sinh" },
   { id: "tri", staffCode: "T4", name: "Hoàng Thành Trí" },
   { id: "huy", staffCode: "T5", name: "Nguyễn Gia Huy" },
@@ -61,6 +61,12 @@ assert.deepEqual(
   "Known testers must be normalized by full name; non-testers must remain unchanged."
 );
 
+assert.equal(
+  state.personnel.find((person) => person.name === "Lê Trần Sơn").email,
+  "sonlt8@bidv.com.vn",
+  "Canonical tester email must not regress to the legacy tantc address after a workbook import."
+);
+
 assert.deepEqual(
   [state.plans[0].t1, state.plans[0].t2, state.plans[0].t3, state.plans[0].t4, state.plans[0].t5, state.plans[0].t6],
   [12, 13, 14, 15, 16, 17],
@@ -90,6 +96,7 @@ async function checkImportHeaderGuard() {
     checked: [
       "canonical T1-T6 plan header",
       "personnel codes normalized by full name",
+      "legacy tester email normalized by full name",
       "plan allocation columns are not shifted",
       "workbook import stops on a mismatched plan header"
     ]
