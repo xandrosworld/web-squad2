@@ -171,9 +171,9 @@ function buildReportModel(state, context) {
     bucket.failed += failed;
     if (row.jiraCode) bucket.jiraCodes.add(row.jiraCode);
     if (row.date) bucket.dates.add(row.date);
-    if (total !== executed) warnings.push(`DieuHanh_Ngay ${row.date || "-"} · ${personName}: Tổng ${total} TC nhưng Passed + Failed = ${executed}.`);
+    if (total !== executed) warnings.push(`Kết quả kiểm thử ngày ${displayDate(row.date) || "-"} của ${personName}: tổng số testcase là ${total}, nhưng mới có kết quả Đạt/Không đạt cho ${executed} testcase.`);
     if (clean(row.handler) && tester && identityKey(row.handler) !== identityKey(tester.name)) {
-      warnings.push(`DieuHanh_Ngay ${row.date || "-"}: Tester ${row.tester} suy ra ${tester.name}, nhưng Người xử lý là ${row.handler}. Báo cáo dùng Người xử lý.`);
+      warnings.push(`Kết quả kiểm thử ngày ${displayDate(row.date) || "-"}: mã người kiểm thử ${row.tester} tương ứng ${tester.name}, nhưng người thực hiện được ghi là ${row.handler}. Báo cáo tạm tính cho người thực hiện được ghi trực tiếp là ${row.handler}.`);
     }
   });
 
@@ -183,7 +183,7 @@ function buildReportModel(state, context) {
   const defectByPerson = groupBy(q2Defects, (row) => clean(row.tester) || ownerName(row.owner) || "Không xác định");
   defectByPerson.forEach((rows, name) => {
     if (identityKey(name) === identityKey("Không xác định")) {
-      warnings.push(`${rows.length} defect quý II không xác định được người phát hiện.`);
+      warnings.push(`${rows.length} lỗi UAT trong quý II chưa xác định được người phát hiện.`);
       return;
     }
     entries.push(buildDefectEntry(name, rows));
@@ -191,7 +191,7 @@ function buildReportModel(state, context) {
 
   dailyByPerson.forEach((daily, key) => {
     if (!daily.executed) {
-      warnings.push(`Không chấm điểm dòng điều hành của ${daily.name}: ${daily.total} TC nhưng chưa có Passed/Failed.`);
+      warnings.push(`Chưa tính kết quả kiểm thử cho ${daily.name}: có ${daily.total} testcase được ghi nhận nhưng chưa có kết quả Đạt/Không đạt.`);
       return;
     }
     const plan = planByPerson.get(key) || { cases: 0, rows: [], jiraCodes: new Set(), dates: new Set() };
@@ -270,16 +270,24 @@ function isSelectedQ2Task(task) {
 function buildTaskEntry(task, apiBase) {
   const completion = Math.max(0, Math.min(1, number(task.progress) / 100));
   const completed = completion >= 1 || /hoàn thành/i.test(clean(task.status));
-  const evidenceText = clean(task.documentLink) || `Task_Master – ${task.taskId || task.id}`;
+  const taskCode = task.taskId || task.id;
+  const description = clean(task.description);
+  const assignmentDate = clean(task.startDate) ? displayDate(task.startDate) : "chưa ghi ngày giao";
+  const deadline = clean(task.deadline) ? displayDate(task.deadline) : "không có deadline";
+  const evidenceText = clean(task.documentLink)
+    ? `Mở tài liệu minh chứng · ${taskCode}`
+    : `Xem công việc ${taskCode} trên hệ thống`;
   return {
     source: "Task_Master",
     sourceId: task.id,
     sourceCode: task.taskId || task.id,
     sourceCount: 1,
     personName: clean(task.assignee) || clean(task.assigneeEmail) || "Không xác định",
-    activity: clean(task.title) || clean(task.description) || task.taskId || "Công việc quý II",
-    basis: clean(task.description) || `Căn cứ trạng thái, tiến độ và ngày hoàn thành của ${task.taskId || "đầu việc"} trên Task_Master.`,
-    quality: completed ? "Đã hoàn thành theo dữ liệu hệ thống" : `Chưa hoàn thành; tiến độ ghi nhận ${round2(completion * 100)}%.`,
+    activity: clean(task.title) || description || taskCode || "Công việc quý II",
+    basis: `Công việc ${taskCode} được giao ngày ${assignmentDate}; ${deadline}. Trạng thái tại kỳ báo cáo: ${clean(task.status) || "chưa cập nhật"}; tiến độ ${round2(completion * 100)}%${description ? `. Nội dung: ${description}` : "."}`,
+    quality: completed
+      ? `Đã hoàn thành 100%${clean(task.completedDate) ? ` ngày ${displayDate(task.completedDate)}` : " theo trạng thái trên hệ thống"}.`
+      : `Chưa hoàn thành tại 30/06/2026; khối lượng hoàn thành được ghi nhận là ${round2(completion * 100)}%.`,
     timeline: taskTimeline(task, completed),
     evidenceText,
     evidenceUrl: clean(task.documentLink) || `${apiBase}/#workItems`,
@@ -305,10 +313,10 @@ function buildDefectEntry(name, rows) {
     sourceCount: rows.length,
     personName: name,
     activity: "Phát hiện và theo dõi lỗi UAT quý II/2026",
-    basis: `Nguồn DEFECT_LOG: ${rows.length} lỗi; ${handled} lỗi đã Closed/Resolved/SIT Pass, ${rows.length - handled} lỗi còn lại. Bug ID: ${bugIds.join(", ") || "không có mã"}.`,
-    quality: `${handled}/${rows.length} lỗi đã được xử lý theo trạng thái nguồn; tỷ lệ ${formatPercent(completion)}.`,
+    basis: `${name} ghi nhận ${rows.length} lỗi UAT trong quý II; ${handled} lỗi đã xử lý, ${rows.length - handled} lỗi còn mở. Mã lỗi: ${bugIds.join(", ") || "chưa có mã"}.`,
+    quality: `Đã xử lý ${handled}/${rows.length} lỗi, tương đương ${formatPercent(completion)}; còn ${rows.length - handled} lỗi cần tiếp tục theo dõi.`,
     timeline: dates.length ? `Ghi nhận từ ${displayDate(dates[0])} đến ${displayDate(dates.at(-1))}.` : "Không có ngày phát hiện.",
-    evidenceText: `DEFECT_LOG – ${rows.length} lỗi`,
+    evidenceText: `${rows.length} lỗi UAT · ${handled} đã xử lý · ${rows.length - handled} còn mở`,
     evidenceUrl: bugIds[0] ? `https://bidv-vn.atlassian.net/browse/${bugIds[0]}` : "",
     completion,
     startDate: dates[0] || "",
@@ -326,6 +334,7 @@ function buildDailyEntry(daily, plan) {
   const jiras = [...daily.jiraCodes].filter(Boolean);
   const planJiras = [...plan.jiraCodes].filter(Boolean);
   const passRate = daily.executed ? daily.passed / daily.executed : 0;
+  const remaining = Math.max(0, denominator - daily.executed);
   return {
     source: "DieuHanh_Ngay",
     sourceId: `daily:${identityKey(daily.name)}`,
@@ -333,16 +342,16 @@ function buildDailyEntry(daily, plan) {
     sourceCount: daily.rows.length,
     personName: daily.name,
     activity: "Thực hiện kiểm thử UAT quý II/2026",
-    basis: `Nguồn DieuHanh_Ngay: ${daily.rows.length} bản ghi, tổng ${daily.total} TC, đã chạy ${daily.executed}, Passed ${daily.passed}, Failed ${daily.failed}. PhanCong_UAT ghi nhận ${number(plan.cases)} TC phân giao${planJiras.length ? ` tại ${planJiras.join(", ")}` : ""}.`,
-    quality: `Đã chạy ${daily.executed}/${denominator} TC theo căn cứ phân giao; tỷ lệ pass trên số đã chạy ${formatPercent(passRate)}; ${daily.failed} TC Failed.`,
-    timeline: dates.length ? `Ghi nhận thực hiện từ ${displayDate(dates[0])} đến ${displayDate(dates.at(-1))}; nguồn không có deadline cá nhân.` : "Không có ngày thực hiện.",
-    evidenceText: `DieuHanh_Ngay – ${daily.rows.length} bản ghi`,
+    basis: `${daily.name} được phân giao ${number(plan.cases)} testcase trong quý II${planJiras.length ? ` thuộc các mã ${planJiras.join(", ")}` : ""}. Kết quả đến 30/06/2026: đã chạy ${daily.executed} testcase; ${daily.passed} đạt, ${daily.failed} không đạt; còn ${remaining} testcase chưa có kết quả.`,
+    quality: `Hoàn thành kiểm thử ${daily.executed}/${denominator} testcase (${formatPercent(completion)}). Trong số đã chạy, tỷ lệ đạt là ${formatPercent(passRate)}; có ${daily.failed} testcase không đạt.`,
+    timeline: dates.length ? `Kết quả kiểm thử được cập nhật từ ${displayDate(dates[0])} đến ${displayDate(dates.at(-1))}.` : "Chưa có ngày thực hiện.",
+    evidenceText: `Kết quả kiểm thử: ${daily.executed}/${denominator} testcase đã chạy · ${daily.passed} đạt · ${daily.failed} không đạt`,
     evidenceUrl: "",
     completion,
     startDate: dates[0] || "",
     endDate: dates.at(-1) || "",
     warning: daily.total !== daily.executed
-      ? `${daily.total - daily.executed} TC chưa có kết quả Passed/Failed trong nguồn.`
+      ? `${daily.total - daily.executed} testcase đã được ghi tổng số nhưng chưa có kết quả Đạt/Không đạt; cần kiểm tra lại dữ liệu đầu vào.`
       : ""
   };
 }
@@ -353,7 +362,7 @@ function taskTimeline(task, completed) {
   if (completedDate && deadline) return completedDate <= deadline ? "Đúng hạn" : `Hoàn thành sau deadline ${displayDate(deadline)}`;
   if (completedDate) return "Hoàn thành trong quý II (không có deadline)";
   if (!completed && deadline) return `Chưa hoàn thành tại 30/06/2026; deadline ${displayDate(deadline)}`;
-  return completed ? "Hoàn thành theo dữ liệu hệ thống" : "Chưa có deadline/ngày hoàn thành trong nguồn";
+  return completed ? "Đã hoàn thành theo trạng thái được cập nhật" : "Chưa có deadline hoặc ngày hoàn thành";
 }
 
 function assignWeights(entries) {
@@ -394,7 +403,7 @@ function buildWorkbook(model) {
 
   const dashboard = workbook.addWorksheet("Dashboard_NhanSu", { views: [{ state: "frozen", ySplit: 5, showGridLines: false }] });
   const report = workbook.addWorksheet("MaubieuDA", { views: [{ state: "frozen", ySplit: 5, showGridLines: false }] });
-  const audit = workbook.addWorksheet("Kiem_toan_du_lieu", { state: "veryHidden", views: [{ state: "frozen", ySplit: 1 }] });
+  const audit = workbook.addWorksheet("Doi_chieu_du_lieu", { views: [{ state: "frozen", ySplit: 5, showGridLines: false }] });
   const data = workbook.addWorksheet("Du_lieu_Dashboard", { state: "veryHidden" });
 
   buildDashboardDataSheet(data, model);
@@ -413,7 +422,7 @@ function buildReportSheet(ws, model) {
   ws.getCell("A1").alignment = { vertical: "middle" };
   ws.getRow(1).height = 25;
   ws.mergeCells("A2:N2");
-  ws.getCell("A2").value = `SQUAD 2 · Báo cáo được đối chiếu từ Task_Master, PhanCong_UAT, DieuHanh_Ngay và DEFECT_LOG · ${model.sourceWorkbook}`;
+  ws.getCell("A2").value = "SQUAD 2 · Tổng hợp công việc trên hệ thống, kế hoạch phân công, kết quả kiểm thử và danh sách lỗi UAT · Chốt số liệu đến 30/06/2026";
   ws.getCell("A2").font = { name: "Aptos", size: 9, color: { argb: COLORS.gray500 } };
   ws.mergeCells("A3:N3");
   ws.getCell("A3").value = "BẢNG NỘI DUNG CÔNG VIỆC THỰC HIỆN VÀ ĐÁNH GIÁ KẾT QUẢ THỰC HIỆN CÔNG VIỆC QUÝ II/2026";
@@ -422,7 +431,7 @@ function buildReportSheet(ws, model) {
   ws.getCell("A3").alignment = { horizontal: "center", vertical: "middle", wrapText: true };
   ws.getRow(3).height = 36;
   ws.mergeCells("A4:N4");
-  ws.getCell("A4").value = "Phạm vi: công việc giao trong quý II và hoàn thành trong quý II, hoặc có deadline quý II nhưng chưa hoàn thành tại 30/06/2026. TC được gán theo đúng tên trên đầu cột PhanCong_UAT.";
+  ws.getCell("A4").value = "Phạm vi: công việc được giao trong quý II và đã hoàn thành trong quý II; hoặc được giao trong quý II, có hạn hoàn thành trong quý II nhưng vẫn chưa hoàn thành tại 30/06/2026. Testcase được tính cho đúng người có tên trong kế hoạch phân công.";
   ws.getCell("A4").font = { name: "Aptos", size: 9, italic: true, color: { argb: COLORS.tealDark } };
   ws.getCell("A4").fill = solid(COLORS.tealLight);
   ws.getCell("A4").alignment = { vertical: "middle", wrapText: true };
@@ -470,14 +479,14 @@ function buildReportSheet(ws, model) {
 
   const footerStart = rowNumber + 1;
   ws.mergeCells(`A${footerStart}:N${footerStart}`);
-  ws.getCell(`A${footerStart}`).value = "Ghi chú kiểm soát dữ liệu";
+  ws.getCell(`A${footerStart}`).value = "Cách đọc và kiểm tra số liệu";
   ws.getCell(`A${footerStart}`).font = { name: "Aptos Display", bold: true, size: 11, color: { argb: COLORS.tealDark } };
   ws.getCell(`A${footerStart}`).fill = solid(COLORS.tealLight);
   const notes = [
-    "TC phân giao lấy theo đúng tên ghi trên đầu các cột T1–T6 của PhanCong_UAT; không suy người từ mã tại NhanSu_UAT.",
-    "DieuHanh_Ngay được gộp theo Người xử lý thực tế. Dòng không có Passed/Failed được giữ trong kiểm toán nhưng không chấm điểm thực thi.",
+    "Số testcase phân giao được tính cho đúng người có tên trong kế hoạch; không tự suy đoán từ mã nhân sự vì danh sách mã cũ từng bị lệch.",
+    "Kết quả kiểm thử được tính cho người thực hiện được ghi trực tiếp. Testcase chưa có kết quả Đạt/Không đạt sẽ không được tính là đã chạy.",
     "Điểm mỗi hoạt động = Trọng số × % Hoàn thành × 100; tổng trọng số của mỗi người bằng 100%.",
-    `Báo cáo tạo lúc ${model.generatedAt.toLocaleString("vi-VN")} và có sheet kiểm toán ẩn để truy vết.`
+    `Báo cáo tạo lúc ${model.generatedAt.toLocaleString("vi-VN")}. Xem sheet Doi_chieu_du_lieu để biết từng nội dung được đưa vào, loại ra hoặc cần kiểm tra lại.`
   ];
   notes.forEach((note, index) => {
     const row = footerStart + 1 + index;
@@ -535,11 +544,11 @@ function buildDashboardSheet(ws, model) {
   ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
   ws.getRow(1).height = 38;
   ws.mergeCells("A2:P2");
-  ws.getCell("A2").value = "Một card tổng hợp toàn bộ thành viên · Công việc Task_Master · Phân giao và thực thi testcase · Defect quý II";
+  ws.getCell("A2").value = "Tổng hợp toàn bộ thành viên · Công việc được giao · Kết quả kiểm thử · Lỗi UAT trong quý II";
   ws.getCell("A2").font = { name: "Aptos", size: 10, color: { argb: COLORS.gray700 } };
   ws.getCell("A2").alignment = { horizontal: "center" };
   ws.mergeCells("A4:H4");
-  ws.getCell("A4").value = `CARD THEO DÕI 10 THÀNH VIÊN · Nguồn: ${model.sourceWorkbook}`;
+  ws.getCell("A4").value = `TỔNG HỢP 10 THÀNH VIÊN · KỲ BÁO CÁO 01/04/2026 - 30/06/2026`;
   sectionTitle(ws.getCell("A4"));
   ws.mergeCells("I4:P4");
   ws.getCell("I4").value = `Cập nhật ${model.generatedAt.toLocaleString("vi-VN")}`;
@@ -548,7 +557,7 @@ function buildDashboardSheet(ws, model) {
   ws.getCell("I4").alignment = { horizontal: "right", vertical: "middle" };
   ws.getRow(4).height = 26;
 
-  const summaryHeaders = ["STT", "Họ và tên", "Đơn vị", "Vai trò", "Hoạt động", "Điểm", "CV giao", "CV xong", "TC phân giao", "Tổng TC điều hành", "TC đã chạy", "Passed", "Failed", "Tỷ lệ thực thi", "Pass rate", "Defect"];
+  const summaryHeaders = ["STT", "Họ và tên", "Đơn vị", "Vai trò", "Nội dung đánh giá", "Điểm đánh giá", "Công việc được giao", "Công việc hoàn thành", "Testcase được giao", "Testcase được ghi nhận", "Testcase đã chạy", "Đạt", "Không đạt", "Tỷ lệ hoàn thành kiểm thử", "Tỷ lệ đạt", "Lỗi UAT"];
   summaryHeaders.forEach((header, index) => { ws.getCell(5, index + 1).value = header; });
   styleHeader(ws.getRow(5), 1, summaryHeaders.length);
   ws.getRow(5).height = 40;
@@ -582,12 +591,13 @@ function buildDashboardSheet(ws, model) {
   });
 
   ws.mergeCells("A17:P17");
-  ws.getCell("A17").value = "ĐỌC SỐ LIỆU";
+  ws.getCell("A17").value = "CÁCH ĐỌC SỐ LIỆU";
   sectionTitle(ws.getCell("A17"));
   const notes = [
-    "TC phân giao được gán theo đúng tên nằm trên đầu cột PhanCong_UAT, không suy người từ mã trong NhanSu_UAT.",
-    "TC đã chạy = Passed + Failed tại DieuHanh_Ngay; dòng chưa có kết quả được giữ ở sheet kiểm toán nhưng không tính là đã chạy.",
-    "Điểm là tổng điểm trọng số của toàn bộ hoạt động quý II trong sheet MaubieuDA."
+    "Testcase được giao được tính theo đúng tên người trong kế hoạch phân công; không suy đoán từ mã nhân sự cũ.",
+    "Testcase được ghi nhận là tổng số testcase trong các lần cập nhật kết quả; testcase đã chạy chỉ gồm các trường hợp đã có kết quả Đạt hoặc Không đạt.",
+    "Testcase đã chạy = số Đạt + số Không đạt. Những testcase chưa có kết quả không được tính là đã chạy.",
+    "Điểm đánh giá là tổng điểm theo trọng số của toàn bộ nội dung công việc quý II; xem chi tiết tại sheet MaubieuDA."
   ];
   notes.forEach((note, index) => {
     const row = 18 + index;
@@ -611,33 +621,82 @@ function buildDashboardSheet(ws, model) {
 }
 
 function buildAuditSheet(ws, model) {
-  const headers = ["Trạng thái", "Nguồn", "ID nguồn", "Mã Task/Jira", "Họ và tên", "Công việc/hoạt động", "Từ ngày", "Đến ngày", "Số dòng nguồn", "Trọng số", "% Hoàn thành", "Dòng báo cáo", "Cảnh báo", "Căn cứ"];
-  ws.addRow(headers);
-  styleHeader(ws.getRow(1));
+  ws.mergeCells("A1:N1");
+  ws.getCell("A1").value = "ĐỐI CHIẾU DỮ LIỆU BÁO CÁO QUÝ II/2026";
+  ws.getCell("A1").font = { name: "Aptos Display", size: 17, bold: true, color: { argb: COLORS.white } };
+  ws.getCell("A1").fill = solid(COLORS.tealDark);
+  ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+  ws.getRow(1).height = 34;
+  ws.mergeCells("A2:N2");
+  ws.getCell("A2").value = "Sheet này giúp kiểm tra từng số liệu: nội dung nào đã được đưa vào báo cáo, nội dung nào không thuộc phạm vi quý II và điểm nào cần xác minh thêm.";
+  ws.getCell("A2").font = { name: "Aptos", size: 10, color: { argb: COLORS.gray700 } };
+  ws.getCell("A2").fill = solid(COLORS.tealLight);
+  ws.getCell("A2").alignment = { vertical: "middle", wrapText: true };
+  ws.getRow(2).height = 28;
+  ws.mergeCells("A3:N3");
+  ws.getCell("A3").value = "Cách đọc: ĐƯA VÀO BÁO CÁO = đã tính điểm; KHÔNG ĐƯA VÀO = không đáp ứng điều kiện quý II; CẦN KIỂM TRA = dữ liệu còn thiếu hoặc chưa thống nhất; ĐỐI CHIẾU PHÂN CÔNG = tổng testcase được giao cho từng người.";
+  ws.getCell("A3").font = { name: "Aptos", size: 9, italic: true, color: { argb: COLORS.tealDark } };
+  ws.getCell("A3").alignment = { vertical: "middle", wrapText: true };
+  ws.getRow(3).height = 30;
+  ws.mergeCells("A4:N4");
+  ws.getCell("A4").value = `File dữ liệu dùng để lập báo cáo: ${model.sourceWorkbook} · Dữ liệu công việc được đối chiếu với hệ thống tại thời điểm xuất báo cáo.`;
+  ws.getCell("A4").font = { name: "Aptos", size: 9, color: { argb: COLORS.gray500 } };
+  ws.getCell("A4").alignment = { vertical: "middle" };
+  ws.getRow(4).height = 22;
+
+  const headers = ["Kết luận", "Loại dữ liệu", "Mã dữ liệu", "Mã công việc/Jira", "Họ và tên", "Công việc/hoạt động", "Từ ngày", "Đến ngày", "Số mục đối chiếu", "Trọng số", "% Hoàn thành", "Dòng trong báo cáo", "Nội dung cần lưu ý", "Căn cứ/Kết quả đối chiếu"];
+  ws.getRow(5).values = headers;
+  styleHeader(ws.getRow(5));
+  ws.getRow(5).height = 42;
   model.entries.forEach((entry) => {
-    ws.addRow(["ĐƯỢC CHỌN", entry.source, entry.sourceId, entry.sourceCode, entry.personName, entry.activity, entry.startDate, entry.endDate, entry.sourceCount, entry.weight, entry.completion, entry.reportRow, entry.warning, entry.basis]);
+    ws.addRow(["ĐƯA VÀO BÁO CÁO", friendlySourceName(entry.source), entry.sourceId, entry.sourceCode, entry.personName, entry.activity, entry.startDate, entry.endDate, entry.sourceCount, entry.weight, entry.completion, entry.reportRow, entry.warning, entry.basis]);
   });
   model.audit.excludedTasks.forEach((task) => {
-    ws.addRow(["BỊ LOẠI", "Task_Master", task.id, task.taskId, task.assignee, task.title, task.startDate, task.completedDate || task.deadline, 1, "", number(task.progress) / 100, "", exclusionReason(task), task.description]);
+    ws.addRow(["KHÔNG ĐƯA VÀO", friendlySourceName("Task_Master"), task.id, task.taskId, task.assignee, task.title, task.startDate, task.completedDate || task.deadline, 1, "", number(task.progress) / 100, "", exclusionReason(task), clean(task.description) || "Không có mô tả bổ sung."]);
   });
   model.audit.dailyRows.filter((row) => !row.executed).forEach((row) => {
-    ws.addRow(["CẢNH BÁO", "DieuHanh_Ngay", row.id, row.jiraCode, row.personName, row.feature, row.date, row.date, 1, "", 0, "", `Tổng ${row.total} TC nhưng Passed + Failed = 0; không chấm điểm.`, row.blocker || row.bugDetail]);
+    ws.addRow(["CẦN KIỂM TRA", friendlySourceName("DieuHanh_Ngay"), row.id, row.jiraCode, row.personName, row.feature, row.date, row.date, 1, "", 0, "", `Có ${row.total} testcase nhưng chưa có kết quả Đạt/Không đạt nên chưa được tính điểm.`, clean(row.blocker) || clean(row.bugDetail) || "Chưa có nội dung giải thích."]);
   });
   model.audit.planByPerson.forEach((plan, key) => {
-    ws.addRow(["ĐỐI CHIẾU", "PhanCong_UAT", `plan:${key}`, [...plan.jiraCodes].join(", "), plan.tester.name, "Phân bổ testcase quý II", [...plan.dates].sort()[0] || "", [...plan.dates].sort().at(-1) || "", plan.rows.length, "", "", "", "Dùng tên trên đầu cột PhanCong_UAT; không dùng mã NhanSu_UAT.", `${plan.cases} TC phân giao`]);
+    ws.addRow(["ĐỐI CHIẾU PHÂN CÔNG", friendlySourceName("PhanCong_UAT"), `plan:${key}`, [...plan.jiraCodes].join(", "), plan.tester.name, "Tổng testcase được giao trong quý II", [...plan.dates].sort()[0] || "", [...plan.dates].sort().at(-1) || "", plan.rows.length, "", "", "", "Tính theo đúng tên người được ghi trong kế hoạch phân công; không suy đoán từ mã nhân sự cũ.", `${plan.tester.name} được giao ${plan.cases} testcase trong quý II/2026.`]);
   });
-  model.audit.warnings.forEach((warning) => ws.addRow(["CẢNH BÁO", "Kiểm tra dữ liệu", "", "", "", "", "", "", "", "", "", "", warning, ""]));
+  model.audit.warnings.forEach((warning) => ws.addRow(["CẦN KIỂM TRA", "Kiểm tra tự động", "", "", "", "", "", "", "", "", "", "", warning, "Đề nghị đối chiếu lại với người cập nhật dữ liệu trước khi dùng làm căn cứ chính thức."]));
   ws.columns.forEach((column, index) => { column.width = [14, 18, 28, 32, 24, 42, 14, 14, 14, 12, 15, 14, 48, 56][index] || 18; });
   ws.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return;
+    if (rowNumber <= 5) return;
     row.eachCell((cell) => {
       cell.font = { name: "Aptos", size: 9, color: { argb: COLORS.gray900 } };
       cell.alignment = { vertical: "top", wrapText: true };
       cell.border = thinBorder(COLORS.gray200);
     });
+    const status = String(row.getCell(1).value || "");
+    row.getCell(1).font = { name: "Aptos", size: 9, bold: true, color: { argb: status === "CẦN KIỂM TRA" ? COLORS.red : status === "KHÔNG ĐƯA VÀO" ? COLORS.gray700 : COLORS.tealDark } };
+    row.getCell(1).fill = solid(status === "CẦN KIỂM TRA" ? COLORS.redLight : status === "KHÔNG ĐƯA VÀO" ? COLORS.gray100 : COLORS.tealLight);
     row.height = 34;
   });
-  ws.autoFilter = { from: "A1", to: `N${ws.rowCount}` };
+  ws.getColumn(10).numFmt = "0.00%";
+  ws.getColumn(11).numFmt = "0.00%";
+  ws.autoFilter = { from: "A5", to: `N${ws.rowCount}` };
+  ws.pageSetup = {
+    paperSize: 9,
+    orientation: "landscape",
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+    margins: { left: 0.25, right: 0.25, top: 0.35, bottom: 0.35, header: 0.1, footer: 0.1 },
+    printTitlesRow: "1:5",
+    printArea: `A1:N${ws.rowCount}`
+  };
+}
+
+function friendlySourceName(source) {
+  return ({
+    Task_Master: "Công việc trên hệ thống",
+    PhanCong_UAT: "Kế hoạch phân công kiểm thử",
+    DieuHanh_Ngay: "Kết quả kiểm thử hằng ngày",
+    DEFECT_LOG: "Danh sách lỗi UAT",
+    NhanSu_UAT: "Danh sách nhân sự"
+  })[source] || source || "Dữ liệu tổng hợp";
 }
 
 function exclusionReason(task) {
