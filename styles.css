@@ -5161,8 +5161,14 @@ body.is-column-resizing * {
     padding: 0 12px;
     display: flex;
     align-items: center;
-    justify-content: flex-start;
-    gap: 12px;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.navigation-tree .sidebar-brand {
+    min-width: 0;
+    display: flex;
+    align-items: center;
 }
 
 .navigation-tree .sidebar-logo button,
@@ -5176,6 +5182,64 @@ body.is-column-resizing * {
     border-radius: 6px;
     cursor: pointer;
     flex: 0 0 auto;
+}
+
+.navigation-tree .sidebar-collapse-toggle {
+    position: relative;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.12);
+    transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.navigation-tree .sidebar-collapse-toggle:hover,
+.navigation-tree .sidebar-collapse-toggle:focus-visible {
+    background: rgba(255, 255, 255, 0.22);
+    border-color: rgba(255, 255, 255, 0.38);
+}
+
+.navigation-tree .sidebar-collapse-toggle:active {
+    transform: scale(0.96);
+}
+
+.navigation-tree .sidebar-collapse-toggle svg {
+    width: 21px;
+    height: 21px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.navigation-tree .sidebar-collapse-toggle::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 80;
+    padding: 7px 9px;
+    border-radius: 7px;
+    color: #ffffff;
+    background: #172033;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22);
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(-3px);
+    transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.navigation-tree .sidebar-collapse-toggle:hover::after,
+.navigation-tree .sidebar-collapse-toggle:focus-visible::after {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.navigation-tree .sidebar-logo .sidebar-mobile-close {
+    display: none;
 }
 
 .navigation-tree .sidebar-logo strong {
@@ -5281,8 +5345,10 @@ body.is-column-resizing * {
 
 .navigation-tree.collapsed .sidebar-logo {
     padding: 0 14px;
+    justify-content: center;
 }
 
+.navigation-tree.collapsed .sidebar-brand,
 .navigation-tree.collapsed .sidebar-logo strong,
 .navigation-tree.collapsed .tree-section-title b,
 .navigation-tree.collapsed .tree-parent b,
@@ -5301,6 +5367,18 @@ body.is-column-resizing * {
 
 .navigation-tree.collapsed .tree-category-list .tree-link:not(.active) {
     display: none;
+}
+
+.navigation-tree.collapsed .sidebar-collapse-toggle::after {
+    top: 50%;
+    right: auto;
+    left: calc(100% + 10px);
+    transform: translate(3px, -50%);
+}
+
+.navigation-tree.collapsed .sidebar-collapse-toggle:hover::after,
+.navigation-tree.collapsed .sidebar-collapse-toggle:focus-visible::after {
+    transform: translate(0, -50%);
 }
 
 .mobile-menu-btn {
@@ -5788,11 +5866,60 @@ body.is-column-resizing * {
         width: min(290px, calc(100vw - 46px));
         min-width: min(290px, calc(100vw - 46px));
         transform: translateX(-102%);
+        visibility: hidden;
+        pointer-events: none;
+        transition: transform 0.2s ease, visibility 0s linear 0.2s;
         box-shadow: 12px 0 30px rgba(15, 23, 42, 0.22);
+    }
+
+    .sidebar.navigation-tree .sidebar-logo,
+    .sidebar.navigation-tree.collapsed .sidebar-logo {
+        padding: 0 12px;
+        justify-content: space-between;
+    }
+
+    .sidebar.navigation-tree.collapsed .sidebar-brand {
+        display: flex;
+    }
+
+    .sidebar.navigation-tree.collapsed .sidebar-logo strong,
+    .sidebar.navigation-tree.collapsed .tree-section-title b,
+    .sidebar.navigation-tree.collapsed .tree-parent b,
+    .sidebar.navigation-tree.collapsed .tree-link span {
+        display: inline;
+    }
+
+    .sidebar.navigation-tree.collapsed .tree-section-title,
+    .sidebar.navigation-tree.collapsed .tree-parent,
+    .sidebar.navigation-tree.collapsed .tree-link {
+        justify-content: flex-start;
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+
+    .sidebar.navigation-tree.collapsed .tree-link.level-2 {
+        justify-content: flex-start;
+        padding-left: 28px;
+        padding-right: 10px;
+    }
+
+    .sidebar.navigation-tree.collapsed .tree-category-list .tree-link:not(.active) {
+        display: flex;
+    }
+
+    .sidebar.navigation-tree .sidebar-collapse-toggle {
+        display: none;
+    }
+
+    .sidebar.navigation-tree .sidebar-mobile-close {
+        display: grid;
     }
 
     .sidebar.navigation-tree.mobile-open {
         transform: translateX(0);
+        visibility: visible;
+        pointer-events: auto;
+        transition-delay: 0s;
     }
 
     .sidebar-scrim {

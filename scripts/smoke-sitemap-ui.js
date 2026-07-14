@@ -25,6 +25,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
   const state = await buildFixtureState();
   const browser = await chromium.launch({ executablePath, headless: true });
   const desktopShot = path.join(os.tmpdir(), "squad2-sitemap-desktop.png");
+  const collapsedSidebarShot = path.join(os.tmpdir(), "squad2-sidebar-collapsed.png");
   const dashboardShot = path.join(os.tmpdir(), "squad2-work-dashboard.png");
   const taskMasterShot = path.join(os.tmpdir(), "squad2-task-master.png");
   const inputsShot = path.join(os.tmpdir(), "squad2-work-inputs.png");
@@ -39,6 +40,53 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     const errors = collectErrors(page);
     await page.goto(`${baseUrl}/#work/dashboard`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector(".navigation-tree .tree-link", { timeout: 15000 });
+
+    const sidebarToggle = page.locator('[data-action="toggle-sidebar-collapse"]');
+    if (!await sidebarToggle.isVisible() || await sidebarToggle.locator("svg").count() !== 1) {
+      throw new Error("Desktop sidebar is missing the visible panel toggle.");
+    }
+    if (await sidebarToggle.getAttribute("aria-expanded") !== "true") {
+      throw new Error("Expanded desktop sidebar toggle has incorrect accessibility state.");
+    }
+    const expandedLayout = await page.evaluate(() => ({
+      sidebar: document.querySelector(".navigation-tree")?.getBoundingClientRect().width || 0,
+      main: document.querySelector(".main")?.getBoundingClientRect().width || 0
+    }));
+    await sidebarToggle.click();
+    await page.waitForFunction(() => Math.abs((document.querySelector(".navigation-tree")?.getBoundingClientRect().width || 0) - 64) < 1);
+    const collapsedLayout = await page.evaluate(() => ({
+      sidebar: document.querySelector(".navigation-tree")?.getBoundingClientRect().width || 0,
+      main: document.querySelector(".main")?.getBoundingClientRect().width || 0,
+      stored: localStorage.getItem("squad2-sidebar-collapsed")
+    }));
+    if (collapsedLayout.sidebar !== 64 || collapsedLayout.main <= expandedLayout.main || collapsedLayout.stored !== "true") {
+      throw new Error(`Desktop sidebar collapse layout is incorrect: ${JSON.stringify({ expandedLayout, collapsedLayout })}`);
+    }
+    if (!await sidebarToggle.isVisible() || await sidebarToggle.getAttribute("aria-expanded") !== "false") {
+      throw new Error("Collapsed desktop rail does not keep an accessible expand button visible.");
+    }
+    await page.screenshot({ path: collapsedSidebarShot, fullPage: true });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForSelector(".navigation-tree.collapsed");
+    const persistedToggle = page.locator('[data-action="toggle-sidebar-collapse"]');
+    if (!await persistedToggle.isVisible()) throw new Error("Persisted collapsed rail lost its expand button.");
+    await persistedToggle.click();
+    await page.waitForFunction(() => Math.abs((document.querySelector(".navigation-tree")?.getBoundingClientRect().width || 0) - 258) < 1);
+    if (await page.evaluate(() => localStorage.getItem("squad2-sidebar-collapsed")) !== "false") {
+      throw new Error("Desktop sidebar expanded state was not persisted.");
+    }
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await assertNoPageOverflow(page, "expanded sidebar laptop");
+    await page.locator('[data-action="toggle-sidebar-collapse"]').focus();
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => Math.abs((document.querySelector(".navigation-tree")?.getBoundingClientRect().width || 0) - 64) < 1);
+    if (await page.locator(':focus').getAttribute("data-action") !== "toggle-sidebar-collapse") {
+      throw new Error("Desktop sidebar toggle lost keyboard focus after collapsing.");
+    }
+    await assertNoPageOverflow(page, "collapsed sidebar laptop");
+    await page.keyboard.press("Enter");
+    await page.waitForFunction(() => Math.abs((document.querySelector(".navigation-tree")?.getBoundingClientRect().width || 0) - 258) < 1);
+    await page.setViewportSize({ width: 1600, height: 1000 });
 
     await assertRoute(page, "work/dashboard", ".work-dashboard-grid");
     await assertNoPageOverflow(page, "dashboard desktop");
@@ -191,6 +239,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await scopedEditor.close();
 
     const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+    await mobile.addInitScript(() => localStorage.setItem("squad2-sidebar-collapsed", "true"));
     await mockApi(mobile, state);
     const mobilePage = await mobile.newPage();
     const mobileErrors = collectErrors(mobilePage);
@@ -198,7 +247,28 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await mobilePage.waitForSelector(".mobile-menu-btn", { timeout: 15000 });
     await mobilePage.locator(".mobile-menu-btn").click();
     await mobilePage.waitForSelector(".navigation-tree.mobile-open");
+    if (!await mobilePage.locator(".sidebar-brand strong").isVisible()) {
+      throw new Error("Mobile drawer inherited the desktop collapsed labels.");
+    }
+    if (!await mobilePage.locator(".sidebar-mobile-close").isVisible() || await mobilePage.locator(".sidebar-collapse-toggle").isVisible()) {
+      throw new Error("Mobile drawer does not expose the dedicated close control.");
+    }
+    const mobileDrawerWidth = await mobilePage.locator(".navigation-tree").evaluate((sidebar) => sidebar.getBoundingClientRect().width);
+    if (mobileDrawerWidth < 250) throw new Error(`Mobile drawer remained collapsed at ${mobileDrawerWidth}px.`);
     await mobilePage.screenshot({ path: mobileShot, fullPage: true });
+    await mobilePage.locator(".sidebar-mobile-close").click();
+    await mobilePage.waitForSelector(".navigation-tree:not(.mobile-open)", { state: "attached" });
+    if (await mobilePage.locator(".navigation-tree").isVisible()) throw new Error("Mobile drawer remained visible after using its close button.");
+    await mobilePage.locator(".mobile-menu-btn").click();
+    await mobilePage.waitForSelector(".navigation-tree.mobile-open");
+    await mobilePage.keyboard.press("Escape");
+    await mobilePage.waitForSelector(".navigation-tree:not(.mobile-open)", { state: "attached" });
+    if (await mobilePage.locator(".navigation-tree").isVisible()) throw new Error("Mobile drawer remained visible after pressing Escape.");
+    if (!await mobilePage.locator(".mobile-menu-btn").evaluate((button) => button === document.activeElement)) {
+      throw new Error("Escape did not return focus to the mobile sidebar opener.");
+    }
+    await mobilePage.locator(".mobile-menu-btn").click();
+    await mobilePage.waitForSelector(".navigation-tree.mobile-open");
     await mobilePage.locator('[data-route="work/task-master"]').click();
     await mobilePage.waitForSelector(".standalone-work-items");
     if (await mobilePage.locator(".navigation-tree.mobile-open").count()) throw new Error("Mobile drawer không đóng sau khi chọn màn.");
@@ -215,6 +285,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       routes: 12,
       categories: categoryLinks,
       desktopScreenshot: desktopShot,
+      collapsedSidebarScreenshot: collapsedSidebarShot,
       dashboardScreenshot: dashboardShot,
       taskMasterScreenshot: taskMasterShot,
       inputsScreenshot: inputsShot,

@@ -1589,15 +1589,22 @@ function renderLoginPage() {
 
 function renderSidebar() {
     const categories = getWorkCategories();
+    const sidebarToggleLabel = ui.sidebarCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên";
     return `
-        <aside class="sidebar navigation-tree ${ui.sidebarCollapsed ? "collapsed" : ""} ${ui.sidebarMobileOpen ? "mobile-open" : ""}" aria-label="Điều hướng chính">
+        <aside class="sidebar navigation-tree ${ui.sidebarCollapsed ? "collapsed" : ""} ${ui.sidebarMobileOpen ? "mobile-open" : ""}" aria-label="Điều hướng chính" data-sidebar-state="${ui.sidebarCollapsed ? "collapsed" : "expanded"}">
             <div class="sidebar-logo">
-                <button type="button" data-action="toggle-sidebar-collapse" title="Thu gọn điều hướng" aria-label="Thu gọn điều hướng">
-                    <i class="fa-solid fa-bars"></i>
+                <div class="sidebar-brand"><strong>Squad 2 UAT</strong></div>
+                <button class="sidebar-collapse-toggle" type="button" data-action="toggle-sidebar-collapse" title="${sidebarToggleLabel}" aria-label="${sidebarToggleLabel}" aria-expanded="${ui.sidebarCollapsed ? "false" : "true"}" aria-controls="sidebarMenu" data-tooltip="${sidebarToggleLabel}">
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <rect x="3.5" y="4" width="17" height="16" rx="3"></rect>
+                        <path d="M9 4v16"></path>
+                    </svg>
                 </button>
-                <strong>Squad 2 UAT</strong>
+                <button class="sidebar-mobile-close" type="button" data-action="toggle-sidebar" title="Đóng thanh điều hướng" aria-label="Đóng thanh điều hướng" aria-controls="sidebarMenu">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
             </div>
-            <nav class="sidebar-menu tree-menu">
+            <nav class="sidebar-menu tree-menu" id="sidebarMenu">
                 <div class="tree-section">
                     <span class="tree-section-title"><i class="fa-solid fa-users-viewfinder"></i><b>THÔNG TIN CHUNG</b></span>
                     <span class="tree-parent"><i class="fa-regular fa-user"></i><b>Nhân sự</b></span>
@@ -1638,10 +1645,11 @@ function renderSidebarRouteButton(route, icon, label, level = 1, forceActive = f
 }
 
 function renderTopbar() {
+    const mobileSidebarLabel = ui.sidebarMobileOpen ? "Đóng thanh điều hướng" : "Mở thanh điều hướng";
     return `
         <header class="topbar">
             <div class="brand-lockup">
-                <button class="mobile-menu-btn" type="button" data-action="toggle-sidebar" title="Mở điều hướng" aria-label="Mở điều hướng">
+                <button class="mobile-menu-btn" type="button" data-action="toggle-sidebar" title="${mobileSidebarLabel}" aria-label="${mobileSidebarLabel}" aria-expanded="${ui.sidebarMobileOpen ? "true" : "false"}" aria-controls="sidebarMenu">
                     <i class="fa-solid fa-bars"></i>
                 </button>
                 <img class="brand-logo" src="assets/logo-bidv.jpg" alt="BIDV">
@@ -5927,7 +5935,10 @@ function handleAction(event) {
     if (action === "set-t01-metric") return setT01Metric(event.currentTarget.dataset.t01Tab, event.currentTarget.dataset.t01View);
     if (action === "toggle-sidebar") {
         ui.sidebarMobileOpen = !ui.sidebarMobileOpen;
-        return render();
+        const focusSelector = ui.sidebarMobileOpen ? ".sidebar-mobile-close" : ".mobile-menu-btn";
+        render();
+        if (event.detail === 0) requestAnimationFrame(() => document.querySelector(focusSelector)?.focus());
+        return;
     }
     if (action === "toggle-sidebar-collapse") {
         if (window.innerWidth <= 820) {
@@ -5936,7 +5947,9 @@ function handleAction(event) {
             ui.sidebarCollapsed = !ui.sidebarCollapsed;
             localStorage.setItem("squad2-sidebar-collapsed", String(ui.sidebarCollapsed));
         }
-        return render();
+        render();
+        if (event.detail === 0) requestAnimationFrame(() => document.querySelector('[data-action="toggle-sidebar-collapse"]')?.focus());
+        return;
     }
     if (action === "open-kpi-config") return openKpiConfig();
     if (action === "open-member-kpi-create") return openMemberKpiInput();
@@ -7243,6 +7256,12 @@ function formatLastSyncAt() {
 
 document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
+    if (ui.sidebarMobileOpen) {
+        ui.sidebarMobileOpen = false;
+        render();
+        requestAnimationFrame(() => document.querySelector(".mobile-menu-btn")?.focus());
+        return;
+    }
     if (ui.aiChatOpen) {
         ui.aiChatOpen = false;
         render();
