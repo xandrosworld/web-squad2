@@ -157,7 +157,7 @@ const modules = {
         shortLabel: "Danh mục",
         icon: "fa-layer-group",
         collection: "features",
-        stickyColumns: 7,
+        stickyColumns: 4,
         compactTable: true,
         description: "Quản lý danh mục chức năng theo Story, Jira, Sprint, nghiệp vụ và trạng thái UAT.",
         emptyIcon: "fa-list-check",
@@ -1028,6 +1028,7 @@ let authState = {
 let accountDirectory = [];
 let lastRenderedTab = null;
 let pendingActiveTabScroll = null;
+let responsiveTableResizeFrame = 0;
 const initialRoute = getInitialRoute();
 if ((window.location.hash || "").replace(/^#\/?/, "") !== initialRoute.path) {
     history.replaceState(null, "", `#${initialRoute.path}`);
@@ -4938,6 +4939,7 @@ function bindTableScrollbars() {
         const collection = table.dataset.resizableTable || ui.activeTab;
         spacer.style.width = `${getTableRenderedWidth(table)}px`;
         table.style.setProperty("--table-view-width", `${main.clientWidth}px`);
+        syncStickyColumnOffsets(table);
         restoreTableScrollLeft(collection, top, main);
         let syncing = false;
         const syncScroll = (source, target) => {
@@ -5072,16 +5074,50 @@ function syncTableWidth(table) {
 }
 
 function syncStickyColumnOffsets(table) {
-    const mod = modules[ui.activeTab];
-    const stickyCount = Number(mod?.stickyColumns || 0);
-    let left = 0;
-    for (let index = 0; index < stickyCount; index += 1) {
+    if (!table) return;
+    const mod = Object.values(modules).find((item) => item.collection === table.dataset.resizableTable);
+    const configuredCount = Math.min(Number(mod?.stickyColumns || 0), Number(mod?.columns?.length || 0));
+    const scrollViewport = table.closest('[data-table-scrollbar="main"]');
+    const viewportWidth = Number(scrollViewport?.clientWidth || 0);
+    const stickyWidthBudget = Math.max(0, Math.min(
+        640,
+        viewportWidth * 0.48,
+        viewportWidth - 280
+    ));
+    const offsets = [];
+    let stickyCount = 0;
+    let stickyWidth = 0;
+
+    for (let index = 0; index < configuredCount; index += 1) {
         const col = getTableColumnElement(table, mod.columns[index]?.key);
-        table.querySelectorAll(`[data-column-index="${index}"]`).forEach((cell) => {
-            cell.style.left = `${left}px`;
-        });
-        left += getTableColumnWidth(col);
+        const width = getTableColumnWidth(col);
+        if (!width || stickyWidth + width > stickyWidthBudget) break;
+        offsets[index] = stickyWidth;
+        stickyWidth += width;
+        stickyCount += 1;
     }
+
+    table.querySelectorAll("[data-column-index]").forEach((cell) => {
+        const index = Number(cell.dataset.columnIndex);
+        const sticky = Number.isInteger(index) && index < stickyCount;
+        cell.classList.toggle("sticky-col", sticky);
+        cell.classList.toggle("sticky-boundary", sticky && index === stickyCount - 1);
+        if (sticky) {
+            cell.style.left = `${offsets[index]}px`;
+        } else {
+            cell.style.removeProperty("left");
+        }
+    });
+    table.classList.toggle("has-sticky-columns", stickyCount > 0);
+    table.dataset.stickyColumnCount = String(stickyCount);
+}
+
+function syncResponsiveTables() {
+    document.querySelectorAll("[data-resizable-table]").forEach((table) => {
+        const main = table.closest('[data-table-scrollbar="main"]');
+        if (main) table.style.setProperty("--table-view-width", `${main.clientWidth}px`);
+        syncStickyColumnOffsets(table);
+    });
 }
 
 function getTableColumnElement(table, columnKey) {
@@ -6966,6 +7002,14 @@ window.addEventListener("hashchange", () => {
     ui.sidebarMobileOpen = false;
     requestActiveTabScroll();
     render();
+});
+
+window.addEventListener("resize", () => {
+    if (responsiveTableResizeFrame) return;
+    responsiveTableResizeFrame = requestAnimationFrame(() => {
+        responsiveTableResizeFrame = 0;
+        syncResponsiveTables();
+    });
 });
 
 function refreshFromDbIfIdle() {

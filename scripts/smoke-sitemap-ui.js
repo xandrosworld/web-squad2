@@ -105,6 +105,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     if (new URL(page.url()).hash !== "#work/group/pilot-t01/features") throw new Error("KPI T01 không mở DM_ChucNang.");
     const t01FilteredRows = await page.locator('[data-resizable-table="features"] tbody tr').count();
     if (t01FilteredRows !== 3) throw new Error(`KPI T01 Đang thực hiện cần lọc 3 chức năng, nhận ${t01FilteredRows}.`);
+    await assertFeatureTableHorizontalAccess(page, "desktop");
     await assertRoute(page, "work/group/pilot-t01/defects", ".secondary-tabs");
     await assertRoute(page, "work/group/pilot-t01/defectSummary", ".secondary-tabs .active");
     await assertRoute(page, "work/group/pilot-t03", ".standalone-work-items");
@@ -147,6 +148,10 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await mobilePage.waitForSelector(".standalone-work-items");
     if (await mobilePage.locator(".navigation-tree.mobile-open").count()) throw new Error("Mobile drawer không đóng sau khi chọn màn.");
     await assertNoPageOverflow(mobilePage, "Task_Master mobile");
+    await mobilePage.goto(`${baseUrl}/#work/group/pilot-t01/features`, { waitUntil: "domcontentloaded" });
+    await mobilePage.waitForSelector('[data-resizable-table="features"]');
+    await assertFeatureTableHorizontalAccess(mobilePage, "mobile");
+    await assertNoPageOverflow(mobilePage, "DM_ChucNang mobile");
     if (mobileErrors.length) throw new Error(`Lỗi trình duyệt mobile: ${mobileErrors.join(" | ")}`);
     await mobile.close();
 
@@ -250,6 +255,46 @@ async function assertOptionCount(page, name, expected) {
 async function assertFieldLabel(page, name, expected) {
   const label = (await page.locator(`.field:has([name="${name}"]) > label`).textContent() || "").trim();
   if (label !== expected) throw new Error(`Field ${name} cần nhãn "${expected}", nhận "${label}".`);
+}
+
+async function assertFeatureTableHorizontalAccess(page, label) {
+  const tableSelector = '[data-resizable-table="features"]';
+  const metrics = await page.locator(tableSelector).evaluate((table) => {
+    const viewport = table.closest('[data-table-scrollbar="main"]');
+    const headers = [...table.querySelectorAll('thead th[data-column-index]')];
+    const stickyHeaders = headers.filter((header) => header.classList.contains("sticky-col"));
+    return {
+      columnCount: headers.length,
+      stickyCount: stickyHeaders.length,
+      stickyWidth: stickyHeaders.reduce((total, header) => total + header.getBoundingClientRect().width, 0),
+      viewportWidth: viewport?.clientWidth || 0,
+      maxScrollLeft: viewport ? viewport.scrollWidth - viewport.clientWidth : 0
+    };
+  });
+
+  if (metrics.columnCount !== 21) {
+    throw new Error(`DM_ChucNang ${label} expected 21 columns, received ${metrics.columnCount}.`);
+  }
+  if (metrics.stickyCount > 4 || metrics.stickyWidth > metrics.viewportWidth * 0.5 + 2) {
+    throw new Error(`DM_ChucNang ${label} sticky columns hide the table: ${JSON.stringify(metrics)}.`);
+  }
+  if (metrics.maxScrollLeft <= 0) {
+    throw new Error(`DM_ChucNang ${label} has no horizontal scroll range.`);
+  }
+
+  const lateColumnVisible = await page.locator(tableSelector).evaluate(async (table) => {
+    const viewport = table.closest('[data-table-scrollbar="main"]');
+    const lateHeader = table.querySelector('thead th[data-column-key="uatWarning"]');
+    if (!viewport || !lateHeader) return false;
+    viewport.scrollLeft = viewport.scrollWidth;
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const viewportRect = viewport.getBoundingClientRect();
+    const headerRect = lateHeader.getBoundingClientRect();
+    return headerRect.left < viewportRect.right && headerRect.right > viewportRect.left;
+  });
+  if (!lateColumnVisible) {
+    throw new Error(`DM_ChucNang ${label} cannot scroll to the UAT warning column.`);
+  }
 }
 
 async function assertNoPageOverflow(page, label) {
