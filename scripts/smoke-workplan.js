@@ -16,6 +16,7 @@ if (!password) {
   const categoryId = crypto.randomUUID();
   const itemId = crypto.randomUUID();
   const selfItemId = crypto.randomUUID();
+  const blankStartItemId = crypto.randomUUID();
   const category = {
     id: categoryId,
     sortOrder: 9901,
@@ -52,6 +53,29 @@ if (!password) {
       body: { record: category }
     }), 201);
 
+    const invalidCreateCases = [
+      { label: "zero progress cannot be in progress", status: "Đang thực hiện", progress: 0 },
+      { label: "partial progress cannot be not started", status: "Chưa bắt đầu", progress: 50 },
+      { label: "full progress cannot be in progress", status: "Đang thực hiện", progress: 100 },
+      { label: "removed approval status is rejected", status: "Chờ phê duyệt", progress: 50 },
+      { label: "overdue cannot be persisted as status", status: "Quá hạn", progress: 50 }
+    ];
+    for (const testCase of invalidCreateCases) {
+      await expectStatus(testCase.label, request("/api/records/workItems", {
+        method: "POST",
+        cookie: admin.cookie,
+        body: {
+          record: {
+            ...item,
+            id: crypto.randomUUID(),
+            title: `Smoke invalid ${testCase.label} ${stamp}`,
+            status: testCase.status,
+            progress: testCase.progress
+          }
+        }
+      }), 400);
+    }
+
     const itemCreated = await expectStatus("admin create work item", request("/api/records/workItems", {
       method: "POST",
       cookie: admin.cookie,
@@ -61,6 +85,33 @@ if (!password) {
     if (!createdItem || Number(createdItem.sortOrder) !== 1) {
       throw new Error(`Work item đầu tiên trong nhóm phải có STT 1, nhận ${createdItem?.sortOrder ?? "trống"}.`);
     }
+
+    await expectStatus("admin cannot change locked start date", request(`/api/records/workItems/${itemId}`, {
+      method: "PUT",
+      cookie: admin.cookie,
+      body: { record: { ...createdItem, startDate: "2026-07-06" } }
+    }), 409);
+
+    await expectStatus("mismatched status and progress update is rejected", request(`/api/records/workItems/${itemId}`, {
+      method: "PUT",
+      cookie: admin.cookie,
+      body: { record: { ...createdItem, status: "Hoàn thành", progress: 75 } }
+    }), 400);
+
+    const blankStartCreated = await expectStatus("admin creates item without start date", request("/api/records/workItems", {
+      method: "POST",
+      cookie: admin.cookie,
+      body: { record: { ...item, id: blankStartItemId, title: `Smoke blank start date ${stamp}`, startDate: "" } }
+    }), 201);
+    const blankStartItem = findRecord(blankStartCreated.data.state || {}, "workItems", blankStartItemId);
+    if (!blankStartItem || blankStartItem._canBackfillStartDate) {
+      throw new Error("New work item without start date must be locked, not marked as legacy backfill.");
+    }
+    await expectStatus("new blank start date is locked after create", request(`/api/records/workItems/${blankStartItemId}`, {
+      method: "PUT",
+      cookie: admin.cookie,
+      body: { record: { ...blankStartItem, startDate: "2026-07-06" } }
+    }), 409);
 
     await expectStatus("category with linked work item cannot be deleted", request(`/api/records/workCategories/${categoryId}`, {
       method: "DELETE",
@@ -149,6 +200,11 @@ if (!password) {
       cookie: admin.cookie
     }), 200);
 
+    await expectStatus("admin cleanup blank-start item", request(`/api/records/workItems/${blankStartItemId}`, {
+      method: "DELETE",
+      cookie: admin.cookie
+    }), 200);
+
     await expectStatus("admin delete work category", request(`/api/records/workCategories/${categoryId}`, {
       method: "DELETE",
       cookie: admin.cookie
@@ -158,6 +214,7 @@ if (!password) {
   } finally {
     await request(`/api/records/workItems/${itemId}`, { method: "DELETE", cookie: admin.cookie });
     await request(`/api/records/workItems/${selfItemId}`, { method: "DELETE", cookie: admin.cookie });
+    await request(`/api/records/workItems/${blankStartItemId}`, { method: "DELETE", cookie: admin.cookie });
     await request(`/api/records/workCategories/${categoryId}`, { method: "DELETE", cookie: admin.cookie });
   }
 })().catch((error) => {

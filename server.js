@@ -123,7 +123,7 @@ const bugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending
 const dailyBugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pending", "Reopened", "Resolved", "SIT Fail"];
 const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 const workCategoryStatusOptions = ["Đang theo dõi", "Hoàn thành", "Tạm dừng"];
-const workStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Chờ phê duyệt", "Quá hạn", "Hoàn thành"];
+const workStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Hoàn thành"];
 const workPriorityOptions = ["Cao", "Trung bình", "Thấp"];
 const memberKpiRoleOptions = ["PO", "BA", "Squad Lead", "Tester", "Developer", "Reviewer", "Khác"];
 const defaultWorkKpiConfig = {
@@ -140,6 +140,9 @@ const defaultWorkKpiConfig = {
   disciplineTarget: 95
 };
 const pilotWorkPlanSeedKey = "pilot_workplan_seed_v1";
+const workItemInvariantMigrationKey = "work_item_status_progress_v1";
+const workItemInvariantBackupKey = "backup_work_item_status_progress_v1";
+const legacyStartDateBackfillField = "_allowStartDateBackfill";
 const pilotWorkPlanDocumentUrl = "https://drive.google.com/drive/folders/1mraUTa3nb4bVhikApO9i-uCB-THKbVWd";
 const workAssigneeDirectory = {
   "Bùi Thị Mai Phương": "phuongbtm@bidv.com.vn",
@@ -365,7 +368,7 @@ const collectionRules = {
     }
   },
   workItems: {
-    required: ["title", "categoryId"],
+    required: ["title", "categoryId", "status"],
     numbers: ["sortOrder"],
     percents: ["progress"],
     enums: {
@@ -991,6 +994,7 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 app.put("/api/state", requireAdmin, asyncHandler(async (req, res) => {
   const state = normalizeState(req.body.state || req.body);
+  normalizeWorkItemsForValidation(state.workItems);
   for (const collection of collections) {
     state[collection].forEach((record) => validateRecordForCollection(collection, record));
   }
@@ -998,6 +1002,18 @@ app.put("/api/state", requireAdmin, asyncHandler(async (req, res) => {
   const client = await getPool().connect();
   try {
     await client.query("begin");
+    const currentWorkItems = await client.query(`
+      select id, data
+      from uat_records
+      where collection = 'workItems'
+      for update
+    `);
+    const currentWorkItemsById = new Map(currentWorkItems.rows.map((row) => [String(row.id), row.data || {}]));
+    for (const record of state.workItems) {
+      const current = currentWorkItemsById.get(String(record.id));
+      if (current) assertAndPreserveWorkItemStartDate(current, record);
+      else delete record[legacyStartDateBackfillField];
+    }
     await client.query("delete from uat_records");
     for (const collection of collections) {
       for (const inputRecord of state[collection]) {
@@ -1039,6 +1055,7 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
     stripComputedFields(collection, record);
     if (collection === "workItems") {
       delete record.sortOrder;
+      delete record[legacyStartDateBackfillField];
     }
     if (collection === "workItems" && req.user.role !== "admin") {
       assignWorkItemToUser(record, req.user);
@@ -1073,6 +1090,9 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     await client.query("begin");
     const current = await getRecordForUpdate(client, collection, req.params.id);
     assertCanModifyRecord(req.user, current);
+    if (collection === "workItems") {
+      assertAndPreserveWorkItemStartDate(current.data || {}, record);
+    }
     const scopedWorkItemEditor = collection === "workItems"
       && enforceWorkItemGroupEditorScope(req.user, current, record);
     if (collection === "workCategories" && !canManageWorkCategories(req.user)) {
@@ -1232,6 +1252,9 @@ module.exports = {
   __testApplyWorkKpiRules: applyWorkKpiRules,
   __testDefaultWorkKpiConfig: defaultWorkKpiConfig,
   __testValidateRecordForCollection: validateRecordForCollection,
+  __testExpectedWorkStatusForProgress: expectedWorkStatusForProgress,
+  __testAssertAndPreserveWorkItemStartDate: assertAndPreserveWorkItemStartDate,
+  __testLegacyStartDateBackfillField: legacyStartDateBackfillField,
   __testBuildPilotWorkPlanSeedRecords: buildPilotWorkPlanSeedRecords,
   __testEmptyState: emptyState,
   __testCanEditRecord: canEditRecord,
@@ -1325,6 +1348,7 @@ function ensureSchema() {
       await ensureDefaultUsers();
       await ensureExclusiveAdminRoles();
       await ensurePilotWorkPlanSeed();
+      await ensureWorkItemInvariantMigration();
       await ensureWorkKpiConfig();
     })().catch((error) => {
       schemaPromise = null;
@@ -3097,7 +3121,6 @@ function getWorkPlanKpiRows(state) {
   const done = items.filter((row) => row.status === "Hoàn thành").length;
   const notStarted = items.filter((row) => row.status === "Chưa bắt đầu").length;
   const inProgress = items.filter((row) => row.status === "Đang thực hiện").length;
-  const pendingApproval = items.filter((row) => row.status === "Chờ phê duyệt").length;
   const overdue = items.filter((row) => getWorkItemWarning(row) === "Quá hạn").length;
   const progress = items.length ? Math.round(items.reduce((total, row) => total + Number(row.progress || 0), 0) / items.length) : 0;
   return [
@@ -3105,7 +3128,6 @@ function getWorkPlanKpiRows(state) {
     ["Tổng đầu việc", items.length],
     ["Chưa bắt đầu", notStarted],
     ["Đang thực hiện", inProgress],
-    ["Chờ phê duyệt", pendingApproval],
     ["Quá hạn (cảnh báo giao cắt)", overdue],
     ["Đã hoàn thành", done],
     ["Tiến độ trung bình", `${progress}%`]
@@ -3115,7 +3137,6 @@ function getWorkPlanKpiRows(state) {
 function getWorkItemWarning(row) {
   const status = String(row?.status || "").trim();
   if (status === "Hoàn thành") return "Đã xong";
-  if (status === "Quá hạn") return "Quá hạn";
   const dueDate = parseImportDateOnly(row?.dueDate);
   if (!dueDate) return Number(row?.progress || 0) >= 80 ? "Ổn" : "Đang theo dõi";
   const today = new Date();
@@ -3414,8 +3435,11 @@ function decorateRecord(row, viewer) {
   const canManage = Boolean(viewer && (viewer.role === "admin" || isOwner || isGroupEditor));
   const canEdit = Boolean(viewer && (canManage || isLinkedOwner));
   const canDelete = Boolean(viewer && (viewer.role === "admin" || isOwner));
+  const publicData = { ...(row.data || {}) };
+  delete publicData[legacyStartDateBackfillField];
   return {
-    ...(row.data || {}),
+    ...publicData,
+    _canBackfillStartDate: row.data?.[legacyStartDateBackfillField] === true,
     _ownership: {
       createdByName: row.creator_name || row.creator_username || "Không xác định",
       createdByEmail: row.creator_email || "",
@@ -3773,7 +3797,7 @@ function normalizeRecord(input, forcedId) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw httpError(400, "Record không hợp lệ.");
   }
-  const { _ownership, ...recordData } = input;
+  const { _ownership, _canBackfillStartDate, ...recordData } = input;
   const now = new Date().toISOString();
   const id = forcedId || recordData.id || crypto.randomUUID();
   return {
@@ -3816,7 +3840,6 @@ async function applyRecordDefaults(client, collection, record) {
     if (isBlank(record.assigneeEmail)) record.assigneeEmail = emailForWorkAssignee(record.assignee);
     if (isBlank(record.progress)) record.progress = 0;
     if (record.status === "Hoàn thành") {
-      record.progress = 100;
       if (isBlank(record.completedDate)) record.completedDate = localDateString(new Date());
     }
   }
@@ -3829,11 +3852,56 @@ async function applyRecordDefaults(client, collection, record) {
 }
 
 function normalizeWorkStatus(value) {
-  const status = String(value || "").trim();
-  if (status === "Chờ phản hồi") return "Chờ phê duyệt";
-  if (status === "Tạm dừng") return "Chưa bắt đầu";
-  if (status === "Hủy") return "Chưa bắt đầu";
-  return status;
+  return String(value || "").trim();
+}
+
+function expectedWorkStatusForProgress(value) {
+  const blank = value == null || String(value).trim() === "";
+  const progress = blank ? 0 : Number(value);
+  if (!Number.isFinite(progress) || progress < 0 || progress > 100) return null;
+  if (progress === 0) return "Chưa bắt đầu";
+  if (progress < 100) return "Đang thực hiện";
+  return "Hoàn thành";
+}
+
+function validateWorkItemStatusProgress(record) {
+  const expectedStatus = expectedWorkStatusForProgress(record.progress);
+  if (!expectedStatus) {
+    throw httpError(400, "% hoàn thành phải nằm trong khoảng 0-100%.");
+  }
+  const status = normalizeWorkStatus(record.status);
+  if (status !== expectedStatus) {
+    throw httpError(400, `Trạng thái phải là "${expectedStatus}" khi % hoàn thành là ${record.progress == null || String(record.progress).trim() === "" ? "0 hoặc để trống" : record.progress}.`);
+  }
+}
+
+function normalizeWorkItemsForValidation(items) {
+  for (const record of items || []) {
+    record.status = normalizeWorkStatus(record.status);
+    if (record.progress == null || String(record.progress).trim() === "") record.progress = 0;
+  }
+  return items;
+}
+
+function assertAndPreserveWorkItemStartDate(currentRecord, incomingRecord) {
+  const current = currentRecord || {};
+  const currentStartDate = String(current.startDate || "").trim();
+  const hasIncomingStartDate = Object.prototype.hasOwnProperty.call(incomingRecord, "startDate");
+  const incomingStartDate = hasIncomingStartDate
+    ? String(incomingRecord.startDate || "").trim()
+    : currentStartDate;
+  const canBackfillLegacyDate = current[legacyStartDateBackfillField] === true;
+
+  if (incomingStartDate !== currentStartDate && (currentStartDate || !canBackfillLegacyDate)) {
+    throw httpError(409, "Ngày giao việc đã được khóa sau khi tạo và không thể thay đổi.");
+  }
+
+  incomingRecord.startDate = incomingStartDate;
+  delete incomingRecord[legacyStartDateBackfillField];
+  if (!currentStartDate && !incomingStartDate && canBackfillLegacyDate) {
+    incomingRecord[legacyStartDateBackfillField] = true;
+  }
+  return incomingRecord;
 }
 
 async function getNextWorkItemTaskId(client, categoryId) {
@@ -3950,6 +4018,10 @@ function validateRecordForCollection(collection, record, options = {}) {
     }
   }
 
+  if (collection === "workItems") {
+    validateWorkItemStatusProgress(record);
+  }
+
   if (collection === "kpiConfig") {
     const totalWeight = [
       "progressWeight",
@@ -3974,6 +4046,100 @@ function validateRecordForCollection(collection, record, options = {}) {
 
 function isBlank(value) {
   return value === "" || value == null;
+}
+
+async function ensureWorkItemInvariantMigration() {
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [workItemInvariantMigrationKey]);
+    const existing = await client.query(
+      "select value from app_meta where key = $1 for update",
+      [workItemInvariantMigrationKey]
+    );
+    if (existing.rows[0]) {
+      await client.query("commit");
+      return existing.rows[0].value;
+    }
+
+    const result = await client.query(`
+      select id, data, created_by, updated_by, created_at, updated_at
+      from uat_records
+      where collection = 'workItems'
+      order by id
+      for update
+    `);
+    const backup = result.rows.map((row) => ({
+      id: row.id,
+      data: row.data,
+      createdBy: row.created_by,
+      updatedBy: row.updated_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+    await client.query(`
+      insert into app_meta (key, value, updated_at)
+      values ($1, $2::jsonb, now())
+      on conflict (key) do nothing
+    `, [workItemInvariantBackupKey, JSON.stringify({ createdAt: new Date().toISOString(), records: backup })]);
+
+    let statusCorrections = 0;
+    let legacyBlankStartDates = 0;
+    let changedRecords = 0;
+    for (const row of result.rows) {
+      const data = { ...(row.data || {}) };
+      const expectedStatus = expectedWorkStatusForProgress(data.progress);
+      if (!expectedStatus) {
+        throw new Error(`Work item ${row.id} có % hoàn thành không hợp lệ; migration đã rollback.`);
+      }
+      let changed = false;
+      if (normalizeWorkStatus(data.status) !== expectedStatus) {
+        data.status = expectedStatus;
+        statusCorrections += 1;
+        changed = true;
+      }
+      if (!String(data.startDate || "").trim()) {
+        legacyBlankStartDates += 1;
+        if (data[legacyStartDateBackfillField] !== true) {
+          data[legacyStartDateBackfillField] = true;
+          changed = true;
+        }
+      } else if (Object.prototype.hasOwnProperty.call(data, legacyStartDateBackfillField)) {
+        delete data[legacyStartDateBackfillField];
+        changed = true;
+      }
+      validateWorkItemStatusProgress(data);
+      if (!changed) continue;
+      await client.query(`
+        update uat_records
+        set data = $1::jsonb,
+            updated_at = now()
+        where collection = 'workItems' and id = $2
+      `, [JSON.stringify(data), row.id]);
+      changedRecords += 1;
+    }
+
+    const summary = {
+      appliedAt: new Date().toISOString(),
+      totalRecords: result.rows.length,
+      changedRecords,
+      statusCorrections,
+      legacyBlankStartDates,
+      backupKey: workItemInvariantBackupKey
+    };
+    await client.query(`
+      insert into app_meta (key, value, updated_at)
+      values ($1, $2::jsonb, now())
+    `, [workItemInvariantMigrationKey, JSON.stringify(summary)]);
+    if (changedRecords) await touchMeta(client);
+    await client.query("commit");
+    return summary;
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function ensurePilotWorkPlanSeed() {

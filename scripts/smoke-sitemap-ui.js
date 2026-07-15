@@ -119,9 +119,10 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await assertRoute(page, "work/dashboard", ".work-dashboard-grid");
     await assertNoPageOverflow(page, "dashboard desktop");
     const metricLabels = await page.locator(".work-plan-summary .work-metric span").allTextContents();
-    for (const expectedLabel of ["Tổng công việc", "Chưa bắt đầu", "Đang thực hiện", "Chờ phê duyệt", "Quá hạn", "Hoàn thành"]) {
+    for (const expectedLabel of ["Tổng công việc", "Chưa bắt đầu", "Đang thực hiện", "Quá hạn", "Hoàn thành"]) {
       if (!metricLabels.includes(expectedLabel)) throw new Error(`Thiếu KPI ${expectedLabel}.`);
     }
+    if (metricLabels.includes("Chờ phê duyệt")) throw new Error("Dashboard vẫn còn KPI Chờ phê duyệt.");
     await page.screenshot({ path: dashboardShot, fullPage: true });
     await page.locator('[data-action="set-work-metric"][data-work-view="notStarted"]').click();
     await page.waitForSelector('.work-view-tab.active[data-work-view="notStarted"]');
@@ -143,15 +144,60 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await page.locator('[data-action="open-create"]').first().click();
     await page.waitForSelector("#recordForm");
     await assertOptionCount(page, "categoryId", 11);
-    await assertOptionCount(page, "status", 6);
+    await assertOptionCount(page, "status", 4);
     await assertOptionCount(page, "priority", 4);
     await assertOptionCount(page, "assignee", 11);
     await assertOptionCount(page, "collaborators", 11);
     await assertFieldLabel(page, "assignee", "Người thực hiện");
     await assertFieldLabel(page, "collaborators", "Đầu mối nghiệp vụ");
     await assertFieldLabel(page, "startDate", "Ngày giao việc");
+    if (await page.locator('[name="status"] option[value="Chờ phê duyệt"], [name="status"] option[value="Quá hạn"]').count()) {
+      throw new Error("Form tạo công việc vẫn cho phép trạng thái đã bị loại bỏ.");
+    }
+    if (await page.locator('[name="startDate"]').getAttribute("readonly") !== null) {
+      throw new Error("Ngày giao việc phải được nhập bình thường khi tạo công việc.");
+    }
+    await page.locator('[name="status"]').selectOption("Đang thực hiện");
+    await page.locator('[name="progress"]').fill("0");
+    const invalidSaveStates = await page.locator('#recordForm button[type="submit"]').evaluateAll((buttons) => buttons.map((button) => button.disabled));
+    if (!await page.locator("[data-work-status-warning]").isVisible()
+      || invalidSaveStates.length !== 2
+      || invalidSaveStates.some((disabled) => !disabled)) {
+      throw new Error("Form đầy đủ chưa cảnh báo và khóa Lưu khi trạng thái không khớp tiến độ.");
+    }
+    await page.locator('[name="progress"]').fill("50");
+    const validSaveStates = await page.locator('#recordForm button[type="submit"]').evaluateAll((buttons) => buttons.map((button) => button.disabled));
+    if (await page.locator("[data-work-status-warning]").isVisible()
+      || validSaveStates.some(Boolean)) {
+      throw new Error("Form đầy đủ chưa mở lại nút Lưu sau khi trạng thái và tiến độ hợp lệ.");
+    }
     if (await page.locator('[name="assigneeEmail"]').count()) {
       throw new Error("Email người thực hiện là field kỹ thuật và không được hiện trong form người dùng.");
+    }
+    await page.locator('[data-action="close-modal"]').first().click();
+    const editWorkItem = page.locator('[data-action="open-edit"]').first();
+    if (!await editWorkItem.count()) throw new Error("Task_Master thiếu thao tác sửa để kiểm tra khóa Ngày giao việc.");
+    await editWorkItem.click();
+    await page.waitForSelector('#recordForm [name="startDate"]');
+    if (await page.locator('#recordForm [name="startDate"]').getAttribute("readonly") === null
+      || !await page.locator(".field-lock-note").isVisible()) {
+      throw new Error("Form sửa chưa khóa và giải thích trường Ngày giao việc.");
+    }
+    await page.locator('[data-action="close-modal"]').first().click();
+    const progressAction = page.locator('[data-action="open-work-progress"]').first();
+    if (!await progressAction.count()) throw new Error("Task_Master thiếu form cập nhật tiến độ.");
+    await progressAction.click();
+    await page.waitForSelector(".work-progress-modal");
+    await page.locator('[name="status"]').selectOption("Đang thực hiện");
+    await page.locator('[name="progress"]').fill("0");
+    if (!await page.locator("[data-work-status-warning]").isVisible()
+      || !await page.locator('.work-progress-modal button[type="submit"]').isDisabled()) {
+      throw new Error("Form cập nhật tiến độ chưa chặn cặp trạng thái và phần trăm sai.");
+    }
+    await page.locator('[name="progress"]').fill("25");
+    if (await page.locator("[data-work-status-warning]").isVisible()
+      || await page.locator('.work-progress-modal button[type="submit"]').isDisabled()) {
+      throw new Error("Form cập nhật tiến độ chưa mở lại Lưu sau khi dữ liệu hợp lệ.");
     }
     await page.locator('[data-action="close-modal"]').first().click();
     await assertRoute(page, "work/inputs", ".input-catalog-grid");
@@ -450,6 +496,7 @@ async function buildFixtureState() {
   ];
   const now = new Date().toISOString();
   for (const row of buildPilotWorkPlanSeedRecords(now)) state[row.collection].push(row.data);
+  if (state.workItems[0]) state.workItems[0].startDate = "2026-07-01";
   state.kpiConfig = [{ ...defaultKpiConfig }];
   state.memberKpiInputs = [];
   applyWorkbookRules(state);

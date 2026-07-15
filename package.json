@@ -16,6 +16,7 @@
     "check:tester-mapping": "node scripts/check-tester-mapping.js",
     "check:work-kpi": "node scripts/check-work-kpi.js",
     "check:group-editor": "node scripts/check-group-editor-policy.js",
+    "check:work-item-invariants": "node scripts/check-work-item-invariants.js",
     "import:workbook:db": "node scripts/import-workbook-to-db.js",
     "sync:handoff-sections": "node scripts/sync-handoff-sections.js",
     "smoke:dashboard": "node scripts/smoke-dashboard.js",

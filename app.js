@@ -132,7 +132,8 @@ const priorityOptions = ["Critical", "Cao", "Trung bình", "Thấp"];
 const decisionOptions = ["Chưa quyết định", "Sẵn sàng", "Có điều kiện", "Chưa sẵn sàng"];
 const assessmentOptions = ["Tốt", "Cần theo dõi", "Rủi ro", "Blocker"];
 const workCategoryStatusOptions = ["Đang theo dõi", "Hoàn thành", "Tạm dừng"];
-const workStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Chờ phê duyệt", "Quá hạn", "Hoàn thành"];
+const workStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Hoàn thành"];
+const workStatusSummaryOptions = ["Chưa bắt đầu", "Đang thực hiện", "Quá hạn", "Hoàn thành"];
 const workPriorityOptions = ["Cao", "Trung bình", "Thấp"];
 const workAssigneeOptions = [
     "Bùi Thị Mai Phương",
@@ -1924,7 +1925,7 @@ function renderWorkDashboardPage() {
                         <div class="panel-title"><i class="fa-solid fa-chart-simple"></i><div><h2>Trạng thái công việc</h2><span>${e(stats.total)} đầu việc · quá hạn là cảnh báo giao cắt</span></div></div>
                     </div>
                     <div class="panel-body">
-                        ${workStatusOptions.map((status) => {
+                        ${workStatusSummaryOptions.map((status) => {
                             const count = workRows.filter((row) => status === "Quá hạn" ? row.warning === "Quá hạn" : row.status === status).length;
                             const percent = stats.total ? Math.round((count / stats.total) * 100) : 0;
                             return `<div class="status-breakdown-row"><span>${renderWorkStatus(status)}</span><div><i style="width:${e(percent)}%"></i></div><strong>${e(count)}</strong></div>`;
@@ -1943,7 +1944,6 @@ function renderWorkSummaryStrip(stats, includeCategories = false) {
             ${renderWorkMetric("Tổng công việc", stats.total, "fa-list-check", "blue", "all")}
             ${renderWorkMetric("Chưa bắt đầu", stats.notStarted, "fa-circle-pause", "gray", "notStarted")}
             ${renderWorkMetric("Đang thực hiện", stats.inProgress, "fa-person-running", "blue", "inProgress")}
-            ${renderWorkMetric("Chờ phê duyệt", stats.pendingApproval, "fa-clock", "yellow", "approval")}
             ${renderWorkMetric("Quá hạn", stats.overdue, "fa-triangle-exclamation", "red", "overdue", "Cảnh báo giao cắt: các việc chưa hoàn thành đã quá deadline")}
             ${renderWorkMetric("Hoàn thành", stats.done, "fa-circle-check", "green", "done")}
         </section>
@@ -2032,10 +2032,9 @@ function getWorkGroupStats(categoryId) {
     const done = rows.filter((row) => row.status === "Hoàn thành").length;
     const notStarted = rows.filter((row) => row.status === "Chưa bắt đầu").length;
     const inProgress = rows.filter((row) => row.status === "Đang thực hiện").length;
-    const pendingApproval = rows.filter((row) => row.status === "Chờ phê duyệt").length;
     const overdue = rows.filter((row) => getWorkItemWarning(row) === "Quá hạn").length;
     const progress = rows.length ? rows.reduce((sum, row) => sum + Number(row.progress || 0), 0) / rows.length : 0;
-    return { total: rows.length, done, notStarted, inProgress, pendingApproval, overdue, progress };
+    return { total: rows.length, done, notStarted, inProgress, overdue, progress };
 }
 
 function renderT01SheetSummary(tabId) {
@@ -2327,7 +2326,6 @@ function getT01FeatureState(row) {
     const status = String(row?.status || "").trim().toLowerCase();
     if (!status || status === "chưa bắt đầu") return "notStarted";
     if (status === "done uat" || status === "hoàn thành") return "done";
-    if (status === "chờ phê duyệt") return "approval";
     return "inProgress";
 }
 
@@ -3340,7 +3338,6 @@ function renderWorkPlanModule() {
                 ${renderWorkMetric("Tổng đầu việc", stats.total, "fa-list-check", "blue", "all")}
                 ${renderWorkMetric("Chưa bắt đầu", stats.notStarted, "fa-circle-pause", "gray", "notStarted")}
                 ${renderWorkMetric("Đang thực hiện", stats.inProgress, "fa-person-running", "blue", "inProgress")}
-                ${renderWorkMetric("Chờ phê duyệt", stats.pendingApproval, "fa-clock", "yellow", "approval")}
                 ${renderWorkMetric("Quá hạn", stats.overdue, "fa-triangle-exclamation", "red", "overdue", "Cảnh báo giao cắt: các việc chưa hoàn thành đã quá deadline")}
                 ${renderWorkMetric("Hoàn thành", stats.done, "fa-circle-check", "green", "done")}
             </section>
@@ -3447,11 +3444,10 @@ function renderWorkViewTabs(stats) {
         { id: "notStarted", label: "Chưa bắt đầu", count: stats.notStarted },
         { id: "inProgress", label: "Đang thực hiện", count: stats.inProgress },
         { id: "open", label: "Chưa hoàn thành", count: stats.open },
-        { id: "approval", label: "Chờ duyệt", count: stats.pendingApproval },
         { id: "overdue", label: "Quá hạn", count: stats.overdue },
         { id: "done", label: "Hoàn thành", count: stats.done }
     ];
-    const current = ui.workView || "all";
+    const current = ui.workView === "approval" ? "all" : (ui.workView || "all");
     return `
         <div class="work-view-tabs" role="tablist" aria-label="Chế độ xem kế hoạch">
             ${views.map((view) => `
@@ -3644,10 +3640,9 @@ function getWorkPlanStats() {
     const overdue = rows.filter((row) => getWorkItemWarning(row) === "Quá hạn").length;
     const mine = rows.filter(isAssignedWorkItem).length;
     const inProgress = rows.filter((row) => row.status === "Đang thực hiện").length;
-    const pendingApproval = rows.filter((row) => row.status === "Chờ phê duyệt").length;
     const open = rows.filter((row) => String(row.status || "") !== "Hoàn thành").length;
     const averageProgress = rows.length ? Math.round(rows.reduce((total, row) => total + Number(row.progress || 0), 0) / rows.length) : 0;
-    return { categories: categories.length, total: rows.length, mine, open, notStarted, inProgress, pendingApproval, done, overdue, averageProgress };
+    return { categories: categories.length, total: rows.length, mine, open, notStarted, inProgress, done, overdue, averageProgress };
 }
 
 function getFilteredWorkRows(forcedCategoryId = "") {
@@ -3663,12 +3658,11 @@ function getFilteredWorkRows(forcedCategoryId = "") {
             return !selected || String(row[filter.key] || "") === String(selected);
         });
         if (!matchLegacyFilters) return false;
-        const view = ui.workView || "all";
+        const view = ui.workView === "approval" ? "all" : (ui.workView || "all");
         if (view === "mine" && !isAssignedWorkItem(row)) return false;
         if (view === "notStarted" && String(row.status || "") !== "Chưa bắt đầu") return false;
         if (view === "inProgress" && String(row.status || "") !== "Đang thực hiện") return false;
         if (view === "open" && String(row.status || "") === "Hoàn thành") return false;
-        if (view === "approval" && String(row.status || "") !== "Chờ phê duyệt") return false;
         if (view === "overdue" && row.warning !== "Quá hạn") return false;
         if (view === "done" && String(row.status || "") !== "Hoàn thành") return false;
         return mod.columns.every((col) => {
@@ -4648,6 +4642,7 @@ function renderModal() {
                     <div class="record-form-layout">
                         <div class="form-grid">
                             ${editableFields.map((field) => renderField(field, row)).join("")}
+                            ${mod.collection === "workItems" ? renderWorkStatusProgressWarning() : ""}
                         </div>
                         <aside class="record-rail">
                             <div class="rail-card">
@@ -4738,6 +4733,7 @@ function renderWorkProgressModal() {
                                 <label>Vướng mắc / ghi chú</label>
                                 <textarea class="field-textarea" name="note" placeholder="Ghi vướng mắc, kết quả xử lý hoặc nội dung cần sếp hỗ trợ">${e(row.note || "")}</textarea>
                             </div>
+                            ${renderWorkStatusProgressWarning()}
                         </div>
                         <aside class="record-rail">
                             <div class="rail-card">
@@ -4765,6 +4761,15 @@ function renderWorkProgressModal() {
                     </button>
                 </div>
             </form>
+        </div>
+    `;
+}
+
+function renderWorkStatusProgressWarning() {
+    return `
+        <div class="work-status-warning field full" data-work-status-warning role="alert" aria-live="polite" hidden>
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span></span>
         </div>
     `;
 }
@@ -5105,12 +5110,18 @@ function renderField(field, row) {
         ? authState.user?.name || authState.user?.username || ""
         : authState.user?.email || authState.user?.username || "";
     const value = selfAssignmentField ? selfAssignmentValue : row ? row[field.key] ?? "" : getDefaultFieldValue(field);
+    const lockedWorkStartDate = ui.modal?.tab === "workItems"
+        && field.key === "startDate"
+        && Boolean(row)
+        && row?._canBackfillStartDate !== true;
     const required = field.required ? "required" : "";
     const label = e(field.label);
     const wrapper = `field ${field.full ? "full" : ""}`;
     let control = "";
     if (selfAssignmentField) {
         control = `<input class="field-input" name="${e(field.key)}" type="text" value="${e(value)}" readonly aria-readonly="true">`;
+    } else if (lockedWorkStartDate) {
+        control = `<input class="field-input is-locked" name="${e(field.key)}" type="date" value="${e(value)}" readonly aria-readonly="true" data-locked-start-date>`;
     } else if (field.type === "select") {
         const options = getFieldOptions(field);
         control = `
@@ -5148,12 +5159,15 @@ function renderField(field, row) {
         <div class="${wrapper}">
             <label>${label}${field.required ? `<span class="required-chip">Bắt buộc</span>` : ""}</label>
             ${control}
+            ${lockedWorkStartDate ? `<small class="field-lock-note"><i class="fa-solid fa-lock"></i> Đã khóa sau khi tạo công việc.</small>` : ""}
         </div>
     `;
 }
 
 function bindWorkItemFormHelpers(form) {
-    if (ui.modal?.tab !== "workItems" || ui.modal?.mode === "work-progress") return;
+    if (ui.modal?.tab !== "workItems") return;
+    bindWorkStatusProgressValidation(form);
+    if (ui.modal?.mode === "work-progress") return;
     const categorySelect = form.elements.categoryId;
     const taskInput = form.elements.taskId;
     const assigneeSelect = form.elements.assignee;
@@ -5175,6 +5189,50 @@ function bindWorkItemFormHelpers(form) {
             }
         });
     }
+}
+
+function expectedWorkStatusForProgress(value) {
+    const blank = value == null || String(value).trim() === "";
+    const progress = blank ? 0 : Number(value);
+    if (!Number.isFinite(progress) || progress < 0 || progress > 100) return null;
+    if (progress === 0) return "Chưa bắt đầu";
+    if (progress < 100) return "Đang thực hiện";
+    return "Hoàn thành";
+}
+
+function getWorkStatusProgressIssue(status, progress) {
+    const expectedStatus = expectedWorkStatusForProgress(progress);
+    if (!expectedStatus) return "% hoàn thành phải nằm trong khoảng 0-100%.";
+    if (String(status || "").trim() === expectedStatus) return "";
+    const progressLabel = progress == null || String(progress).trim() === "" ? "0 hoặc để trống" : `${progress}%`;
+    return `${progressLabel} chỉ hợp lệ với trạng thái “${expectedStatus}”.`;
+}
+
+function bindWorkStatusProgressValidation(form) {
+    const statusInput = form.elements.status;
+    const progressInput = form.elements.progress;
+    const warning = form.querySelector("[data-work-status-warning]");
+    if (!statusInput || !progressInput || !warning) return;
+    const warningText = warning.querySelector("span");
+    const submitButtons = [...form.querySelectorAll('button[type="submit"]')];
+    const updateValidation = () => {
+        const issue = getWorkStatusProgressIssue(statusInput.value, progressInput.value);
+        const invalid = Boolean(issue);
+        for (const input of [statusInput, progressInput]) {
+            input.classList.toggle("is-invalid", invalid);
+            input.setAttribute("aria-invalid", invalid ? "true" : "false");
+        }
+        warning.hidden = !invalid;
+        if (warningText) warningText.textContent = issue;
+        submitButtons.forEach((button) => {
+            button.disabled = invalid;
+            button.setAttribute("aria-disabled", invalid ? "true" : "false");
+        });
+    };
+    statusInput.addEventListener("change", updateValidation);
+    progressInput.addEventListener("input", updateValidation);
+    progressInput.addEventListener("change", updateValidation);
+    updateValidation();
 }
 
 function renderEmpty(icon, title, text, compact = false, mod = null) {
@@ -6263,7 +6321,7 @@ function setWorkCategoryFilter(id) {
 }
 
 function setWorkView(view) {
-    ui.workView = view || "all";
+    ui.workView = view === "approval" ? "all" : (view || "all");
     ui.openColumnFilter = null;
     resetTablePage("workItems");
     render();
@@ -6275,7 +6333,7 @@ function setWorkMetric(view) {
         : ui.filters["workItems:categoryId"] || "";
     const stayInPlace = ui.activeView === "task-master"
         || (ui.activeView === "work-group" && ui.activeCategoryId !== "pilot-t01");
-    ui.workView = view || "all";
+    ui.workView = view === "approval" ? "all" : (view || "all");
     ui.query = "";
     ui.openColumnFilter = null;
     Object.keys(ui.filters)
@@ -6361,19 +6419,16 @@ async function handleSubmit(event) {
         }
         if (!payload.assigneeEmail) payload.assigneeEmail = emailForWorkAssignee(payload.assignee);
         if (!payload.taskId && payload.categoryId) payload.taskId = getNextWorkItemTaskIdForCategory(payload.categoryId);
-        if (payload.status === "Hoàn thành") {
-            payload.progress = 100;
-            if (!payload.completedDate) payload.completedDate = todayStamp();
-        }
-        if (payload.status === "Chưa bắt đầu" && payload.progress === "") {
-            payload.progress = 0;
-        }
+        if (payload.progress === "") payload.progress = 0;
     }
 
     const validationErrors = validateRecord(mod, payload);
     if (validationErrors.length) {
         showToast(validationErrors[0]);
         return;
+    }
+    if (mod.collection === "workItems" && payload.status === "Hoàn thành" && !payload.completedDate) {
+        payload.completedDate = todayStamp();
     }
 
     const now = new Date().toISOString();
@@ -6456,9 +6511,13 @@ async function handleWorkProgressSubmit(event) {
         note: String(form.elements.note?.value || "").trim(),
         updatedAt: now
     };
-    if (record.status === "Hoàn thành") {
-        record.progress = 100;
-        if (!record.completedDate) record.completedDate = todayStamp();
+    const statusProgressIssue = getWorkStatusProgressIssue(record.status, record.progress);
+    if (statusProgressIssue) {
+        showToast(statusProgressIssue);
+        return;
+    }
+    if (record.status === "Hoàn thành" && !record.completedDate) {
+        record.completedDate = todayStamp();
     }
     ui.saving = true;
     try {
@@ -6870,7 +6929,6 @@ function emailForWorkAssignee(name) {
 function getWorkItemWarning(row) {
     const status = String(row?.status || "").trim();
     if (status === "Hoàn thành") return "Đã xong";
-    if (status === "Quá hạn") return "Quá hạn";
     const dueDate = parseDateOnly(row?.dueDate);
     if (!dueDate) return Number(row?.progress || 0) >= 80 ? "Ổn" : "Đang theo dõi";
     const today = getTodayDateOnly();
@@ -6957,6 +7015,10 @@ function validateRecord(mod, payload) {
     });
     if (payload.totalCases !== "" && payload.executedCases !== "" && Number(payload.executedCases) > Number(payload.totalCases)) {
         errors.push("Số testcase đã thực hiện không được lớn hơn tổng testcase.");
+    }
+    if (mod.collection === "workItems") {
+        const issue = getWorkStatusProgressIssue(payload.status, payload.progress);
+        if (issue) errors.push(issue);
     }
     return errors;
 }
@@ -7223,9 +7285,8 @@ function renderWorkStatus(value) {
     const text = String(value || "");
     const tone = text === "Hoàn thành" ? "green"
         : text === "Đang thực hiện" ? "blue"
-            : text === "Chờ phê duyệt" ? "yellow"
-                : text === "Quá hạn" ? "red"
-                    : "gray";
+            : text === "Quá hạn" ? "red"
+                : "gray";
     return tag(value, tone);
 }
 
