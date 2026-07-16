@@ -1087,10 +1087,19 @@ function getSidebarRouteBranch(route) {
             group: ["personnel-list", "personnel-map", "personnel-kpi"].includes(view) ? "personnel" : null
         };
     }
+    const workStage = view === "work-group" ? getSidebarWorkStage(route?.categoryId) : null;
     return {
         section: "work",
-        group: view === "work-group" ? "workGroups" : null
+        group: view === "work-group" ? "workGroups" : null,
+        subgroup: workStage
     };
+}
+
+function getSidebarWorkStage(categoryId) {
+    const id = String(categoryId || "").trim().toLowerCase();
+    if (["pilot-t01", "pilot-t02"].includes(id)) return "uat";
+    if (["pilot-t03", "pilot-t04", "pilot-t05", "pilot-t06", "pilot-t07"].includes(id)) return "prePilot";
+    return null;
 }
 
 function readSidebarAccordionPreference() {
@@ -1100,11 +1109,13 @@ function readSidebarAccordionPreference() {
             openSection: ["common", "work"].includes(stored?.openSection) ? stored.openSection : null,
             openGroups: {
                 personnel: Boolean(stored?.openGroups?.personnel),
-                workGroups: Boolean(stored?.openGroups?.workGroups)
+                workGroups: Boolean(stored?.openGroups?.workGroups),
+                uat: Boolean(stored?.openGroups?.uat),
+                prePilot: Boolean(stored?.openGroups?.prePilot)
             }
         };
     } catch {
-        return { openSection: null, openGroups: { personnel: false, workGroups: false } };
+        return { openSection: null, openGroups: { personnel: false, workGroups: false, uat: false, prePilot: false } };
     }
 }
 
@@ -1113,6 +1124,10 @@ function getInitialSidebarAccordionState(route) {
     const branch = getSidebarRouteBranch(route);
     const openGroups = { ...stored.openGroups };
     if (branch.group) openGroups[branch.group] = true;
+    if (branch.subgroup) {
+        openGroups.uat = branch.subgroup === "uat";
+        openGroups.prePilot = branch.subgroup === "prePilot";
+    }
     return { openSection: branch.section, openGroups };
 }
 
@@ -1128,7 +1143,9 @@ function syncSidebarAccordionForRoute(route) {
     ui.sidebarOpenSection = branch.section;
     ui.sidebarOpenGroups = {
         personnel: branch.group === "personnel",
-        workGroups: branch.group === "workGroups"
+        workGroups: branch.group === "workGroups",
+        uat: branch.subgroup === "uat",
+        prePilot: branch.subgroup === "prePilot"
     };
     persistSidebarAccordionState();
 }
@@ -1149,7 +1166,9 @@ function applySidebarAccordionDomState() {
     });
     const groupStates = {
         personnel: ui.sidebarOpenGroups.personnel,
-        workGroups: ui.sidebarOpenGroups.workGroups
+        workGroups: ui.sidebarOpenGroups.workGroups,
+        uat: ui.sidebarOpenGroups.uat,
+        prePilot: ui.sidebarOpenGroups.prePilot
     };
     Object.entries(groupStates).forEach(([key, expanded]) => {
         const toggle = document.querySelector(`[data-sidebar-group="${key}"]`);
@@ -1688,16 +1707,29 @@ function renderLoginPage() {
 
 function renderSidebar() {
     const categories = getWorkCategories();
+    const uatCategories = categories.filter((category) => getSidebarWorkStage(category.id) === "uat");
+    const prePilotCategories = categories.filter((category) => getSidebarWorkStage(category.id) === "prePilot");
+    const standaloneCategories = categories.filter((category) => !getSidebarWorkStage(category.id));
     const sidebarToggleLabel = ui.sidebarCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên";
     const railMode = ui.sidebarCollapsed && window.innerWidth > 820;
     const commonActive = ui.activeRoute.startsWith("common/");
     const workActive = !commonActive;
     const personnelActive = ["personnel-list", "personnel-map", "personnel-kpi"].includes(ui.activeView);
     const workGroupsActive = ui.activeView === "work-group";
+    const activeWorkStage = workGroupsActive ? getSidebarWorkStage(ui.activeCategoryId) : null;
     const commonExpanded = railMode || ui.sidebarOpenSection === "common";
     const workExpanded = railMode || ui.sidebarOpenSection === "work";
     const personnelExpanded = railMode || ui.sidebarOpenGroups.personnel;
     const workGroupsExpanded = railMode || ui.sidebarOpenGroups.workGroups;
+    const uatExpanded = railMode || ui.sidebarOpenGroups.uat;
+    const prePilotExpanded = railMode || ui.sidebarOpenGroups.prePilot;
+    const renderWorkCategoryLink = (category, label, level = 3) => renderSidebarRouteButton(
+        `work/group/${category.id}${category.id === "pilot-t01" ? `/${ui.t01Tab || "dashboard"}` : ""}`,
+        "fa-circle",
+        label,
+        level,
+        workGroupsActive && ui.activeCategoryId === category.id
+    );
     return `
         <aside class="sidebar navigation-tree ${ui.sidebarCollapsed ? "collapsed" : ""} ${ui.sidebarMobileOpen ? "mobile-open" : ""}" aria-label="Điều hướng chính" data-sidebar-state="${ui.sidebarCollapsed ? "collapsed" : "expanded"}">
             <div class="sidebar-logo">
@@ -1748,13 +1780,29 @@ function renderSidebar() {
                             </button>
                             <div id="sidebar-group-workGroups" class="tree-accordion-panel tree-group-content ${workGroupsExpanded ? "is-expanded" : ""}" aria-hidden="${!workGroupsExpanded}" ${workGroupsExpanded ? "" : "inert"}>
                                 <div class="tree-accordion-inner tree-category-list">
-                                    ${categories.map((category) => renderSidebarRouteButton(
-                                        `work/group/${category.id}${category.id === "pilot-t01" ? `/${ui.t01Tab || "dashboard"}` : ""}`,
-                                        "fa-circle",
-                                        `${Math.max(0, Math.trunc(Number(category.sortOrder || 1)) - 1)}. ${getWorkCategoryShortName(category)}`,
-                                        2,
-                                        ui.activeView === "work-group" && ui.activeCategoryId === category.id
-                                    )).join("")}
+                                    <div class="tree-work-stage tree-stage-placeholder" title="URD — chưa cấu hình nhóm công việc" aria-disabled="true">
+                                        <i class="fa-solid fa-angles-right" aria-hidden="true"></i><b>URD</b>
+                                    </div>
+                                    <div class="tree-work-stage tree-stage-placeholder" title="RSD — chưa cấu hình nhóm công việc" aria-disabled="true">
+                                        <i class="fa-solid fa-angles-right" aria-hidden="true"></i><b>RSD</b>
+                                    </div>
+                                    <button id="sidebar-group-uat-toggle" class="tree-parent tree-group-toggle tree-work-stage ${activeWorkStage === "uat" ? "branch-active" : ""} ${uatExpanded ? "is-expanded" : ""}" type="button" data-action="toggle-sidebar-group" data-sidebar-group="uat" aria-expanded="${uatExpanded}" aria-controls="sidebar-group-uat" title="UAT">
+                                        <i class="fa-regular fa-folder" aria-hidden="true"></i><b>UAT</b><i class="fa-solid fa-chevron-right tree-toggle-chevron" aria-hidden="true"></i>
+                                    </button>
+                                    <div id="sidebar-group-uat" class="tree-accordion-panel tree-work-stage-content ${uatExpanded ? "is-expanded" : ""}" aria-hidden="${!uatExpanded}" ${uatExpanded ? "" : "inert"}>
+                                        <div class="tree-accordion-inner">
+                                            ${uatCategories.map((category, index) => renderWorkCategoryLink(category, `${index + 1}. ${getWorkCategoryShortName(category)}`)).join("")}
+                                        </div>
+                                    </div>
+                                    <button id="sidebar-group-prePilot-toggle" class="tree-parent tree-group-toggle tree-work-stage ${activeWorkStage === "prePilot" ? "branch-active" : ""} ${prePilotExpanded ? "is-expanded" : ""}" type="button" data-action="toggle-sidebar-group" data-sidebar-group="prePilot" aria-expanded="${prePilotExpanded}" aria-controls="sidebar-group-prePilot" title="Pre-Pilot">
+                                        <i class="fa-regular fa-folder" aria-hidden="true"></i><b>Pre-Pilot</b><i class="fa-solid fa-chevron-right tree-toggle-chevron" aria-hidden="true"></i>
+                                    </button>
+                                    <div id="sidebar-group-prePilot" class="tree-accordion-panel tree-work-stage-content ${prePilotExpanded ? "is-expanded" : ""}" aria-hidden="${!prePilotExpanded}" ${prePilotExpanded ? "" : "inert"}>
+                                        <div class="tree-accordion-inner">
+                                            ${prePilotCategories.map((category, index) => renderWorkCategoryLink(category, `${index + 1}. ${getWorkCategoryShortName(category)}`)).join("")}
+                                        </div>
+                                    </div>
+                                    ${standaloneCategories.map((category) => renderWorkCategoryLink(category, getWorkCategoryShortName(category), 2)).join("")}
                                 </div>
                             </div>
                         </div>
@@ -3578,7 +3626,7 @@ function getWorkCategoryShortName(category) {
         "SQ2-T01": "Kiểm thử chức năng",
         "SQ2-T02": "Kiểm thử luồng",
         "SQ2-T03": "HDSD Lending Hub",
-        "SQ2-T04": "Quick Guide tác nghiệp",
+        "SQ2-T04": "Quy trình tác nghiệp",
         "SQ2-T05": "HDSD vận hành",
         "SQ2-T06": "Quy định vận hành",
         "SQ2-T07": "Tài liệu đào tạo",
@@ -6198,19 +6246,27 @@ function handleAction(event) {
     }
     if (action === "toggle-sidebar-group") {
         const group = event.currentTarget.dataset.sidebarGroup;
-        if (!["personnel", "workGroups"].includes(group)) return;
+        if (!["personnel", "workGroups", "uat", "prePilot"].includes(group)) return;
         const section = group === "personnel" ? "common" : "work";
+        const nestedWorkStage = ["uat", "prePilot"].includes(group);
         if (ui.sidebarCollapsed && window.innerWidth > 820) {
             ui.sidebarCollapsed = false;
             localStorage.setItem("squad2-sidebar-collapsed", "false");
             ui.sidebarOpenSection = section;
+            if (nestedWorkStage) ui.sidebarOpenGroups.workGroups = true;
             ui.sidebarOpenGroups[group] = true;
+            if (nestedWorkStage) ui.sidebarOpenGroups[group === "uat" ? "prePilot" : "uat"] = false;
             persistSidebarAccordionState();
             render();
             return;
         }
         ui.sidebarOpenSection = section;
-        ui.sidebarOpenGroups[group] = !ui.sidebarOpenGroups[group];
+        const opening = !ui.sidebarOpenGroups[group];
+        if (nestedWorkStage) {
+            ui.sidebarOpenGroups.workGroups = true;
+            ui.sidebarOpenGroups[group === "uat" ? "prePilot" : "uat"] = false;
+        }
+        ui.sidebarOpenGroups[group] = opening;
         persistSidebarAccordionState();
         applySidebarAccordionDomState();
         return;
