@@ -140,6 +140,7 @@ const defaultWorkKpiConfig = {
   disciplineTarget: 95
 };
 const pilotWorkPlanSeedKey = "pilot_workplan_seed_v1";
+const deliveryWorkCategoriesMigrationKey = "delivery_work_categories_v1";
 const workItemInvariantMigrationKey = "work_item_status_progress_v1";
 const workItemInvariantBackupKey = "backup_work_item_status_progress_v1";
 const legacyStartDateBackfillField = "_allowStartDateBackfill";
@@ -166,8 +167,12 @@ const pilotWorkCategories = [
   { id: "pilot-t07", sortOrder: 7, taskPrefix: "SQ2-T07", name: "Xây dựng Tài liệu đào tạo hệ thống Lending Hub", description: "Danh sách deliverable theo ảnh sếp gửi ngày 09/07.", targetDate: "" },
   { id: "pilot-t08", sortOrder: 8, taskPrefix: "SQ2-T08", name: "Tham gia ý kiến", description: "Theo dõi các đầu việc góp ý, rà soát và phản hồi tài liệu Pilot.", targetDate: "" },
   { id: "pilot-t09", sortOrder: 9, taskPrefix: "SQ2-T09", name: "Công tác Báo cáo", description: "Nguồn: Phụ lục báo cáo Squad 02 trong tài liệu Quy định vận hành.", targetDate: "" },
-  { id: "pilot-t10", sortOrder: 10, taskPrefix: "SQ2-T10", name: "Các công việc khác", description: "Nhóm mở để sếp/admin bổ sung việc phát sinh.", targetDate: "" }
+  { id: "pilot-t10", sortOrder: 10, taskPrefix: "SQ2-T10", name: "Các công việc khác", description: "Nhóm mở để sếp/admin bổ sung việc phát sinh.", targetDate: "" },
+  { id: "delivery-urd", sortOrder: 11, taskPrefix: "SQ2-URD", name: "URD", description: "Theo dõi các công việc liên quan đến tài liệu yêu cầu người dùng (URD).", targetDate: "" },
+  { id: "delivery-rsd", sortOrder: 12, taskPrefix: "SQ2-RSD", name: "RSD", description: "Theo dõi các công việc liên quan đến tài liệu đặc tả yêu cầu (RSD).", targetDate: "" }
 ];
+const deliveryWorkCategories = pilotWorkCategories.filter((category) => ["delivery-urd", "delivery-rsd"].includes(category.id));
+const protectedWorkCategoryIds = new Set(["pilot-t01", ...deliveryWorkCategories.map((category) => category.id)]);
 const pilotWorkSeedItems = [
   { categoryId: "pilot-t03", title: "Tiếp nhận hồ sơ", assignee: "Phạm Anh Tuấn", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P27)" },
   { categoryId: "pilot-t03", title: "Phân bổ tự động (Common Pool)", assignee: "Phạm Anh Tuấn", dueDate: "2026-07-15", source: "1_TL HDSD_Squad2_v1 (P29)" },
@@ -893,6 +898,28 @@ app.get("/api/export/excel", asyncHandler(async (req, res) => {
   res.send(Buffer.from(buffer));
 }));
 
+app.get("/api/export/work-items", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const filters = parseWorkItemExportFilters(req.query);
+  const state = applyWorkbookRulesForResponse(await readState(getPool()));
+  const category = collectionRows(state, "workCategories")
+    .find((row) => String(row.id || "") === filters.categoryId);
+  if (!category) throw httpError(404, "Không tìm thấy nhóm công việc cần xuất.");
+
+  const workbook = buildWorkItemsExportWorkbook(state, filters);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const filenameParts = [
+    safeFilenamePart(category.taskPrefix || category.name || "cong-viec"),
+    filters.fromDate || "dau-ky",
+    filters.toDate || "cuoi-ky"
+  ];
+  const filename = `${filenameParts.join("-")}.xlsx`;
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(Buffer.from(buffer));
+}));
+
 app.post("/api/import/excel", requireAdmin, express.raw({
   type: () => true,
   limit: requestBodyLimit
@@ -1101,9 +1128,10 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     if (["kpiConfig", "memberKpiInputs"].includes(collection) && !canManageWorkCategories(req.user)) {
       throw httpError(403, "Chỉ admin được cập nhật cấu hình KPI.");
     }
-    if (collection === "workCategories" && req.params.id === "pilot-t01") {
-      record.taskPrefix = current.data?.taskPrefix || "SQ2-T01";
-      record.sortOrder = current.data?.sortOrder || 1;
+    if (collection === "workCategories" && protectedWorkCategoryIds.has(req.params.id)) {
+      const systemCategory = pilotWorkCategories.find((category) => category.id === req.params.id);
+      record.taskPrefix = current.data?.taskPrefix || systemCategory?.taskPrefix || "SQ2-T01";
+      record.sortOrder = current.data?.sortOrder ?? systemCategory?.sortOrder ?? 1;
     }
     if (collection === "workItems" && !scopedWorkItemEditor && !canFullyManageWorkItem(req.user, current)) {
       record = mergeWorkItemProgressUpdate(current.data, record);
@@ -1158,8 +1186,8 @@ app.delete("/api/records/:collection/:id", asyncHandler(async (req, res) => {
       throw httpError(409, "Cấu hình KPI mặc định không thể xóa.");
     }
     if (collection === "workCategories") {
-      if (req.params.id === "pilot-t01") {
-        throw httpError(409, "Nhóm Kiểm thử chức năng là nhóm hệ thống và không thể xóa.");
+      if (protectedWorkCategoryIds.has(req.params.id)) {
+        throw httpError(409, "Đây là nhóm công việc hệ thống và không thể xóa.");
       }
       const linked = await client.query(`
         select count(*)::integer as count
@@ -1241,6 +1269,9 @@ module.exports = {
   computedFieldsByCollection,
   isComputedRecordField,
   buildExcelWorkbook,
+  buildWorkItemsExportWorkbook,
+  filterWorkItemsForExport,
+  parseWorkItemExportFilters,
   excelSheets,
   loginIdentifierCandidates,
   tryAnswerAiShortcut,
@@ -1348,6 +1379,7 @@ function ensureSchema() {
       await ensureDefaultUsers();
       await ensureExclusiveAdminRoles();
       await ensurePilotWorkPlanSeed();
+      await ensureDeliveryWorkCategories();
       await ensureWorkItemInvariantMigration();
       await ensureWorkKpiConfig();
     })().catch((error) => {
@@ -2655,6 +2687,91 @@ async function mergeWorkbookImportRecords(client, importState, actor) {
   }
 
   return { preserved, replaced };
+}
+
+function parseWorkItemExportFilters(query = {}) {
+  const categoryId = String(query.categoryId || "").trim();
+  const dateField = String(query.dateField || "startDate").trim();
+  const fromDate = String(query.fromDate || "").trim();
+  const toDate = String(query.toDate || "").trim();
+  const allowedDateFields = new Set(["startDate", "dueDate", "completedDate"]);
+  if (!categoryId) throw httpError(400, "Nhóm công việc là trường bắt buộc.");
+  if (!allowedDateFields.has(dateField)) throw httpError(400, "Mốc thời gian không hợp lệ.");
+  if (fromDate && !isIsoDateOnly(fromDate)) throw httpError(400, "Từ ngày không hợp lệ.");
+  if (toDate && !isIsoDateOnly(toDate)) throw httpError(400, "Đến ngày không hợp lệ.");
+  if (fromDate && toDate && fromDate > toDate) throw httpError(400, "Từ ngày không được sau Đến ngày.");
+  return { categoryId, dateField, fromDate, toDate };
+}
+
+function isIsoDateOnly(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function safeFilenamePart(value) {
+  return String(value || "")
+    .replace(/[đĐ]/g, (letter) => letter === "Đ" ? "D" : "d")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "cong-viec";
+}
+
+function filterWorkItemsForExport(state, filters) {
+  const normalized = parseWorkItemExportFilters(filters);
+  return collectionRows(state, "workItems").filter((item) => {
+    if (String(item.categoryId || "") !== normalized.categoryId) return false;
+    if (!normalized.fromDate && !normalized.toDate) return true;
+    const value = String(item[normalized.dateField] || "").trim();
+    if (!isIsoDateOnly(value)) return false;
+    if (normalized.fromDate && value < normalized.fromDate) return false;
+    if (normalized.toDate && value > normalized.toDate) return false;
+    return true;
+  });
+}
+
+function buildWorkItemsExportWorkbook(state, filters = {}) {
+  const normalized = parseWorkItemExportFilters(filters);
+  const category = collectionRows(state, "workCategories")
+    .find((row) => String(row.id || "") === normalized.categoryId);
+  if (!category) throw httpError(404, "Không tìm thấy nhóm công việc cần xuất.");
+  const workItems = filterWorkItemsForExport(state, normalized);
+  const exportState = {
+    ...state,
+    workCategories: [category],
+    workItems
+  };
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Squad 2 UAT Dashboard";
+  workbook.created = new Date();
+  workbook.modified = new Date();
+  addWorkPlanWorksheet(workbook, exportState);
+
+  const worksheet = workbook.getWorksheet("KeHoach_CongViec");
+  const dateLabels = {
+    startDate: "Ngày giao việc",
+    dueDate: "Deadline",
+    completedDate: "Ngày hoàn thành"
+  };
+  const rangeLabel = normalized.fromDate || normalized.toDate
+    ? `${formatExcelDateLabel(normalized.fromDate) || "đầu kỳ"} - ${formatExcelDateLabel(normalized.toDate) || "cuối kỳ"}`
+    : "Toàn bộ thời gian";
+  worksheet.mergeCells("A2:T2");
+  const scopeCell = worksheet.getCell("A2");
+  scopeCell.value = `${category.taskPrefix || ""} · ${category.name || "Nhóm công việc"} | ${dateLabels[normalized.dateField]}: ${rangeLabel} | ${workItems.length} công việc`;
+  scopeCell.font = { italic: true, color: { argb: "FF475569" } };
+  scopeCell.alignment = { vertical: "middle", horizontal: "left" };
+  worksheet.getRow(2).height = 22;
+  return workbook;
+}
+
+function formatExcelDateLabel(value) {
+  if (!isIsoDateOnly(value)) return "";
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
 }
 
 function buildExcelWorkbook(state) {
@@ -4184,6 +4301,60 @@ async function ensurePilotWorkPlanSeed() {
       items: seeded ? pilotWorkSeedItems.length : 0
     })]);
     await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function ensureDeliveryWorkCategories() {
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [deliveryWorkCategoriesMigrationKey]);
+    const nowIso = new Date().toISOString();
+    let inserted = 0;
+    for (const category of deliveryWorkCategories) {
+      const record = {
+        id: category.id,
+        sortOrder: category.sortOrder,
+        taskPrefix: category.taskPrefix,
+        name: category.name,
+        description: category.description || "",
+        owner: "",
+        targetDate: category.targetDate || "",
+        status: "Đang theo dõi",
+        note: "",
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+      validateRecordForCollection("workCategories", record);
+      const result = await client.query(`
+        insert into uat_records (collection, id, data, created_by, updated_by, created_at, updated_at)
+        values ('workCategories', $1, $2::jsonb, null, null, now(), now())
+        on conflict (collection, id) do nothing
+        returning id
+      `, [record.id, JSON.stringify(record)]);
+      inserted += result.rowCount || 0;
+    }
+    const summary = {
+      version: 1,
+      checkedAt: nowIso,
+      inserted,
+      categories: deliveryWorkCategories.map((category) => category.id)
+    };
+    await client.query(`
+      insert into app_meta (key, value, updated_at)
+      values ($1, $2::jsonb, now())
+      on conflict (key) do update
+        set value = excluded.value,
+            updated_at = excluded.updated_at
+    `, [deliveryWorkCategoriesMigrationKey, JSON.stringify(summary)]);
+    if (inserted) await touchMeta(client);
+    await client.query("commit");
+    return summary;
   } catch (error) {
     await client.query("rollback");
     throw error;

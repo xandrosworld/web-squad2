@@ -103,9 +103,9 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     }
     await workGroupToggle.click();
     await page.waitForFunction(() => document.querySelector('[data-sidebar-group="workGroups"]')?.getAttribute("aria-expanded") === "true");
-    const stagePlaceholders = (await page.locator(".tree-stage-placeholder").allTextContents()).map((value) => value.trim());
-    if (JSON.stringify(stagePlaceholders) !== JSON.stringify(["URD", "RSD"])) {
-      throw new Error(`Sidebar cần hai nhánh chờ URD/RSD, nhận ${JSON.stringify(stagePlaceholders)}.`);
+    const stageRoutes = (await page.locator(".tree-stage-route").allTextContents()).map((value) => value.trim());
+    if (JSON.stringify(stageRoutes) !== JSON.stringify(["URD", "RSD"])) {
+      throw new Error(`Sidebar cần hai màn URD/RSD, nhận ${JSON.stringify(stageRoutes)}.`);
     }
     const uatToggle = page.locator('[data-sidebar-group="uat"]');
     const prePilotToggle = page.locator('[data-sidebar-group="prePilot"]');
@@ -134,7 +134,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     if (JSON.stringify(prePilotLabels) !== JSON.stringify(expectedPrePilotLabels)) {
       throw new Error(`Nhánh Pre-Pilot chưa đúng cấu trúc: ${JSON.stringify(prePilotLabels)}.`);
     }
-    const standaloneLabels = (await page.locator("#sidebar-group-workGroups > .tree-accordion-inner > .tree-link.level-2").allTextContents()).map((value) => value.trim());
+    const standaloneLabels = (await page.locator("#sidebar-group-workGroups > .tree-accordion-inner > .tree-link.level-2:not(.tree-stage-route)").allTextContents()).map((value) => value.trim());
     if (JSON.stringify(standaloneLabels) !== JSON.stringify(["Tham gia ý kiến", "Công tác Báo cáo", "Công việc khác"])) {
       throw new Error(`Ba nhóm độc lập chưa đúng cấu trúc: ${JSON.stringify(standaloneLabels)}.`);
     }
@@ -181,7 +181,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await page.screenshot({ path: taskMasterShot, fullPage: true });
     await page.locator('[data-action="open-create"]').first().click();
     await page.waitForSelector("#recordForm");
-    await assertOptionCount(page, "categoryId", 11);
+    await assertOptionCount(page, "categoryId", 13);
     await assertOptionCount(page, "status", 4);
     await assertOptionCount(page, "priority", 4);
     await assertOptionCount(page, "assignee", 11);
@@ -370,7 +370,39 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     }
     const firstLocalOrder = (await page.locator('[data-resizable-table="workItems"] tbody tr').first().locator("td").first().textContent() || "").trim();
     if (firstLocalOrder !== "1") throw new Error(`STT đầu nhóm T03 phải là 1, nhận ${firstLocalOrder || "trống"}.`);
+    const firstWorkTitle = page.locator('.work-title-link[data-action="open-edit"]').first();
+    if (!await firstWorkTitle.isVisible()) throw new Error("Tên công việc chưa hiển thị thành liên kết sửa kế hoạch.");
+    await firstWorkTitle.click();
+    if ((await page.locator("#recordModal .modal-head h2").textContent() || "").trim() !== "Sửa Kế hoạch") {
+      throw new Error("Liên kết Tên công việc chưa mở đúng màn Sửa Kế hoạch.");
+    }
+    await page.locator('[data-action="close-modal"]').first().click();
+
+    await page.locator('[data-action="open-work-export"]').click();
+    await page.locator('#workExportForm [name="dateField"]').selectOption("dueDate");
+    await page.locator('#workExportForm [name="fromDate"]').fill("2026-07-01");
+    await page.locator('#workExportForm [name="toDate"]').fill("2026-07-31");
+    const exportCount = Number((await page.locator("[data-work-export-count]").textContent() || "0").trim());
+    if (exportCount !== 22) throw new Error(`Xuất Excel T03 cần lọc 22 việc theo Deadline tháng 7, nhận ${exportCount}.`);
+    await page.locator('#workExportForm button[type="submit"]').click();
+    await page.waitForSelector("#workExportForm", { state: "detached" });
+    if (!String(state.__lastWorkExportUrl || "").includes("categoryId=pilot-t03")
+      || !String(state.__lastWorkExportUrl || "").includes("dateField=dueDate")
+      || !String(state.__lastWorkExportUrl || "").includes("fromDate=2026-07-01")
+      || !String(state.__lastWorkExportUrl || "").includes("toDate=2026-07-31")) {
+      throw new Error(`Xuất Excel chưa gửi đúng phạm vi: ${state.__lastWorkExportUrl || "trống"}.`);
+    }
     await page.screenshot({ path: groupShot, fullPage: true });
+
+    await assertRoute(page, "work/group/delivery-urd", ".standalone-work-items");
+    if (!(await page.locator(".screen-title").textContent() || "").includes("SQ2-URD · URD")) {
+      throw new Error("Màn URD chưa dùng đầy đủ bố cục nhóm công việc.");
+    }
+    if (!await page.locator('[data-action="open-work-export"]').isVisible()) throw new Error("Màn URD thiếu chức năng xuất Excel.");
+    await assertRoute(page, "work/group/delivery-rsd", ".standalone-work-items");
+    if (!(await page.locator(".screen-title").textContent() || "").includes("SQ2-RSD · RSD")) {
+      throw new Error("Màn RSD chưa dùng đầy đủ bố cục nhóm công việc.");
+    }
 
     const sidebarScrollBefore = await page.locator(".sidebar-menu").evaluate((sidebar) => {
       sidebar.scrollTop = sidebar.scrollHeight;
@@ -384,7 +416,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     }
 
     const categoryLinks = await page.locator(".tree-category-list .tree-link").count();
-    if (categoryLinks !== 10) throw new Error(`Sidebar cần đúng 10 nhóm seed, nhận ${categoryLinks}.`);
+    if (categoryLinks !== 12) throw new Error(`Sidebar cần đúng 12 nhóm hệ thống, nhận ${categoryLinks}.`);
     if (await page.locator('[data-route*="DS_US"], [data-route*="DS.Loi"]').count()) {
       throw new Error("DS_US/DS.Loi không được hiện trong navigation.");
     }
@@ -407,8 +439,11 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     const t07Rows = await scopedEditorPage.locator('[data-resizable-table="workItems"] tbody tr').count();
     const expectedT07Rows = state.workItems.filter((row) => row.categoryId === "pilot-t07").length;
     if (t07Rows !== expectedT07Rows) throw new Error(`T07 scoped editor expected ${expectedT07Rows} rows, received ${t07Rows}.`);
-    if (await scopedEditorPage.locator('[data-action="open-edit"]').count() !== t07Rows) {
+    if (await scopedEditorPage.locator('.row-actions [data-action="open-edit"]').count() !== t07Rows) {
       throw new Error("T07 scoped editor cannot fully edit every T07 work item.");
+    }
+    if (await scopedEditorPage.locator('.work-title-link[data-action="open-edit"]').count() !== t07Rows) {
+      throw new Error("T07 scoped editor is missing work-title edit links.");
     }
     if (await scopedEditorPage.locator('[data-action="open-work-progress"]').count() !== t07Rows) {
       throw new Error("T07 scoped editor cannot update progress for every T07 work item.");
@@ -460,6 +495,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await mobilePage.keyboard.press("Escape");
     await mobilePage.waitForSelector(".navigation-tree:not(.mobile-open)", { state: "attached" });
     if (await mobilePage.locator(".navigation-tree").isVisible()) throw new Error("Mobile drawer remained visible after pressing Escape.");
+    await mobilePage.waitForFunction(() => document.querySelector(".mobile-menu-btn") === document.activeElement).catch(() => {});
     if (!await mobilePage.locator(".mobile-menu-btn").evaluate((button) => button === document.activeElement)) {
       throw new Error("Escape did not return focus to the mobile sidebar opener.");
     }
@@ -478,7 +514,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
 
     console.log(JSON.stringify({
       ok: true,
-      routes: 12,
+      routes: 14,
       categories: categoryLinks,
       desktopScreenshot: desktopShot,
       collapsedSidebarScreenshot: collapsedSidebarShot,
@@ -558,6 +594,15 @@ async function buildFixtureState() {
 }
 
 async function mockApi(context, state) {
+  await context.route("**/api/export/work-items?**", (route) => {
+    state.__lastWorkExportUrl = route.request().url();
+    return route.fulfill({
+      status: 200,
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      headers: { "Content-Disposition": 'attachment; filename="smoke-work-items.xlsx"' },
+      body: Buffer.from("smoke-xlsx")
+    });
+  });
   await context.route("**/api/auth/me", (route) => route.fulfill({
     status: 200,
     contentType: "application/json",

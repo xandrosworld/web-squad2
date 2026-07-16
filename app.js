@@ -1707,9 +1707,14 @@ function renderLoginPage() {
 
 function renderSidebar() {
     const categories = getWorkCategories();
+    const urdCategory = categories.find((category) => category.id === "delivery-urd");
+    const rsdCategory = categories.find((category) => category.id === "delivery-rsd");
     const uatCategories = categories.filter((category) => getSidebarWorkStage(category.id) === "uat");
     const prePilotCategories = categories.filter((category) => getSidebarWorkStage(category.id) === "prePilot");
-    const standaloneCategories = categories.filter((category) => !getSidebarWorkStage(category.id));
+    const standaloneCategories = categories.filter((category) => (
+        !getSidebarWorkStage(category.id)
+        && !["delivery-urd", "delivery-rsd"].includes(category.id)
+    ));
     const sidebarToggleLabel = ui.sidebarCollapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên";
     const railMode = ui.sidebarCollapsed && window.innerWidth > 820;
     const commonActive = ui.activeRoute.startsWith("common/");
@@ -1780,12 +1785,8 @@ function renderSidebar() {
                             </button>
                             <div id="sidebar-group-workGroups" class="tree-accordion-panel tree-group-content ${workGroupsExpanded ? "is-expanded" : ""}" aria-hidden="${!workGroupsExpanded}" ${workGroupsExpanded ? "" : "inert"}>
                                 <div class="tree-accordion-inner tree-category-list">
-                                    <div class="tree-work-stage tree-stage-placeholder" title="URD — chưa cấu hình nhóm công việc" aria-disabled="true">
-                                        <i class="fa-solid fa-angles-right" aria-hidden="true"></i><b>URD</b>
-                                    </div>
-                                    <div class="tree-work-stage tree-stage-placeholder" title="RSD — chưa cấu hình nhóm công việc" aria-disabled="true">
-                                        <i class="fa-solid fa-angles-right" aria-hidden="true"></i><b>RSD</b>
-                                    </div>
+                                    ${urdCategory ? renderSidebarWorkStageRoute(urdCategory, "URD") : ""}
+                                    ${rsdCategory ? renderSidebarWorkStageRoute(rsdCategory, "RSD") : ""}
                                     <button id="sidebar-group-uat-toggle" class="tree-parent tree-group-toggle tree-work-stage ${activeWorkStage === "uat" ? "branch-active" : ""} ${uatExpanded ? "is-expanded" : ""}" type="button" data-action="toggle-sidebar-group" data-sidebar-group="uat" aria-expanded="${uatExpanded}" aria-controls="sidebar-group-uat" title="UAT">
                                         <i class="fa-regular fa-folder" aria-hidden="true"></i><b>UAT</b><i class="fa-solid fa-chevron-right tree-toggle-chevron" aria-hidden="true"></i>
                                     </button>
@@ -1998,6 +1999,16 @@ function renderWorkSummaryStrip(stats, includeCategories = false) {
     `;
 }
 
+function renderSidebarWorkStageRoute(category, label) {
+    const route = `work/group/${category.id}`;
+    const active = ui.activeView === "work-group" && ui.activeCategoryId === category.id;
+    return `
+        <button class="tree-link level-2 tree-stage-route ${active ? "active" : ""}" type="button" data-route="${e(route)}" title="${e(label)}" ${active ? `aria-current="page"` : ""}>
+            <i class="fa-solid fa-angles-right" aria-hidden="true"></i><span>${e(label)}</span>
+        </button>
+    `;
+}
+
 function renderWorkItemsPanel({ title, subtitle, categoryId = "", showViews = true, showGroupFilter = true }) {
     const mod = modules.workItems;
     const filteredRows = getFilteredWorkRows(categoryId);
@@ -2010,6 +2021,7 @@ function renderWorkItemsPanel({ title, subtitle, categoryId = "", showViews = tr
             <div class="panel-head">
                 <div class="panel-title"><i class="fa-solid ${mod.icon}"></i><div><h2>${e(title)}</h2><span>${e(subtitle)} · ${renderPaginationSummary(pageState)}</span></div></div>
                 <div class="panel-actions">
+                    ${categoryId ? `<button class="ghost-btn work-export-btn" type="button" data-action="open-work-export" data-id="${e(categoryId)}"><i class="fa-solid fa-file-excel"></i><span>Xuất Excel</span></button>` : ""}
                     ${canCreate && categories.length ? `<button class="primary-btn" data-action="open-create"><i class="fa-solid fa-plus"></i><span>Thêm công việc</span></button>` : ""}
                 </div>
             </div>
@@ -2401,7 +2413,7 @@ function renderWorkInputsPage() {
                                 <span>${renderStatus(category.status)}</span>
                                 <span class="row-actions">
                                     ${canManageWorkPlans() ? `<button class="icon-btn" data-action="open-category-edit" data-id="${e(category.id)}" title="Sửa nhóm"><i class="fa-solid fa-pen"></i></button>` : ""}
-                                    ${canManageWorkPlans() && category.id !== "pilot-t01" ? `<button class="icon-btn" data-action="delete-category" data-id="${e(category.id)}" title="Xóa nhóm"><i class="fa-solid fa-trash"></i></button>` : ""}
+                                    ${canManageWorkPlans() && !isProtectedWorkCategory(category.id) ? `<button class="icon-btn" data-action="delete-category" data-id="${e(category.id)}" title="Xóa nhóm"><i class="fa-solid fa-trash"></i></button>` : ""}
                                 </span>
                             </div>
                         `).join("")}
@@ -3586,7 +3598,7 @@ function renderWorkCategoryRow(category) {
     const done = items.filter((item) => item.status === "Hoàn thành").length;
     const progress = items.length ? Math.round(items.reduce((total, item) => total + Number(item.progress || 0), 0) / items.length) : 0;
     const canEdit = canManageWorkPlans() && canModifyRecord(category);
-    const canDelete = canManageWorkPlans() && canDeleteRecord(category);
+    const canDelete = canManageWorkPlans() && canDeleteRecord(category) && !isProtectedWorkCategory(category.id);
     const active = ui.filters["workItems:categoryId"] === category.id;
     const title = getWorkCategoryShortName(category);
     const deadline = category.targetDate ? ` · hạn ${formatWorkCategoryDueShort(category.targetDate)}` : "";
@@ -3632,7 +3644,9 @@ function getWorkCategoryShortName(category) {
         "SQ2-T07": "Tài liệu đào tạo",
         "SQ2-T08": "Tham gia ý kiến",
         "SQ2-T09": "Công tác Báo cáo",
-        "SQ2-T10": "Công việc khác"
+        "SQ2-T10": "Công việc khác",
+        "SQ2-URD": "URD",
+        "SQ2-RSD": "RSD"
     };
     return names[prefix] || category?.name || "Nhóm công việc";
 }
@@ -3804,6 +3818,10 @@ function renderModule(mod) {
             </section>
         </div>
     `;
+}
+
+function isProtectedWorkCategory(categoryId) {
+    return ["pilot-t01", "delivery-urd", "delivery-rsd"].includes(String(categoryId || ""));
 }
 
 function renderModuleDataTools(mod) {
@@ -4663,6 +4681,7 @@ function renderColumnFilterControl(mod, col, autofocus = false) {
 function renderModal() {
     if (!ui.modal) return `<div class="modal-backdrop" id="recordModal"></div>`;
     if (ui.modal.mode === "work-progress") return renderWorkProgressModal();
+    if (ui.modal.mode === "work-export") return renderWorkExportModal();
     const mod = modules[ui.modal.tab];
     const row = ui.modal.id
         ? appState[mod.collection].find((item) => item.id === ui.modal.id)
@@ -4729,6 +4748,64 @@ function renderModal() {
                     <button class="ghost-btn" type="button" data-action="close-modal">Hủy</button>
                     ${!row ? `<button class="text-btn" type="submit" data-save-mode="add-more"><i class="fa-solid fa-plus"></i><span>Lưu & thêm tiếp</span></button>` : ""}
                     <button class="primary-btn" type="submit" data-save-mode="close"><i class="fa-solid fa-floppy-disk"></i><span>Lưu</span></button>
+                </div>
+            </form>
+        </div>
+    `;
+}
+
+function renderWorkExportModal() {
+    const category = getWorkCategories().find((row) => row.id === ui.modal.categoryId);
+    if (!category) return `<div class="modal-backdrop" id="recordModal"></div>`;
+    const total = appState.workItems.filter((row) => String(row.categoryId || "") === String(category.id)).length;
+    return `
+        <div class="modal-backdrop open" id="recordModal" role="dialog" aria-modal="true" aria-labelledby="workExportTitle">
+            <form class="modal work-export-modal" id="workExportForm">
+                <div class="modal-head">
+                    <div class="modal-title">
+                        <span><i class="fa-solid fa-file-excel"></i></span>
+                        <div>
+                            <h2 id="workExportTitle">Xuất Excel công việc</h2>
+                            <p>${e(category.taskPrefix || "")} · ${e(getWorkCategoryShortName(category))}</p>
+                        </div>
+                    </div>
+                    <button class="icon-btn" type="button" data-action="close-modal" title="Đóng" aria-label="Đóng">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="modal-body work-export-body">
+                    <div class="work-export-intro">
+                        <i class="fa-solid fa-circle-info"></i>
+                        <span>Chọn mốc ngày và khoảng thời gian cần lấy. Để trống cả hai ngày để xuất toàn bộ ${e(total)} công việc.</span>
+                    </div>
+                    <div class="form-grid work-export-form-grid">
+                        <div class="field full">
+                            <label>Mốc thời gian</label>
+                            <select class="field-select" name="dateField">
+                                <option value="startDate">Ngày giao việc</option>
+                                <option value="dueDate">Deadline</option>
+                                <option value="completedDate">Ngày hoàn thành thực tế</option>
+                            </select>
+                            <small>Khoảng ngày bên dưới sẽ lọc theo trường được chọn.</small>
+                        </div>
+                        <div class="field">
+                            <label>Từ ngày</label>
+                            <input class="field-input" name="fromDate" type="date">
+                        </div>
+                        <div class="field">
+                            <label>Đến ngày</label>
+                            <input class="field-input" name="toDate" type="date">
+                        </div>
+                    </div>
+                    <div class="work-export-preview" aria-live="polite">
+                        <span>Số công việc phù hợp</span>
+                        <strong data-work-export-count>${e(total)}</strong>
+                    </div>
+                    <div class="work-export-error" data-work-export-error hidden></div>
+                </div>
+                <div class="modal-foot">
+                    <button class="ghost-btn" type="button" data-action="close-modal">Hủy</button>
+                    <button class="primary-btn" type="submit"><i class="fa-solid fa-download"></i><span>Xuất file Excel</span></button>
                 </div>
             </form>
         </div>
@@ -5223,7 +5300,7 @@ function bindWorkItemFormHelpers(form) {
     if (categorySelect && taskInput && !ui.modal.id) {
         categorySelect.addEventListener("change", () => {
             const current = String(taskInput.value || "").trim();
-            if (current && !/^SQ2-T\d{2}-\d{3}$/i.test(current)) return;
+            if (current && !/^SQ2-[A-Z0-9]+-\d{3}$/i.test(current)) return;
             taskInput.value = categorySelect.value ? getNextWorkItemTaskIdForCategory(categorySelect.value) : "";
         });
     }
@@ -5426,6 +5503,9 @@ function bindEvents() {
         bindWorkItemFormHelpers(form);
         form.addEventListener("submit", handleSubmit);
     }
+
+    const workExportForm = document.getElementById("workExportForm");
+    if (workExportForm) bindWorkExportForm(workExportForm);
 
     const modal = document.getElementById("recordModal");
     if (modal) {
@@ -6275,6 +6355,7 @@ function handleAction(event) {
     if (action === "open-member-kpi-create") return openMemberKpiInput();
     if (action === "open-member-kpi-edit") return openMemberKpiInput(id);
     if (action === "set-table-page") return setTablePage(event.currentTarget.dataset.collection, event.currentTarget.dataset.page);
+    if (action === "open-work-export") return openWorkExport(id);
     if (action === "open-work-progress") return openWorkProgress(id);
     if (action === "close-modal") return closeModal();
     if (action === "reset-filters") return resetFilters();
@@ -6380,6 +6461,13 @@ function setWorkView(view) {
     ui.workView = view === "approval" ? "all" : (view || "all");
     ui.openColumnFilter = null;
     resetTablePage("workItems");
+    render();
+}
+
+function openWorkExport(categoryId) {
+    const category = getWorkCategories().find((row) => String(row.id || "") === String(categoryId || ""));
+    if (!category) return showToast("Không tìm thấy nhóm công việc cần xuất.");
+    ui.modal = { mode: "work-export", categoryId: category.id };
     render();
 }
 
@@ -6645,6 +6733,96 @@ function resetFilters() {
             .forEach((key) => delete ui.columnFilters[key]);
     }
     render();
+}
+
+function getWorkExportRows(categoryId, dateField, fromDate, toDate) {
+    return (appState.workItems || []).filter((row) => {
+        if (String(row.categoryId || "") !== String(categoryId || "")) return false;
+        if (!fromDate && !toDate) return true;
+        const value = String(row[dateField] || "").trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+        if (fromDate && value < fromDate) return false;
+        if (toDate && value > toDate) return false;
+        return true;
+    });
+}
+
+function getWorkExportFormState(form) {
+    const data = new FormData(form);
+    const dateField = String(data.get("dateField") || "startDate");
+    const fromDate = String(data.get("fromDate") || "");
+    const toDate = String(data.get("toDate") || "");
+    const issue = fromDate && toDate && fromDate > toDate ? "Từ ngày không được sau Đến ngày." : "";
+    const categoryId = String(ui.modal?.categoryId || "");
+    const rows = issue ? [] : getWorkExportRows(categoryId, dateField, fromDate, toDate);
+    return { categoryId, dateField, fromDate, toDate, issue, rows };
+}
+
+function bindWorkExportForm(form) {
+    const refresh = () => {
+        const state = getWorkExportFormState(form);
+        const count = form.querySelector("[data-work-export-count]");
+        const error = form.querySelector("[data-work-export-error]");
+        const submit = form.querySelector('button[type="submit"]');
+        if (count) count.textContent = String(state.rows.length);
+        const message = state.issue || (!state.rows.length ? "Không có công việc phù hợp với khoảng thời gian đã chọn." : "");
+        if (error) {
+            error.textContent = message;
+            error.hidden = !message;
+        }
+        if (submit) {
+            submit.disabled = Boolean(message) || ui.saving;
+            submit.setAttribute("aria-disabled", submit.disabled ? "true" : "false");
+        }
+    };
+    form.addEventListener("input", refresh);
+    form.addEventListener("change", refresh);
+    form.addEventListener("submit", handleWorkExportSubmit);
+    refresh();
+}
+
+async function handleWorkExportSubmit(event) {
+    event.preventDefault();
+    if (ui.saving) return;
+    const form = event.currentTarget;
+    const state = getWorkExportFormState(form);
+    if (state.issue || !state.rows.length) return;
+    const params = new URLSearchParams({
+        categoryId: state.categoryId,
+        dateField: state.dateField
+    });
+    if (state.fromDate) params.set("fromDate", state.fromDate);
+    if (state.toDate) params.set("toDate", state.toDate);
+    const submit = form.querySelector('button[type="submit"]');
+    ui.saving = true;
+    if (submit) submit.disabled = true;
+    showToast("Đang tạo file Excel theo khoảng thời gian...");
+    try {
+        const response = await fetch(`${API_BASE}/export/work-items?${params.toString()}`, {
+            credentials: "same-origin"
+        });
+        if (!response.ok) {
+            let message = `Không xuất được file Excel (${response.status}).`;
+            try {
+                const data = await response.json();
+                message = data.error || message;
+            } catch {
+                // Keep the HTTP status when the response is not JSON.
+            }
+            throw new Error(message);
+        }
+        const disposition = response.headers.get("Content-Disposition") || "";
+        const filename = disposition.match(/filename="([^"]+)"/i)?.[1] || `cong-viec-${todayStamp()}.xlsx`;
+        downloadBlob(await response.blob(), filename);
+        ui.modal = null;
+        showToast(`Đã xuất ${state.rows.length} công việc ra Excel.`);
+        render();
+    } catch (error) {
+        showToast(error.message || "Không xuất được file Excel.");
+        if (submit) submit.disabled = false;
+    } finally {
+        ui.saving = false;
+    }
 }
 
 async function exportExcel() {
@@ -6962,6 +7140,9 @@ function getWorkCategorySelectOptions() {
 
 function getDefaultWorkCategoryId() {
     const categories = getWorkCategories();
+    if (ui.activeView === "work-group" && categories.some((category) => category.id === ui.activeCategoryId)) {
+        return ui.activeCategoryId;
+    }
     return categories.length === 1 ? categories[0].id : "";
 }
 
@@ -7328,9 +7509,13 @@ function extractWorkTaskPrefix(taskId) {
 }
 
 function renderWorkTitleCell(row) {
+    const title = row.title || "-";
+    const titleMarkup = canFullyManageWorkItem(row)
+        ? `<button class="work-title-link" type="button" data-action="open-edit" data-id="${e(row.id)}" title="Mở Sửa Kế hoạch">${e(title)}</button>`
+        : `<strong>${e(title)}</strong>`;
     return `
         <div class="work-title-cell">
-            <strong>${e(row.title || "-")}</strong>
+            ${titleMarkup}
             ${row.description ? `<span>${e(row.description)}</span>` : ""}
             ${row.collaborators ? `<small>Đầu mối nghiệp vụ: ${e(row.collaborators)}</small>` : ""}
         </div>
