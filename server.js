@@ -9,6 +9,7 @@ const { Pool } = require("pg");
 const { computedFieldsByCollection } = require("./excel-formula-contract");
 const {
   createDeadlineNotificationService,
+  nextDailyRunAt,
   signOAuthState,
   verifyOAuthState
 } = require("./deadline-notifications");
@@ -38,6 +39,9 @@ const geminiTimeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 30000);
 const gmailSenderEmail = String(process.env.GMAIL_SENDER_EMAIL || "maitanthanh1998@gmail.com").trim().toLowerCase();
 const deadlineManagerEmails = process.env.DEADLINE_MANAGER_EMAILS || "yenuth@bidv.com.vn";
 const appBaseUrl = String(process.env.APP_BASE_URL || "").trim();
+const deadlineSchedulerEnabled = /^(1|true|yes)$/i.test(String(process.env.DEADLINE_NOTIFICATION_SCHEDULER_ENABLED || "false"));
+const deadlineSchedulerUtcHour = Math.max(0, Math.min(23, Number(process.env.DEADLINE_NOTIFICATION_RUN_UTC_HOUR || 1)));
+let deadlineSchedulerTimer = null;
 const deadlineNotificationService = createDeadlineNotificationService({
   oauthClientId: process.env.GMAIL_OAUTH_CLIENT_ID,
   oauthClientSecret: process.env.GMAIL_OAUTH_CLIENT_SECRET,
@@ -1370,6 +1374,7 @@ if (require.main === module) {
     if (authMisconfigured) {
       console.warn("APP_USER and APP_PASSWORD must be configured together to enable basic auth.");
     }
+    startDeadlineNotificationScheduler();
   });
 
   process.on("SIGTERM", shutdown);
@@ -5304,6 +5309,28 @@ async function runDeadlineNotificationJob(options = {}) {
   return deadlineNotificationService.run(getPool(), options);
 }
 
+function startDeadlineNotificationScheduler() {
+  if (!deadlineSchedulerEnabled || deadlineSchedulerTimer) return;
+  const scheduleNext = () => {
+    const nextRun = nextDailyRunAt(new Date(), deadlineSchedulerUtcHour);
+    const delay = Math.max(1000, nextRun.getTime() - Date.now());
+    console.log(`Deadline reminder scheduler: next run ${nextRun.toISOString()}`);
+    deadlineSchedulerTimer = setTimeout(async () => {
+      deadlineSchedulerTimer = null;
+      try {
+        const result = await runDeadlineNotificationJob();
+        console.log("Deadline reminder scheduler completed:", JSON.stringify(result));
+      } catch (error) {
+        console.error("Deadline reminder scheduler failed:", error);
+      } finally {
+        scheduleNext();
+      }
+    }, delay);
+    deadlineSchedulerTimer.unref?.();
+  };
+  scheduleNext();
+}
+
 async function closeDatabase() {
   if (!pool) return;
   const activePool = pool;
@@ -5313,6 +5340,8 @@ async function closeDatabase() {
 }
 
 async function shutdown() {
+  if (deadlineSchedulerTimer) clearTimeout(deadlineSchedulerTimer);
+  deadlineSchedulerTimer = null;
   server.close(async () => {
     await closeDatabase();
     process.exit(0);

@@ -5,6 +5,7 @@ const {
   classifyDeadlineReminder,
   dayDifference,
   isFridayDateKey,
+  nextDailyRunAt,
   hasGmailSendScope,
   buildMimeMessage,
   encryptValue,
@@ -30,6 +31,16 @@ assert.strictEqual(isFridayDateKey("2026-07-17"), true);
 assert.strictEqual(isFridayDateKey("2026-07-18"), false);
 assert.strictEqual(hasGmailSendScope("openid email https://www.googleapis.com/auth/gmail.send"), true);
 assert.strictEqual(hasGmailSendScope("openid email"), false);
+assert.strictEqual(
+  nextDailyRunAt(new Date("2026-07-18T00:30:00.000Z"), 1).toISOString(),
+  "2026-07-18T01:00:00.000Z",
+  "Trước giờ chạy phải lên lịch trong cùng ngày"
+);
+assert.strictEqual(
+  nextDailyRunAt(new Date("2026-07-18T01:00:00.000Z"), 1).toISOString(),
+  "2026-07-19T01:00:00.000Z",
+  "Đúng hoặc sau giờ chạy phải lên lịch sang ngày tiếp theo"
+);
 
 assert.strictEqual(classifyDeadlineReminder({ ...baseItem, dueDate: "2026-07-21" }, "2026-07-15"), null, "D-6 chưa được nhắc");
 for (let remainingDays = 5; remainingDays >= 0; remainingDays -= 1) {
@@ -123,7 +134,7 @@ async function checkFreshDatabaseDefaults() {
 }
 
 checkFreshDatabaseDefaults()
-  .then(() => console.log("Deadline notification checks passed: D-5..D+3, Friday digest, fresh DB defaults, encryption, OAuth state and MIME."))
+  .then(() => console.log("Deadline notification checks passed: daily schedule, D-5..D+3, Friday digest, fresh DB defaults, encryption, OAuth state and MIME."))
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;

@@ -711,6 +711,16 @@ function isFridayDateKey(dateKey) {
   return Boolean(normalized) && new Date(`${normalized}T12:00:00Z`).getUTCDay() === 5;
 }
 
+function nextDailyRunAt(now = new Date(), utcHour = 1) {
+  const current = now instanceof Date ? new Date(now.getTime()) : new Date(now);
+  if (Number.isNaN(current.getTime())) throw new Error("Invalid scheduler date.");
+  const hour = Math.max(0, Math.min(23, Number(utcHour) || 0));
+  const next = new Date(current.getTime());
+  next.setUTCHours(hour, 0, 0, 0);
+  if (next.getTime() <= current.getTime()) next.setUTCDate(next.getUTCDate() + 1);
+  return next;
+}
+
 function formatViDate(dateKey) {
   const normalized = normalizeDateKey(dateKey);
   if (!normalized) return "-";
@@ -807,6 +817,7 @@ module.exports = {
   dateKeyInTimeZone,
   dayDifference,
   isFridayDateKey,
+  nextDailyRunAt,
   normalizeDateKey,
   normalizeEmailList,
   hasGmailSendScope,
