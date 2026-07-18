@@ -989,6 +989,15 @@ app.post("/api/email-notifications/test", requireAdmin, asyncHandler(async (req,
   res.json({ result });
 }));
 
+app.post("/api/email-notifications/manager-status", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const result = await deadlineNotificationService.sendManagerStatus(getPool(), {
+    recipients: req.body.recipients,
+    todayKey: req.body.todayKey
+  });
+  res.json({ result });
+}));
+
 app.post("/api/email-notifications/run", requireAdmin, asyncHandler(async (req, res) => {
   await ensureSchema();
   const result = await deadlineNotificationService.run(getPool(), {

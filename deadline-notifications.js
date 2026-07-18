@@ -170,6 +170,50 @@ function createDeadlineNotificationService(options = {}) {
     };
   }
 
+  async function sendManagerStatus(pool, input = {}) {
+    const settings = await readSettings(pool);
+    const connection = await requireConnection(pool);
+    const recipients = normalizeEmailList(input.recipients?.length ? input.recipients : settings.managerEmails);
+    if (!recipients.length) throw createPublicError(400, "Chưa cấu hình email quản lý nhận thông báo.");
+    const todayKey = normalizeDateKey(input.todayKey) || dateKeyInTimeZone(input.now || new Date(), settings.timeZone);
+    const logResult = await pool.query(`
+      select recipient, status, item_count, sent_at, error_message
+      from email_notification_log
+      where scheduled_date = $1::date
+        and kind = 'assignee-daily'
+      order by recipient asc
+    `, [todayKey]);
+    const notificationData = await readNotificationData(pool);
+    const assigneeByEmail = new Map(notificationData.workItems
+      .filter((item) => normalizeEmail(item.assigneeEmail))
+      .map((item) => [normalizeEmail(item.assigneeEmail), item.assignee || item.assigneeEmail]));
+    const deliveries = logResult.rows.map((row) => ({
+      recipient: normalizeEmail(row.recipient),
+      assignee: assigneeByEmail.get(normalizeEmail(row.recipient)) || row.recipient,
+      status: String(row.status || ""),
+      itemCount: Number(row.item_count || 0),
+      sentAt: row.sent_at ? new Date(row.sent_at).toISOString() : "",
+      error: String(row.error_message || "")
+    }));
+    const report = {
+      sentCount: deliveries.filter((item) => item.status === "sent").length,
+      failedCount: deliveries.filter((item) => item.status === "failed").length,
+      taskCount: deliveries.filter((item) => item.status === "sent").reduce((total, item) => total + item.itemCount, 0),
+      deliveries
+    };
+    const outcome = await sendLoggedNotification(pool, connection, {
+      notificationKey: `manager-status:${recipients.join(",")}:${todayKey}`,
+      kind: "manager-status",
+      recipient: recipients.join(","),
+      recipients,
+      scheduledDate: todayKey,
+      itemCount: report.taskCount,
+      subject: `[Squad 2 UAT] Xác nhận hệ thống đã gửi nhắc deadline - ${formatViDate(todayKey)}`,
+      html: renderManagerStatusEmail(report, settings, todayKey)
+    });
+    return { todayKey, recipients, ...report, status: outcome.status, error: outcome.error || "" };
+  }
+
   async function run(pool, input = {}) {
     const lockClient = await pool.connect();
     const lockName = "squad2-deadline-email-job";
@@ -358,6 +402,7 @@ function createDeadlineNotificationService(options = {}) {
     disconnect,
     preview,
     sendTest,
+    sendManagerStatus,
     run
   };
 }
@@ -509,6 +554,32 @@ function renderManagerDigest(digest, settings, todayKey) {
     actionLabel: "Xem Task Master",
     footer: `Báo cáo tự động tuần, chốt ngày ${formatViDate(todayKey)}.`
   });
+}
+
+function renderManagerStatusEmail(report, settings, todayKey) {
+  const sentDeliveries = report.deliveries.filter((item) => item.status === "sent");
+  const rows = sentDeliveries.length
+    ? sentDeliveries.map((item) => `<tr><td style="padding:10px;border-bottom:1px solid #e4eaee;"><strong>${escapeHtml(item.assignee)}</strong><br><span style="font-size:12px;color:#6c7785;">${escapeHtml(item.recipient)}</span></td><td style="padding:10px;border-bottom:1px solid #e4eaee;text-align:center;font-weight:700;">${item.itemCount}</td><td style="padding:10px;border-bottom:1px solid #e4eaee;color:#087f45;font-weight:700;">Đã gửi</td></tr>`).join("")
+    : `<tr><td colspan="3" style="padding:18px;text-align:center;color:#6c7785;">Hôm nay chưa có email nhắc deadline nào được gửi.</td></tr>`;
+  const body = `${renderOperationSummary(report)}<table role="presentation" style="width:100%;border-collapse:collapse;margin-top:18px;"><thead><tr><th style="padding:10px;background:#087f78;color:#fff;text-align:left;">Người nhận</th><th style="padding:10px;background:#087f78;color:#fff;text-align:center;">Công việc</th><th style="padding:10px;background:#087f78;color:#fff;text-align:left;">Kết quả</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return renderEmailShell({
+    eyebrow: "SQUAD 2 UAT • XÁC NHẬN VẬN HÀNH",
+    title: report.failedCount > 0 ? "Kết quả gửi nhắc deadline hôm nay" : "Hệ thống đã gửi nhắc deadline thành công",
+    intro: `Chào chị Yến, hệ thống xin thông báo lượt nhắc deadline ngày ${formatViDate(todayKey)} đã hoàn tất. Kết quả dưới đây được lấy trực tiếp từ nhật ký gửi mail thực tế.`,
+    body,
+    actionUrl: settings.appBaseUrl ? `${settings.appBaseUrl}/#work/inputs` : "",
+    actionLabel: "Xem cấu hình và lịch sử gửi",
+    footer: "Hệ thống tự động rà soát toàn bộ Task Master lúc 08:00 mỗi ngày, kể cả cuối tuần và ngày ngoài giờ làm việc. Đây là email xác nhận vận hành, bạn không cần trả lời."
+  });
+}
+
+function renderOperationSummary(report) {
+  const cells = [
+    { label: "Email đã gửi", value: report.sentCount, color: "#087f45", background: "#eaf8f0" },
+    { label: "Công việc đã nhắc", value: report.taskCount, color: "#087f78", background: "#e9f7f5" },
+    { label: "Gửi lỗi", value: report.failedCount, color: report.failedCount ? "#bd2525" : "#52616f", background: report.failedCount ? "#fff0f0" : "#f2f5f7" }
+  ];
+  return `<table role="presentation" style="width:100%;border-collapse:separate;border-spacing:8px 0;margin:0 -8px;"><tr>${cells.map((cell) => `<td style="width:33.33%;padding:12px;background:${cell.background};border-radius:6px;color:${cell.color};"><div style="font-size:22px;font-weight:700;">${cell.value}</div><div style="margin-top:3px;font-size:12px;font-weight:700;">${cell.label}</div></td>`).join("")}</tr></table>`;
 }
 
 function renderManagerSummary(grouped) {
