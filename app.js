@@ -1036,6 +1036,13 @@ let authState = {
     error: null
 };
 let accountDirectory = [];
+let deadlineEmailState = {
+    status: "idle",
+    data: null,
+    preview: null,
+    busyAction: "",
+    error: null
+};
 let lastRenderedTab = null;
 let pendingActiveTabScroll = null;
 let responsiveTableResizeFrame = 0;
@@ -2428,12 +2435,77 @@ function renderWorkInputsPage() {
                 ${renderReferenceList("Trạng thái công việc", "fa-circle-half-stroke", workStatusOptions, renderWorkStatus)}
                 ${renderReferenceList("Mức ưu tiên", "fa-flag", workPriorityOptions, renderWorkPriority)}
             </aside>
+            ${authState.user?.role === "admin" ? renderDeadlineEmailPanel() : ""}
         </div>
     `;
 }
 
 function renderReferenceList(title, icon, values, renderer) {
     return `<section class="panel reference-panel"><div class="panel-head"><div class="panel-title"><i class="fa-solid ${e(icon)}"></i><div><h2>${e(title)}</h2><span>Danh mục cố định</span></div></div></div><div class="panel-body reference-list">${values.map((value) => `<div>${renderer(value)}<span>${e(value)}</span></div>`).join("")}</div></section>`;
+}
+
+function renderDeadlineEmailPanel() {
+    const state = deadlineEmailState;
+    if (state.status === "loading" || state.status === "idle") {
+        return `<section class="panel deadline-email-panel"><div class="panel-head"><div class="panel-title"><i class="fa-solid fa-envelope-circle-check"></i><div><h2>Nhắc deadline qua Gmail</h2><span>Đang đọc cấu hình</span></div></div></div><div class="panel-body email-settings-loading"><i class="fa-solid fa-circle-notch fa-spin"></i><span>Đang tải...</span></div></section>`;
+    }
+    if (state.status === "error" || !state.data) {
+        return `<section class="panel deadline-email-panel"><div class="panel-head"><div class="panel-title"><i class="fa-solid fa-envelope-circle-check"></i><div><h2>Nhắc deadline qua Gmail</h2><span>Không đọc được cấu hình</span></div></div><button class="ghost-btn" type="button" data-action="refresh-deadline-email"><i class="fa-solid fa-rotate"></i><span>Thử lại</span></button></div><div class="panel-body"><div class="email-config-alert danger"><i class="fa-solid fa-triangle-exclamation"></i><span>${e(state.error || "Không kết nối được dịch vụ email.")}</span></div></div></section>`;
+    }
+
+    const data = state.data;
+    const settings = data.settings || {};
+    const connected = Boolean(data.connected);
+    const configured = Boolean(data.configured);
+    const busy = Boolean(state.busyAction);
+    const logs = Array.isArray(data.recentLogs) ? data.recentLogs : [];
+    const preview = state.preview;
+    return `
+        <section class="panel deadline-email-panel">
+            <div class="panel-head">
+                <div class="panel-title"><i class="fa-solid fa-envelope-circle-check"></i><div><h2>Nhắc deadline qua Gmail</h2><span>D-5 đến D+3 · tổng kết quản lý vào thứ Sáu</span></div></div>
+                <div class="email-connection-status ${connected ? "connected" : "disconnected"}"><span></span>${connected ? "Đã kết nối" : "Chưa kết nối"}</div>
+            </div>
+            <div class="panel-body deadline-email-body">
+                ${!configured ? `<div class="email-config-alert warning"><i class="fa-solid fa-key"></i><div><strong>Thiếu OAuth Client trên Railway</strong><span>Callback URL: <code>${e(data.callbackUrl || "-")}</code></span></div></div>` : ""}
+                <div class="deadline-email-grid">
+                    <form id="deadlineEmailSettingsForm" class="email-settings-form">
+                        <div class="email-settings-section-head"><div><strong>Cấu hình gửi</strong><span>Gmail và người nhận báo cáo tuần</span></div><label class="switch-field"><input name="enabled" type="checkbox" ${settings.enabled !== false ? "checked" : ""}><span></span><b>${settings.enabled !== false ? "Đang bật" : "Đang tắt"}</b></label></div>
+                        <label class="email-setting-field"><span>Tài khoản gửi</span><input type="email" value="${e(data.accountEmail || data.expectedSenderEmail || settings.senderEmail || "")}" readonly></label>
+                        <label class="email-setting-field"><span>Email quản lý</span><input name="managerEmails" type="text" value="${e((settings.managerEmails || []).join(", "))}" placeholder="yenuth@bidv.com.vn" required></label>
+                        <div class="email-rule-strip"><span><b>D-5 → D0</b> Nhắc sắp hạn</span><span><b>D+1 → D+3</b> Nhắc quá hạn</span><span><b>Thứ Sáu</b> Tổng kết quản lý</span></div>
+                        <div class="email-action-row">
+                            <button class="primary-btn" type="submit" ${busy ? "disabled" : ""}><i class="fa-solid fa-floppy-disk"></i><span>Lưu cấu hình</span></button>
+                            ${configured ? `<button class="ghost-btn" type="button" data-action="connect-deadline-gmail" ${busy ? "disabled" : ""}><i class="fa-brands fa-google"></i><span>${connected ? "Kết nối lại" : "Kết nối Gmail"}</span></button>` : ""}
+                            ${connected ? `<button class="icon-btn" type="button" data-action="disconnect-deadline-gmail" title="Ngắt kết nối Gmail" aria-label="Ngắt kết nối Gmail" ${busy ? "disabled" : ""}><i class="fa-solid fa-link-slash"></i></button>` : ""}
+                        </div>
+                    </form>
+                    <div class="email-operations">
+                        <div class="email-settings-section-head"><div><strong>Kiểm tra vận hành</strong><span>${connected ? `Đang gửi từ ${e(data.accountEmail)}` : "Kết nối Gmail để gửi thử"}</span></div></div>
+                        <form id="deadlineEmailTestForm" class="email-test-form">
+                            <input name="recipient" type="email" value="${e(data.accountEmail || data.expectedSenderEmail || "")}" aria-label="Email nhận thư thử" required>
+                            <button class="ghost-btn" type="submit" ${!connected || busy ? "disabled" : ""}><i class="fa-solid fa-paper-plane"></i><span>Gửi thử</span></button>
+                        </form>
+                        <div class="email-action-row">
+                            <button class="ghost-btn" type="button" data-action="preview-deadline-email" ${busy ? "disabled" : ""}><i class="fa-solid fa-eye"></i><span>Xem trước hôm nay</span></button>
+                            <button class="primary-btn" type="button" data-action="run-deadline-email" ${!connected || busy || settings.enabled === false ? "disabled" : ""}><i class="fa-solid fa-bolt"></i><span>Gửi nhắc hôm nay</span></button>
+                        </div>
+                        ${preview ? renderDeadlineEmailPreview(preview) : ""}
+                    </div>
+                </div>
+                ${renderDeadlineEmailLogs(logs)}
+            </div>
+        </section>
+    `;
+}
+
+function renderDeadlineEmailPreview(preview) {
+    return `<div class="email-preview-summary"><div><strong>${e(preview.assigneeDigestCount || 0)}</strong><span>người nhận</span></div><div><strong>${e(preview.assigneeTaskCount || 0)}</strong><span>việc cần nhắc</span></div><div><strong>${e(preview.managerOverdueTaskCount || 0)}</strong><span>việc quá hạn</span></div><div><strong>${e(preview.missingAssigneeEmailCount || 0)}</strong><span>thiếu email</span></div></div>`;
+}
+
+function renderDeadlineEmailLogs(logs) {
+    if (!logs.length) return `<div class="email-log-empty"><i class="fa-regular fa-clock"></i><span>Chưa có lượt gửi nào.</span></div>`;
+    return `<div class="email-log-section"><div class="email-settings-section-head"><div><strong>Lịch sử gần nhất</strong><span>${e(logs.length)} lượt gửi</span></div><button class="icon-btn" type="button" data-action="refresh-deadline-email" title="Làm mới lịch sử" aria-label="Làm mới lịch sử"><i class="fa-solid fa-rotate"></i></button></div><div class="email-log-table"><div class="email-log-row email-log-head"><span>Loại</span><span>Người nhận</span><span>Ngày</span><span>Số việc</span><span>Kết quả</span></div>${logs.map((log) => `<div class="email-log-row"><span>${log.kind === "manager-weekly" ? "Tổng kết tuần" : "Nhắc cá nhân"}</span><span title="${e(log.recipient || "")}">${e(log.recipient || "-")}</span><span>${e(formatDateText(log.scheduledDate) || "-")}</span><span>${e(log.itemCount || 0)}</span><span class="email-log-status ${e(log.status || "")}" title="${e(log.error || "")}">${log.status === "sent" ? "Đã gửi" : log.status === "failed" ? "Lỗi" : "Đang gửi"}</span></div>`).join("")}</div></div>`;
 }
 
 function renderPersonnelMapPage() {
@@ -5401,6 +5473,11 @@ function bindEvents() {
         button.addEventListener("click", handleAction);
     });
 
+    const deadlineEmailSettingsForm = document.getElementById("deadlineEmailSettingsForm");
+    if (deadlineEmailSettingsForm) deadlineEmailSettingsForm.addEventListener("submit", handleDeadlineEmailSettingsSubmit);
+    const deadlineEmailTestForm = document.getElementById("deadlineEmailTestForm");
+    if (deadlineEmailTestForm) deadlineEmailTestForm.addEventListener("submit", handleDeadlineEmailTestSubmit);
+
     document.querySelectorAll("[data-chat-action]").forEach((button) => {
         button.addEventListener("click", handleChatAction);
     });
@@ -5887,6 +5964,138 @@ async function hydrateAccountDirectory() {
     }
 }
 
+async function hydrateDeadlineEmailSettings({ silent = false } = {}) {
+    if (authState.user?.role !== "admin") {
+        deadlineEmailState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
+        return;
+    }
+    if (!silent) deadlineEmailState = { ...deadlineEmailState, status: "loading", error: null };
+    try {
+        const data = await requestJson("/email-notifications/settings");
+        deadlineEmailState = { ...deadlineEmailState, status: "ready", data, busyAction: "", error: null };
+    } catch (error) {
+        deadlineEmailState = { ...deadlineEmailState, status: "error", busyAction: "", error: error.message || "Không đọc được cấu hình email." };
+    }
+}
+
+function consumeGmailCallbackNotice() {
+    const url = new URL(window.location.href);
+    const status = url.searchParams.get("gmail");
+    if (!status) return;
+    const message = url.searchParams.get("message");
+    if (status === "connected") showToast("Đã kết nối Gmail gửi thông báo.");
+    else showToast(message || "Không kết nối được Gmail.");
+    url.searchParams.delete("gmail");
+    url.searchParams.delete("message");
+    history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+async function runDeadlineEmailUiAction(action, operation) {
+    if (deadlineEmailState.busyAction) return;
+    deadlineEmailState = { ...deadlineEmailState, busyAction: action, error: null };
+    render();
+    try {
+        const result = await operation();
+        await hydrateDeadlineEmailSettings({ silent: true });
+        return result;
+    } catch (error) {
+        deadlineEmailState = { ...deadlineEmailState, busyAction: "", error: error.message || "Thao tác email không thành công." };
+        showToast(error.message || "Thao tác email không thành công.");
+        throw error;
+    } finally {
+        deadlineEmailState = { ...deadlineEmailState, busyAction: "" };
+        render();
+    }
+}
+
+async function handleDeadlineEmailSettingsSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+        await runDeadlineEmailUiAction("save", async () => {
+            const data = await requestJson("/email-notifications/settings", {
+                method: "POST",
+                body: JSON.stringify({
+                    enabled: form.elements.enabled.checked,
+                    managerEmails: form.elements.managerEmails.value
+                })
+            });
+            deadlineEmailState = {
+                ...deadlineEmailState,
+                data: { ...(deadlineEmailState.data || {}), settings: data.settings }
+            };
+            showToast("Đã lưu cấu hình nhắc deadline.");
+        });
+    } catch {
+        // The shared action handler already displays the API error.
+    }
+}
+
+async function handleDeadlineEmailTestSubmit(event) {
+    event.preventDefault();
+    const recipient = event.currentTarget.elements.recipient.value.trim();
+    try {
+        await runDeadlineEmailUiAction("test", async () => {
+            const data = await requestJson("/email-notifications/test", {
+                method: "POST",
+                body: JSON.stringify({ recipient })
+            });
+            showToast(`Đã gửi mail thử tới ${data.result.recipient}.`);
+        });
+    } catch {
+        // The shared action handler already displays the API error.
+    }
+}
+
+async function connectDeadlineGmail() {
+    try {
+        await runDeadlineEmailUiAction("connect", async () => {
+            const data = await requestJson("/email-notifications/oauth/start", { method: "POST", body: "{}" });
+            window.location.assign(data.url);
+        });
+    } catch {
+        // The shared action handler already displays the API error.
+    }
+}
+
+async function disconnectDeadlineGmail() {
+    if (!confirm("Ngắt Gmail đang dùng để gửi thông báo deadline?")) return;
+    try {
+        await runDeadlineEmailUiAction("disconnect", async () => {
+            await requestJson("/email-notifications/disconnect", { method: "POST", body: "{}" });
+            deadlineEmailState = { ...deadlineEmailState, preview: null };
+            showToast("Đã ngắt kết nối Gmail.");
+        });
+    } catch {
+        // The shared action handler already displays the API error.
+    }
+}
+
+async function previewDeadlineEmail() {
+    try {
+        await runDeadlineEmailUiAction("preview", async () => {
+            const data = await requestJson("/email-notifications/preview");
+            deadlineEmailState = { ...deadlineEmailState, preview: data.preview };
+            showToast("Đã tính danh sách cần nhắc hôm nay.");
+        });
+    } catch {
+        // The shared action handler already displays the API error.
+    }
+}
+
+async function runDeadlineEmailNow() {
+    if (!confirm("Gửi email nhắc deadline cho danh sách hôm nay ngay bây giờ? Hệ thống sẽ tự bỏ qua các mail đã gửi trong ngày.")) return;
+    try {
+        await runDeadlineEmailUiAction("run", async () => {
+            const data = await requestJson("/email-notifications/run", { method: "POST", body: "{}" });
+            const result = data.result || {};
+            showToast(`Đã gửi ${result.sent || 0} mail, bỏ qua ${result.duplicate || 0} mail đã gửi.`);
+        });
+    } catch {
+        // The shared action handler already displays the API error.
+    }
+}
+
 async function initAuth() {
     authState = { status: "checking", user: null, error: null };
     render();
@@ -5894,12 +6103,14 @@ async function initAuth() {
         const data = await requestJson("/auth/me", { skipAuthRedirect: true });
         authState = { status: "authenticated", user: data.user, error: null };
         render();
-        await Promise.all([hydrateState(true), hydrateAccountDirectory()]);
+        await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings()]);
+        consumeGmailCallbackNotice();
         render();
     } catch {
         authState = { status: "guest", user: null, error: null };
         appState = emptyState();
         accountDirectory = [];
+        deadlineEmailState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
         ui.aiChatOpen = false;
         ui.aiChatDraft = "";
         ui.groupChatOpen = false;
@@ -5931,12 +6142,14 @@ async function handleLogin(event) {
         });
         authState = { status: "authenticated", user: data.user, error: null };
         render();
-        await Promise.all([hydrateState(true), hydrateAccountDirectory()]);
+        await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings()]);
+        consumeGmailCallbackNotice();
         render();
     } catch (error) {
         authState = { status: "guest", user: null, error: error.message || "Không đăng nhập được." };
         appState = emptyState();
         accountDirectory = [];
+        deadlineEmailState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
         ui.aiChatOpen = false;
         ui.aiChatDraft = "";
         ui.groupChatOpen = false;
@@ -5977,6 +6190,7 @@ async function handleAuthAction(event) {
     authState = { status: "guest", user: null, error: null };
     appState = emptyState();
     accountDirectory = [];
+    deadlineEmailState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
     localStorage.removeItem(STORAGE_KEY);
     ui.modal = null;
     ui.profileOpen = false;
@@ -6357,6 +6571,11 @@ function handleAction(event) {
     if (action === "set-table-page") return setTablePage(event.currentTarget.dataset.collection, event.currentTarget.dataset.page);
     if (action === "open-work-export") return openWorkExport(id);
     if (action === "open-work-progress") return openWorkProgress(id);
+    if (action === "refresh-deadline-email") return hydrateDeadlineEmailSettings().then(render);
+    if (action === "connect-deadline-gmail") return connectDeadlineGmail();
+    if (action === "disconnect-deadline-gmail") return disconnectDeadlineGmail();
+    if (action === "preview-deadline-email") return previewDeadlineEmail();
+    if (action === "run-deadline-email") return runDeadlineEmailNow();
     if (action === "close-modal") return closeModal();
     if (action === "reset-filters") return resetFilters();
     if (action === "toggle-column-filter") return toggleColumnFilter(event.currentTarget.dataset.columnKey);

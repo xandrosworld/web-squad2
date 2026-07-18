@@ -18,6 +18,7 @@
     "check:group-editor": "node scripts/check-group-editor-policy.js",
     "check:work-item-invariants": "node scripts/check-work-item-invariants.js",
     "check:work-item-export": "node scripts/check-work-item-export.js",
+    "check:deadline-notifications": "node scripts/check-deadline-notifications.js",
     "import:workbook:db": "node scripts/import-workbook-to-db.js",
     "sync:handoff-sections": "node scripts/sync-handoff-sections.js",
     "smoke:dashboard": "node scripts/smoke-dashboard.js",
@@ -25,7 +26,8 @@
     "smoke:sitemap-ui": "node scripts/smoke-sitemap-ui.js",
     "smoke:rbac": "node scripts/smoke-rbac.js",
     "smoke:workplan": "node scripts/smoke-workplan.js",
-    "migrate:work-order": "node scripts/migrate-work-item-order.js"
+    "migrate:work-order": "node scripts/migrate-work-item-order.js",
+    "notify:deadlines": "node scripts/send-deadline-notifications.js"
   },
   "engines": {
     "node": ">=20"

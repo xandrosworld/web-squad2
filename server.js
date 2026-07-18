@@ -7,6 +7,11 @@ const express = require("express");
 const ExcelJS = require("exceljs");
 const { Pool } = require("pg");
 const { computedFieldsByCollection } = require("./excel-formula-contract");
+const {
+  createDeadlineNotificationService,
+  signOAuthState,
+  verifyOAuthState
+} = require("./deadline-notifications");
 
 const app = express();
 let server = null;
@@ -30,6 +35,17 @@ const geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY ||
 const geminiModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const geminiApiBase = process.env.GEMINI_API_BASE || "https://generativelanguage.googleapis.com/v1beta";
 const geminiTimeoutMs = Number(process.env.GEMINI_TIMEOUT_MS || 30000);
+const gmailSenderEmail = String(process.env.GMAIL_SENDER_EMAIL || "maitanthanh1998@gmail.com").trim().toLowerCase();
+const deadlineManagerEmails = process.env.DEADLINE_MANAGER_EMAILS || "yenuth@bidv.com.vn";
+const appBaseUrl = String(process.env.APP_BASE_URL || "").trim();
+const deadlineNotificationService = createDeadlineNotificationService({
+  oauthClientId: process.env.GMAIL_OAUTH_CLIENT_ID,
+  oauthClientSecret: process.env.GMAIL_OAUTH_CLIENT_SECRET,
+  expectedSenderEmail: gmailSenderEmail,
+  defaultManagerEmails: deadlineManagerEmails,
+  appBaseUrl,
+  encryptionSecret: process.env.GMAIL_TOKEN_ENCRYPTION_KEY || sessionSecret
+});
 const defaultUsers = [
   { username: "yenuth@bidv.com.vn", email: "yenuth@bidv.com.vn", name: "Uông Thị Hải Yến", password: "123456" },
   { username: "phuongbtm@bidv.com.vn", email: "phuongbtm@bidv.com.vn", name: "Bùi Thị Mai Phương", password: "123456" },
@@ -789,6 +805,45 @@ app.post("/api/auth/logout", (req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/api/email-notifications/oauth/callback", async (req, res) => {
+  const redirectWithStatus = (status, message = "") => {
+    const query = new URLSearchParams({ gmail: status });
+    if (message) query.set("message", message.slice(0, 240));
+    res.redirect(`/?${query.toString()}#work/inputs`);
+  };
+  try {
+    await ensureSchema();
+    if (req.query.error) {
+      redirectWithStatus("error", "Google chưa cấp quyền gửi Gmail.");
+      return;
+    }
+    const state = verifyOAuthState(req.query.state, sessionSecret);
+    if (!state?.userId || !state?.redirectUri) {
+      redirectWithStatus("error", "Phiên kết nối Gmail đã hết hạn. Hãy thực hiện lại.");
+      return;
+    }
+    const userResult = await getPool().query(`
+      select id, role, active
+      from app_users
+      where id = $1
+      limit 1
+    `, [state.userId]);
+    const user = userResult.rows[0];
+    if (!user?.active || user.role !== "admin") {
+      redirectWithStatus("error", "Tài khoản không còn quyền kết nối Gmail.");
+      return;
+    }
+    await deadlineNotificationService.connectFromAuthorizationCode(getPool(), {
+      code: String(req.query.code || ""),
+      redirectUri: state.redirectUri
+    });
+    redirectWithStatus("connected");
+  } catch (error) {
+    console.error("Gmail OAuth callback failed:", error);
+    redirectWithStatus("error", publicError(error));
+  }
+});
+
 app.use("/api", requireApiAuth);
 
 app.patch("/api/auth/profile", asyncHandler(async (req, res) => {
@@ -878,6 +933,65 @@ app.post("/api/auth/users", requireAdmin, asyncHandler(async (req, res) => {
     returning id, username, email, name, role, active, avatar_data, created_at, updated_at
   `, [id, username, email, name, role, passwordHash]);
   res.status(201).json({ user: toPublicUser(result.rows[0]) });
+}));
+
+app.get("/api/email-notifications/settings", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const callbackUrl = gmailOAuthRedirectUri(req);
+  const status = await deadlineNotificationService.getPublicStatus(getPool(), { callbackUrl });
+  res.json(status);
+}));
+
+app.post("/api/email-notifications/settings", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const settings = await deadlineNotificationService.saveSettings(getPool(), {
+    enabled: req.body.enabled !== false,
+    managerEmails: req.body.managerEmails,
+    timeZone: req.body.timeZone,
+    appBaseUrl: req.body.appBaseUrl || publicAppBaseUrl(req)
+  }, req.user);
+  res.json({ settings });
+}));
+
+app.post("/api/email-notifications/oauth/start", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const redirectUri = gmailOAuthRedirectUri(req);
+  const state = signOAuthState({
+    userId: req.user.id,
+    redirectUri,
+    nonce: crypto.randomUUID(),
+    exp: Date.now() + 10 * 60 * 1000
+  }, sessionSecret);
+  res.json({ url: deadlineNotificationService.buildAuthorizationUrl({ redirectUri, state }) });
+}));
+
+app.post("/api/email-notifications/disconnect", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  await deadlineNotificationService.disconnect(getPool());
+  res.json({ ok: true });
+}));
+
+app.get("/api/email-notifications/preview", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const preview = await deadlineNotificationService.preview(getPool(), {
+    forceManagerDigest: req.query.manager === "true"
+  });
+  res.json({ preview });
+}));
+
+app.post("/api/email-notifications/test", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const result = await deadlineNotificationService.sendTest(getPool(), req.body.recipient);
+  res.json({ result });
+}));
+
+app.post("/api/email-notifications/run", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const result = await deadlineNotificationService.run(getPool(), {
+    force: true,
+    forceManagerDigest: req.body.forceManagerDigest === true
+  });
+  res.json({ result });
 }));
 
 app.get("/api/state", asyncHandler(async (req, res) => {
@@ -1293,7 +1407,9 @@ module.exports = {
   __testCanFullyManageWorkItem: canFullyManageWorkItem,
   __testDecorateRecord: decorateRecord,
   __testEnforceWorkItemGroupEditorScope: enforceWorkItemGroupEditorScope,
-  __testToImportCellDate: toImportCellDate
+  __testToImportCellDate: toImportCellDate,
+  runDeadlineNotificationJob,
+  closeDatabase
 };
 
 function getPool() {
@@ -1374,6 +1490,23 @@ function ensureSchema() {
 
       create index if not exists idx_group_chat_messages_created
         on group_chat_messages (created_at desc);
+
+      create table if not exists email_notification_log (
+        notification_key text primary key,
+        kind text not null,
+        recipient text not null,
+        scheduled_date date not null,
+        status text not null,
+        item_count integer not null default 0,
+        attempt_count integer not null default 0,
+        error_message text,
+        sent_at timestamptz,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+
+      create index if not exists idx_email_notification_log_date
+        on email_notification_log (scheduled_date desc, kind, status);
     `);
       await ensureSeedAdmin();
       await ensureDefaultUsers();
@@ -5158,9 +5291,30 @@ function setNoStore(res) {
   res.setHeader("Expires", "0");
 }
 
+function publicAppBaseUrl(req) {
+  return appBaseUrl || `${req.protocol}://${req.get("host")}`;
+}
+
+function gmailOAuthRedirectUri(req) {
+  return String(process.env.GMAIL_OAUTH_REDIRECT_URI || `${publicAppBaseUrl(req)}/api/email-notifications/oauth/callback`).trim();
+}
+
+async function runDeadlineNotificationJob(options = {}) {
+  await ensureSchema();
+  return deadlineNotificationService.run(getPool(), options);
+}
+
+async function closeDatabase() {
+  if (!pool) return;
+  const activePool = pool;
+  pool = null;
+  schemaPromise = null;
+  await activePool.end();
+}
+
 async function shutdown() {
   server.close(async () => {
-    if (pool) await pool.end();
+    await closeDatabase();
     process.exit(0);
   });
 }

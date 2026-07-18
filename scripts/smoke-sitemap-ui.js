@@ -34,6 +34,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
   const groupShot = path.join(os.tmpdir(), "squad2-group-t02.png");
   const dailyShot = path.join(os.tmpdir(), "squad2-daily-control.png");
   const mobileShot = path.join(os.tmpdir(), "squad2-sitemap-mobile.png");
+  const mobileInputsShot = path.join(os.tmpdir(), "squad2-work-inputs-mobile.png");
   try {
     const desktop = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
     await mockApi(desktop, state);
@@ -239,6 +240,18 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     }
     await page.locator('[data-action="close-modal"]').first().click();
     await assertRoute(page, "work/inputs", ".input-catalog-grid");
+    if (!await page.locator(".deadline-email-panel").isVisible()) {
+      throw new Error("Thông tin đầu vào thiếu khu quản trị nhắc deadline qua Gmail.");
+    }
+    if (await page.locator(".email-rule-strip > span").count() !== 3
+      || await page.locator('#deadlineEmailSettingsForm input[readonly]').inputValue() !== "maitanthanh1998@gmail.com") {
+      throw new Error("Khu nhắc deadline chưa hiển thị đúng tài khoản gửi và ba quy tắc lịch.");
+    }
+    await page.locator('[data-action="preview-deadline-email"]').click();
+    await page.waitForSelector(".email-preview-summary");
+    if ((await page.locator(".email-preview-summary strong").allTextContents()).join("|") !== "2|3|1|0") {
+      throw new Error("Preview email deadline không hiển thị đúng số người/việc.");
+    }
     await page.screenshot({ path: inputsShot, fullPage: true });
     await assertRoute(page, "common/personnel/list", "[data-resizable-table=personnel]");
     await assertRoute(page, "common/personnel/map", ".personnel-map");
@@ -509,6 +522,14 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await mobilePage.waitForSelector('[data-resizable-table="features"]');
     await assertFeatureTableHorizontalAccess(mobilePage, "mobile");
     await assertNoPageOverflow(mobilePage, "DM_ChucNang mobile");
+    await mobilePage.goto(`${baseUrl}/#work/inputs`, { waitUntil: "domcontentloaded" });
+    await mobilePage.waitForSelector(".deadline-email-panel");
+    await assertNoPageOverflow(mobilePage, "Nhac deadline mobile");
+    if (!await mobilePage.locator(".email-rule-strip").isVisible()
+      || !await mobilePage.locator('[data-action="preview-deadline-email"]').isVisible()) {
+      throw new Error("Mobile deadline panel is missing its rules or preview action.");
+    }
+    await mobilePage.screenshot({ path: mobileInputsShot, fullPage: true });
     if (mobileErrors.length) throw new Error(`Lỗi trình duyệt mobile: ${mobileErrors.join(" | ")}`);
     await mobile.close();
 
@@ -525,7 +546,8 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       memberKpiScreenshot: memberKpiShot,
       groupScreenshot: groupShot,
       dailyScreenshot: dailyShot,
-      mobileScreenshot: mobileShot
+      mobileScreenshot: mobileShot,
+      mobileInputsScreenshot: mobileInputsShot
     }, null, 2));
   } finally {
     await browser.close();
@@ -607,6 +629,37 @@ async function mockApi(context, state) {
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({ authenticated: true, user: { id: "smoke-admin", username: "thanhmt", email: "thanhmt@bidv.com.vn", name: "Mai Tấn Thành", role: "admin" } })
+  }));
+  await context.route("**/api/email-notifications/settings", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      configured: true,
+      connected: true,
+      accountEmail: "maitanthanh1998@gmail.com",
+      expectedSenderEmail: "maitanthanh1998@gmail.com",
+      callbackUrl: "http://localhost:3100/api/email-notifications/oauth/callback",
+      settings: {
+        enabled: true,
+        senderEmail: "maitanthanh1998@gmail.com",
+        managerEmails: ["yenuth@bidv.com.vn"],
+        timeZone: "Asia/Ho_Chi_Minh",
+        appBaseUrl: "http://localhost:3100"
+      },
+      recentLogs: []
+    })
+  }));
+  await context.route("**/api/email-notifications/preview", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      preview: {
+        assigneeDigestCount: 2,
+        assigneeTaskCount: 3,
+        managerOverdueTaskCount: 1,
+        missingAssigneeEmailCount: 0
+      }
+    })
   }));
   await context.route("**/api/state", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ state }) }));
   await context.route("**/api/directory/users", (route) => route.fulfill({
