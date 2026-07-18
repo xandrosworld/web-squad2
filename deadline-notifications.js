@@ -144,12 +144,30 @@ function createDeadlineNotificationService(options = {}) {
     const connection = await requireConnection(pool);
     const target = normalizeEmail(recipient || connection.accountEmail);
     if (!target) throw createPublicError(400, "Email nhận thử không hợp lệ.");
+    const notificationData = await readNotificationData(pool);
+    const todayKey = dateKeyInTimeZone(new Date(), settings.timeZone);
+    const plan = buildNotificationPlan(notificationData.workItems, {
+      todayKey,
+      managerEmails: settings.managerEmails,
+      categories: notificationData.categories
+    });
+    const previewItems = plan.assigneeDigests.flatMap((digest) => digest.items);
     await sendGmailMessage(connection, {
       to: [target],
-      subject: "[Squad 2 UAT] Kiểm tra kết nối Gmail",
-      html: renderTestEmail({ senderEmail: connection.accountEmail, settings })
+      subject: `[Bản gửi thử] [Squad 2 UAT] ${previewItems.length} công việc cần theo dõi - ${formatViDate(todayKey)}`,
+      html: renderOperationalPreview({
+        target,
+        plan,
+        settings,
+        todayKey
+      })
     });
-    return { recipient: target, sentAt: new Date().toISOString() };
+    return {
+      recipient: target,
+      sentAt: new Date().toISOString(),
+      taskCount: previewItems.length,
+      assigneeDigestCount: plan.assigneeDigests.length
+    };
   }
 
   async function run(pool, input = {}) {
@@ -194,7 +212,7 @@ function createDeadlineNotificationService(options = {}) {
           recipient: digest.recipient,
           scheduledDate: todayKey,
           itemCount: digest.items.length,
-          subject: `[Squad 2 UAT] Nhắc deadline công việc - ${formatViDate(todayKey)}`,
+          subject: buildAssigneeSubject(digest, todayKey),
           html: renderAssigneeDigest(digest, settings, todayKey)
         });
         collectOutcome(result, outcome);
@@ -451,18 +469,23 @@ function compareDeadlineItems(a, b) {
 
 function renderAssigneeDigest(digest, settings, todayKey) {
   const overdueCount = digest.items.filter((item) => item.daysOverdue > 0).length;
-  const intro = overdueCount
-    ? `Bạn có ${overdueCount} công việc quá hạn và ${digest.items.length - overdueCount} công việc sắp đến hạn.`
-    : `Bạn có ${digest.items.length} công việc sắp đến hạn.`;
+  const dueTodayCount = digest.items.filter((item) => item.remainingDays === 0).length;
+  const upcomingCount = digest.items.length - overdueCount - dueTodayCount;
   return renderEmailShell({
-    eyebrow: "NHẮC DEADLINE CÔNG VIỆC",
-    title: `Xin chào ${digest.assignee || "bạn"},`,
-    intro,
-    body: renderTaskTable(digest.items, { showAssignee: false }),
+    eyebrow: "SQUAD 2 UAT • NHẮC DEADLINE",
+    title: `Chào ${displayFirstName(digest.assignee) || "bạn"}, bạn có ${digest.items.length} công việc cần theo dõi`,
+    intro: "Hệ thống đã rà soát toàn bộ danh sách công việc và tổng hợp các hạng mục đang gần hạn hoặc quá hạn của bạn dưới đây.",
+    body: `${renderDeadlineSummary({ upcomingCount, dueTodayCount, overdueCount })}${renderTaskCards(digest.items, { showAssignee: false })}`,
     actionUrl: settings.appBaseUrl ? `${settings.appBaseUrl}/#work/task-master` : "",
-    actionLabel: "Mở danh sách công việc",
-    footer: `Thông báo tự động ngày ${formatViDate(todayKey)}. Công việc hoàn thành sẽ dừng nhận nhắc.`
+    actionLabel: "Xem và cập nhật công việc",
+    footer: `Thông báo tự động ngày ${formatViDate(todayKey)}, được gửi theo dữ liệu trên toàn bộ Task Master. Khi công việc được cập nhật Hoàn thành, hệ thống sẽ tự dừng nhắc. Bạn không cần trả lời email này.`
   });
+}
+
+function buildAssigneeSubject(digest, todayKey) {
+  const overdueCount = digest.items.filter((item) => item.daysOverdue > 0).length;
+  const prefix = overdueCount > 0 ? "Cần cập nhật" : "Nhắc deadline";
+  return `[Squad 2 UAT] ${prefix}: ${digest.items.length} công việc - ${formatViDate(todayKey)}`;
 }
 
 function renderManagerDigest(digest, settings, todayKey) {
@@ -473,7 +496,7 @@ function renderManagerDigest(digest, settings, todayKey) {
     grouped.get(key).push(item);
   }
   const body = digest.items.length
-    ? `${renderManagerSummary(grouped)}${renderTaskTable(digest.items, { showAssignee: true })}`
+    ? `${renderManagerSummary(grouped)}${renderTaskCards(digest.items, { showAssignee: true })}`
     : `<div style="padding:24px;border:1px solid #d8e4e7;background:#f4fbf9;color:#075f58;font-weight:700;text-align:center;">Tuần này không có công việc quá hạn.</div>`;
   return renderEmailShell({
     eyebrow: "TỔNG KẾT THỨ SÁU",
@@ -496,22 +519,35 @@ function renderManagerSummary(grouped) {
   return `<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 18px;"><thead><tr><th style="padding:9px 10px;background:#087f78;color:#fff;text-align:left;">Người phụ trách</th><th style="padding:9px 10px;background:#087f78;color:#fff;text-align:right;">Việc quá hạn</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-function renderTaskTable(items, options = {}) {
-  const assigneeHeader = options.showAssignee ? `<th style="padding:9px 8px;background:#087f78;color:#fff;text-align:left;">Phụ trách</th>` : "";
-  const rows = items.map((item) => {
+function renderDeadlineSummary({ upcomingCount = 0, dueTodayCount = 0, overdueCount = 0 }) {
+  const cells = [
+    { label: "Sắp đến hạn", value: upcomingCount, color: "#087f78", background: "#e9f7f5" },
+    { label: "Đến hạn hôm nay", value: dueTodayCount, color: "#9a6200", background: "#fff7df" },
+    { label: "Quá hạn", value: overdueCount, color: "#bd2525", background: "#fff0f0" }
+  ];
+  return `<table role="presentation" style="width:100%;border-collapse:separate;border-spacing:8px 0;margin:0 -8px 18px;"><tr>${cells.map((cell) => `<td style="width:33.33%;padding:12px;background:${cell.background};border-radius:6px;color:${cell.color};"><div style="font-size:22px;font-weight:700;">${cell.value}</div><div style="margin-top:3px;font-size:12px;font-weight:700;">${cell.label}</div></td>`).join("")}</tr></table>`;
+}
+
+function renderTaskCards(items, options = {}) {
+  return items.map((item) => {
     const timing = item.daysOverdue > 0
       ? `<strong style="color:#c62828;">Quá hạn ${item.daysOverdue} ngày</strong>`
       : item.remainingDays === 0
         ? `<strong style="color:#b26a00;">Đến hạn hôm nay</strong>`
         : `<span style="color:#875700;">Còn ${item.remainingDays} ngày</span>`;
-    return `<tr>
-      <td style="padding:10px 8px;border-bottom:1px solid #e4eaee;white-space:nowrap;font-weight:700;">${escapeHtml(item.taskId || "-")}</td>
-      <td style="padding:10px 8px;border-bottom:1px solid #e4eaee;"><strong>${escapeHtml(item.title || "-")}</strong>${item.categoryName ? `<br><span style="color:#6c7785;font-size:12px;">${escapeHtml(item.categoryName)}</span>` : ""}</td>
-      ${options.showAssignee ? `<td style="padding:10px 8px;border-bottom:1px solid #e4eaee;">${escapeHtml(item.assignee || item.assigneeEmail || "Chưa phân công")}</td>` : ""}
-      <td style="padding:10px 8px;border-bottom:1px solid #e4eaee;white-space:nowrap;">${escapeHtml(formatViDate(item.dueDate))}<br>${timing}</td>
-    </tr>`;
+    const urgencyColor = item.daysOverdue > 0 ? "#d43b3b" : item.remainingDays === 0 ? "#d28a00" : "#00867e";
+    const progress = Math.max(0, Math.min(100, Number(item.progress) || 0));
+    return `<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 12px;border:1px solid #dfe7ea;border-left:5px solid ${urgencyColor};background:#fff;"><tr><td style="padding:16px;">
+      <div style="font-size:12px;color:#607080;font-weight:700;">${escapeHtml(item.taskId || "-")}${item.categoryName ? ` • ${escapeHtml(item.categoryName)}` : ""}</div>
+      <div style="margin-top:6px;font-size:16px;line-height:1.45;font-weight:700;color:#172033;">${escapeHtml(item.title || "-")}</div>
+      ${options.showAssignee ? `<div style="margin-top:8px;color:#344255;"><strong>Phụ trách:</strong> ${escapeHtml(item.assignee || item.assigneeEmail || "Chưa phân công")}</div>` : ""}
+      <table role="presentation" style="width:100%;margin-top:12px;border-collapse:collapse;"><tr>
+        <td style="padding:8px 10px;background:#f5f8fa;color:#344255;"><span style="font-size:11px;color:#758190;">TRẠNG THÁI</span><br><strong>${escapeHtml(item.status || "Chưa bắt đầu")}</strong></td>
+        <td style="padding:8px 10px;background:#f5f8fa;color:#344255;"><span style="font-size:11px;color:#758190;">TIẾN ĐỘ</span><br><strong>${progress}%</strong></td>
+        <td style="padding:8px 10px;background:#f5f8fa;color:#344255;"><span style="font-size:11px;color:#758190;">DEADLINE</span><br><strong>${escapeHtml(formatViDate(item.dueDate))}</strong> • ${timing}</td>
+      </tr></table>
+    </td></tr></table>`;
   }).join("");
-  return `<div style="overflow-x:auto;"><table role="presentation" style="width:100%;border-collapse:collapse;min-width:620px;"><thead><tr><th style="padding:9px 8px;background:#087f78;color:#fff;text-align:left;">Task ID</th><th style="padding:9px 8px;background:#087f78;color:#fff;text-align:left;">Công việc</th>${assigneeHeader}<th style="padding:9px 8px;background:#087f78;color:#fff;text-align:left;">Deadline</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function renderEmailShell({ eyebrow, title, intro, body, actionUrl, actionLabel, footer }) {
@@ -521,16 +557,28 @@ function renderEmailShell({ eyebrow, title, intro, body, actionUrl, actionLabel,
   return `<!doctype html><html><body style="margin:0;background:#eef3f5;font-family:Arial,sans-serif;color:#172033;"><div style="max-width:820px;margin:0 auto;padding:24px 12px;"><div style="background:#fff;border:1px solid #dce4e8;"><div style="padding:18px 24px;background:#006b64;color:#fff;"><div style="font-size:11px;font-weight:700;letter-spacing:.08em;">${escapeHtml(eyebrow)}</div><div style="margin-top:6px;font-size:24px;font-weight:700;">${escapeHtml(title)}</div></div><div style="padding:24px;"><p style="margin:0 0 18px;line-height:1.6;">${escapeHtml(intro)}</p>${body}${action}<p style="margin:24px 0 0;padding-top:16px;border-top:1px solid #e5eaed;color:#667281;font-size:12px;line-height:1.5;">${escapeHtml(footer)}</p></div></div></div></body></html>`;
 }
 
-function renderTestEmail({ senderEmail, settings }) {
+function renderOperationalPreview({ target, plan, settings, todayKey }) {
+  const previewItems = plan.assigneeDigests.flatMap((digest) => digest.items);
+  const overdueCount = previewItems.filter((item) => item.daysOverdue > 0).length;
+  const dueTodayCount = previewItems.filter((item) => item.remainingDays === 0).length;
+  const upcomingCount = previewItems.length - overdueCount - dueTodayCount;
+  const body = previewItems.length
+    ? `${renderDeadlineSummary({ upcomingCount, dueTodayCount, overdueCount })}${renderTaskCards(previewItems, { showAssignee: true })}`
+    : `<div style="padding:22px;background:#f1f8f7;border-left:4px solid #00867e;color:#075f58;font-weight:700;">Hôm nay không có công việc nào thuộc diện nhắc từ D-5 đến D+3.</div>`;
   return renderEmailShell({
-    eyebrow: "KIỂM TRA KẾT NỐI",
-    title: "Gmail đã sẵn sàng",
-    intro: `Hệ thống đã gửi thành công từ ${senderEmail}.`,
-    body: `<div style="padding:16px;background:#f1f8f7;border-left:4px solid #00867e;">Thông báo deadline đang ${settings.enabled ? "bật" : "tắt"}. Múi giờ: ${escapeHtml(settings.timeZone)}.</div>`,
-    actionUrl: settings.appBaseUrl,
-    actionLabel: "Mở Squad 2 UAT",
-    footer: "Đây là thư kiểm tra, không phải cảnh báo deadline."
+    eyebrow: "BẢN GỬI THỬ • DỮ LIỆU THỰC TẾ HÔM NAY",
+    title: `${previewItems.length} công việc đang thuộc diện nhắc deadline`,
+    intro: `Đây là bản xem trước được tổng hợp từ toàn bộ Task Master. Nếu chạy lịch hôm nay, hệ thống sẽ gửi ${plan.assigneeDigests.length} email cá nhân cho ${previewItems.length} công việc.`,
+    body,
+    actionUrl: settings.appBaseUrl ? `${settings.appBaseUrl}/#work/task-master` : "",
+    actionLabel: "Mở danh sách công việc",
+    footer: `Bản gửi thử chỉ được gửi tới ${target}. Lịch thật vẫn chạy độc lập theo ngày ${formatViDate(todayKey)}, kể cả cuối tuần và ngoài giờ hành chính.`
   });
+}
+
+function displayFirstName(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  return parts.at(-1) || "";
 }
 
 async function reserveNotification(client, notification) {
@@ -821,6 +869,9 @@ module.exports = {
   normalizeDateKey,
   normalizeEmailList,
   hasGmailSendScope,
+  buildAssigneeSubject,
+  renderAssigneeDigest,
+  renderOperationalPreview,
   buildMimeMessage,
   encryptValue,
   decryptValue,

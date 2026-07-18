@@ -7,6 +7,9 @@ const {
   isFridayDateKey,
   nextDailyRunAt,
   hasGmailSendScope,
+  buildAssigneeSubject,
+  renderAssigneeDigest,
+  renderOperationalPreview,
   buildMimeMessage,
   encryptValue,
   decryptValue,
@@ -98,6 +101,39 @@ const saturdayOverduePlan = buildNotificationPlan([
 });
 assert.strictEqual(saturdayOverduePlan.managerDigest, null, "Saturday must not create the manager email");
 assert.strictEqual(saturdayOverduePlan.managerOverdueTaskCount, 1, "Preview must still count overdue tasks outside Friday");
+
+const digestForEmail = {
+  recipient: "sinhhc@bidv.com.vn",
+  assignee: "Huỳnh Công Sinh",
+  items: [{
+    ...baseItem,
+    taskId: "SQ2-URD-008",
+    title: "Bổ sung chức năng AI hỗ trợ phân tích BCTC",
+    assignee: "Huỳnh Công Sinh",
+    assigneeEmail: "sinhhc@bidv.com.vn",
+    status: "Chưa bắt đầu",
+    progress: 0,
+    categoryName: "URD",
+    dueDate: "2026-07-19",
+    remainingDays: 1,
+    daysOverdue: 0
+  }]
+};
+const friendlyEmail = renderAssigneeDigest(digestForEmail, { appBaseUrl: "https://example.test" }, "2026-07-18");
+assert.match(buildAssigneeSubject(digestForEmail, "2026-07-18"), /1 công việc/);
+assert.match(friendlyEmail, /Chào Sinh/);
+assert.match(friendlyEmail, /SQ2-URD-008/);
+assert.match(friendlyEmail, /Chưa bắt đầu/);
+assert.match(friendlyEmail, /Còn 1 ngày/);
+
+const operationalPreview = renderOperationalPreview({
+  target: "maitanthanh1998@gmail.com",
+  plan: { assigneeDigests: [digestForEmail] },
+  settings: { appBaseUrl: "https://example.test" },
+  todayKey: "2026-07-18"
+});
+assert.match(operationalPreview, /DỮ LIỆU THỰC TẾ HÔM NAY/);
+assert.match(operationalPreview, /Huỳnh Công Sinh/);
 
 const secret = "unit-test-secret";
 const encrypted = encryptValue("refresh-token", secret);
