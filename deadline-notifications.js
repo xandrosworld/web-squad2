@@ -305,6 +305,7 @@ function createDeadlineNotificationService(options = {}) {
   }
 
   function normalizeSettings(value = {}) {
+    value = value || {};
     return {
       enabled: value.enabled !== false,
       senderEmail: expectedSenderEmail,

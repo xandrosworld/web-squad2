@@ -1,5 +1,6 @@
 const assert = require("assert");
 const {
+  createDeadlineNotificationService,
   buildNotificationPlan,
   classifyDeadlineReminder,
   dayDifference,
@@ -105,4 +106,22 @@ assert.match(mime, /From: Squad 2 UAT <maitanthanh1998@gmail.com>/);
 assert.match(mime, /To: thanhmt@bidv.com.vn/);
 assert.match(mime, /Content-Type: text\/html; charset=UTF-8/);
 
-console.log("Deadline notification checks passed: D-5..D+3, Friday digest, encryption, OAuth state and MIME.");
+async function checkFreshDatabaseDefaults() {
+  const service = createDeadlineNotificationService({
+    expectedSenderEmail: "maitanthanh1998@gmail.com",
+    defaultManagerEmails: "yenuth@bidv.com.vn",
+    encryptionSecret: secret
+  });
+  const settings = await service.readSettings({
+    query: async () => ({ rows: [] })
+  });
+  assert.strictEqual(settings.enabled, true, "A fresh database must receive enabled default settings");
+  assert.deepStrictEqual(settings.managerEmails, ["yenuth@bidv.com.vn"]);
+}
+
+checkFreshDatabaseDefaults()
+  .then(() => console.log("Deadline notification checks passed: D-5..D+3, Friday digest, fresh DB defaults, encryption, OAuth state and MIME."))
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
