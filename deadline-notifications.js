@@ -6,10 +6,11 @@ const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 const GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 const GMAIL_SCOPES = [
   "openid",
   "email",
-  "https://www.googleapis.com/auth/gmail.send"
+  GMAIL_SEND_SCOPE
 ];
 const DEFAULT_TIME_ZONE = "Asia/Ho_Chi_Minh";
 
@@ -36,7 +37,8 @@ function createDeadlineNotificationService(options = {}) {
     `);
     return {
       configured: Boolean(oauthClientId && oauthClientSecret),
-      connected: Boolean(connection?.refreshToken),
+      connected: Boolean(connection?.refreshToken && hasGmailSendScope(connection.scope)),
+      missingSendScope: Boolean(connection?.refreshToken && !hasGmailSendScope(connection.scope)),
       accountEmail: connection?.accountEmail || "",
       expectedSenderEmail,
       callbackUrl: String(context.callbackUrl || ""),
@@ -101,6 +103,9 @@ function createDeadlineNotificationService(options = {}) {
     const profile = await requestJson(fetchImpl, GOOGLE_USERINFO_URL, {
       headers: { Authorization: `Bearer ${token.access_token}` }
     });
+    if (!hasGmailSendScope(token.scope)) {
+      throw createPublicError(409, "Chưa cấp quyền Send email on your behalf. Hãy kết nối lại và tích quyền gửi Gmail.");
+    }
     const accountEmail = normalizeEmail(profile.email || "");
     if (!accountEmail) throw createPublicError(502, "Không đọc được địa chỉ Gmail đã cấp quyền.");
     if (expectedSenderEmail && accountEmail !== expectedSenderEmail) {
@@ -289,6 +294,9 @@ function createDeadlineNotificationService(options = {}) {
     assertOAuthConfigured();
     const connection = await readConnection(pool);
     if (!connection?.refreshToken) throw createPublicError(409, "Chưa kết nối tài khoản Gmail gửi thông báo.");
+    if (!hasGmailSendScope(connection.scope)) {
+      throw createPublicError(409, "Kết nối Gmail chưa có quyền gửi thư. Hãy kết nối lại và tích quyền Send email on your behalf.");
+    }
     return connection;
   }
 
@@ -720,6 +728,10 @@ function normalizeEmailList(value) {
   return [...new Set(source.map(normalizeEmail).filter(Boolean))];
 }
 
+function hasGmailSendScope(value) {
+  return String(value || "").split(/\s+/).includes(GMAIL_SEND_SCOPE);
+}
+
 function normalizeBaseUrl(value) {
   const text = String(value || "").trim().replace(/\/+$/, "");
   if (!text) return "";
@@ -797,6 +809,7 @@ module.exports = {
   isFridayDateKey,
   normalizeDateKey,
   normalizeEmailList,
+  hasGmailSendScope,
   buildMimeMessage,
   encryptValue,
   decryptValue,

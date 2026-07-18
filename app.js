@@ -2468,6 +2468,7 @@ function renderDeadlineEmailPanel() {
             </div>
             <div class="panel-body deadline-email-body">
                 ${!configured ? `<div class="email-config-alert warning"><i class="fa-solid fa-key"></i><div><strong>Thiếu OAuth Client trên Railway</strong><span>Callback URL: <code>${e(data.callbackUrl || "-")}</code></span></div></div>` : ""}
+                ${data.missingSendScope ? `<div class="email-config-alert warning"><i class="fa-solid fa-envelope-open-text"></i><div><strong>Gmail chưa cấp quyền gửi thư</strong><span>Bấm Kết nối Gmail và tích quyền “Send email on your behalf”.</span></div></div>` : ""}
                 <div class="deadline-email-grid">
                     <form id="deadlineEmailSettingsForm" class="email-settings-form">
                         <div class="email-settings-section-head"><div><strong>Cấu hình gửi</strong><span>Gmail và người nhận báo cáo tuần</span></div><label class="switch-field"><input name="enabled" type="checkbox" ${settings.enabled !== false ? "checked" : ""}><span></span><b>${settings.enabled !== false ? "Đang bật" : "Đang tắt"}</b></label></div>

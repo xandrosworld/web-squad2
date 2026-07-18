@@ -5,6 +5,7 @@ const {
   classifyDeadlineReminder,
   dayDifference,
   isFridayDateKey,
+  hasGmailSendScope,
   buildMimeMessage,
   encryptValue,
   decryptValue,
@@ -27,6 +28,8 @@ assert.strictEqual(dayDifference("2026-07-15", "2026-07-20"), 5);
 assert.strictEqual(dayDifference("2026-07-20", "2026-07-17"), -3);
 assert.strictEqual(isFridayDateKey("2026-07-17"), true);
 assert.strictEqual(isFridayDateKey("2026-07-18"), false);
+assert.strictEqual(hasGmailSendScope("openid email https://www.googleapis.com/auth/gmail.send"), true);
+assert.strictEqual(hasGmailSendScope("openid email"), false);
 
 assert.strictEqual(classifyDeadlineReminder({ ...baseItem, dueDate: "2026-07-21" }, "2026-07-15"), null, "D-6 chưa được nhắc");
 for (let remainingDays = 5; remainingDays >= 0; remainingDays -= 1) {
