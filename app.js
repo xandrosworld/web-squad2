@@ -2463,7 +2463,7 @@ function renderDeadlineEmailPanel() {
     return `
         <section class="panel deadline-email-panel">
             <div class="panel-head">
-                <div class="panel-title"><i class="fa-solid fa-envelope-circle-check"></i><div><h2>Nhắc deadline qua Gmail</h2><span>D-5 đến D+3 · tổng kết quản lý vào thứ Sáu</span></div></div>
+                <div class="panel-title"><i class="fa-solid fa-envelope-circle-check"></i><div><h2>Nhắc deadline qua Gmail</h2><span>D-5 đến khi hoàn thành · tổng kết quản lý vào thứ Sáu</span></div></div>
                 <div class="email-connection-status ${connected ? "connected" : "disconnected"}"><span></span>${connected ? "Đã kết nối" : "Chưa kết nối"}</div>
             </div>
             <div class="panel-body deadline-email-body">
@@ -2474,7 +2474,7 @@ function renderDeadlineEmailPanel() {
                         <div class="email-settings-section-head"><div><strong>Cấu hình gửi</strong><span>Gmail và người nhận báo cáo tuần</span></div><label class="switch-field"><input name="enabled" type="checkbox" ${settings.enabled !== false ? "checked" : ""}><span></span><b>${settings.enabled !== false ? "Đang bật" : "Đang tắt"}</b></label></div>
                         <label class="email-setting-field"><span>Tài khoản gửi</span><input type="email" value="${e(data.accountEmail || data.expectedSenderEmail || settings.senderEmail || "")}" readonly></label>
                         <label class="email-setting-field"><span>Email quản lý</span><input name="managerEmails" type="text" value="${e((settings.managerEmails || []).join(", "))}" placeholder="yenuth@bidv.com.vn" required></label>
-                        <div class="email-rule-strip"><span><b>D-5 → D0</b> Nhắc sắp hạn</span><span><b>D+1 → D+3</b> Nhắc quá hạn</span><span><b>Thứ Sáu</b> Tổng kết quản lý</span></div>
+                        <div class="email-rule-strip"><span><b>D-5 → D0</b> Nhắc sắp hạn</span><span><b>D+1 → Hoàn thành</b> Nhắc quá hạn hằng ngày</span><span><b>Thứ Sáu</b> Đang quá hạn + hoàn thành trễ</span></div>
                         <div class="email-action-row">
                             <button class="primary-btn" type="submit" ${busy ? "disabled" : ""}><i class="fa-solid fa-floppy-disk"></i><span>Lưu cấu hình</span></button>
                             ${configured ? `<button class="ghost-btn" type="button" data-action="connect-deadline-gmail" ${busy ? "disabled" : ""}><i class="fa-brands fa-google"></i><span>${connected ? "Kết nối lại" : "Kết nối Gmail"}</span></button>` : ""}
@@ -2501,12 +2501,16 @@ function renderDeadlineEmailPanel() {
 }
 
 function renderDeadlineEmailPreview(preview) {
-    return `<div class="email-preview-summary"><div><strong>${e(preview.assigneeDigestCount || 0)}</strong><span>người nhận</span></div><div><strong>${e(preview.assigneeTaskCount || 0)}</strong><span>việc cần nhắc</span></div><div><strong>${e(preview.managerOverdueTaskCount || 0)}</strong><span>việc quá hạn</span></div><div><strong>${e(preview.missingAssigneeEmailCount || 0)}</strong><span>thiếu email</span></div></div>`;
+    const missingAlert = Number(preview.missingAssigneeEmailCount || 0) > 0
+        ? `<div class="email-config-alert warning"><i class="fa-solid fa-triangle-exclamation"></i><span>${e(preview.missingAssigneeEmailCount)} công việc thuộc diện nhắc đang thiếu email người phụ trách.</span></div>`
+        : "";
+    return `<div class="email-preview-summary"><div><strong>${e(preview.assigneeDigestCount || 0)}</strong><span>người nhận</span></div><div><strong>${e(preview.assigneeTaskCount || 0)}</strong><span>việc cần nhắc</span></div><div><strong>${e(preview.managerOverdueTaskCount || 0)}</strong><span>đang quá hạn</span></div><div><strong>${e(preview.managerCompletedLateTaskCount || 0)}</strong><span>hoàn thành trễ trong kỳ</span></div></div>${missingAlert}`;
 }
 
 function renderDeadlineEmailLogs(logs) {
     if (!logs.length) return `<div class="email-log-empty"><i class="fa-regular fa-clock"></i><span>Chưa có lượt gửi nào.</span></div>`;
-    return `<div class="email-log-section"><div class="email-settings-section-head"><div><strong>Lịch sử gần nhất</strong><span>${e(logs.length)} lượt gửi</span></div><button class="icon-btn" type="button" data-action="refresh-deadline-email" title="Làm mới lịch sử" aria-label="Làm mới lịch sử"><i class="fa-solid fa-rotate"></i></button></div><div class="email-log-table"><div class="email-log-row email-log-head"><span>Loại</span><span>Người nhận</span><span>Ngày</span><span>Số việc</span><span>Kết quả</span></div>${logs.map((log) => `<div class="email-log-row"><span>${log.kind === "manager-weekly" ? "Tổng kết tuần" : "Nhắc cá nhân"}</span><span title="${e(log.recipient || "")}">${e(log.recipient || "-")}</span><span>${e(formatDateText(log.scheduledDate) || "-")}</span><span>${e(log.itemCount || 0)}</span><span class="email-log-status ${e(log.status || "")}" title="${e(log.error || "")}">${log.status === "sent" ? "Đã gửi" : log.status === "failed" ? "Lỗi" : "Đang gửi"}</span></div>`).join("")}</div></div>`;
+    const logLabel = (kind) => kind === "manager-weekly" ? "Tổng kết tuần" : kind === "manager-status" ? "Xác nhận vận hành" : "Nhắc cá nhân";
+    return `<div class="email-log-section"><div class="email-settings-section-head"><div><strong>Lịch sử gần nhất</strong><span>${e(logs.length)} lượt gửi</span></div><button class="icon-btn" type="button" data-action="refresh-deadline-email" title="Làm mới lịch sử" aria-label="Làm mới lịch sử"><i class="fa-solid fa-rotate"></i></button></div><div class="email-log-table"><div class="email-log-row email-log-head"><span>Loại</span><span>Người nhận</span><span>Ngày</span><span>Số việc</span><span>Kết quả</span></div>${logs.map((log) => `<div class="email-log-row"><span>${logLabel(log.kind)}</span><span title="${e(log.recipient || "")}">${e(log.recipient || "-")}</span><span>${e(formatDateText(log.scheduledDate) || "-")}</span><span>${e(log.itemCount || 0)}</span><span class="email-log-status ${e(log.status || "")}" title="${e(log.error || "")}">${log.status === "sent" ? "Đã gửi" : log.status === "failed" ? "Lỗi" : "Đang gửi"}</span></div>`).join("")}</div></div>`;
 }
 
 function renderPersonnelMapPage() {

@@ -4,11 +4,13 @@ const {
   buildNotificationPlan,
   classifyDeadlineReminder,
   dayDifference,
+  shiftDateKey,
   isFridayDateKey,
   nextDailyRunAt,
   hasGmailSendScope,
   buildAssigneeSubject,
   renderAssigneeDigest,
+  renderManagerDigest,
   renderOperationalPreview,
   buildMimeMessage,
   encryptValue,
@@ -30,6 +32,7 @@ const baseItem = {
 
 assert.strictEqual(dayDifference("2026-07-15", "2026-07-20"), 5);
 assert.strictEqual(dayDifference("2026-07-20", "2026-07-17"), -3);
+assert.strictEqual(shiftDateKey("2026-07-17", -6), "2026-07-11");
 assert.strictEqual(isFridayDateKey("2026-07-17"), true);
 assert.strictEqual(isFridayDateKey("2026-07-18"), false);
 assert.strictEqual(hasGmailSendScope("openid email https://www.googleapis.com/auth/gmail.send"), true);
@@ -52,13 +55,13 @@ for (let remainingDays = 5; remainingDays >= 0; remainingDays -= 1) {
   assert.strictEqual(reminder?.phase, "upcoming", `D-${remainingDays} phải được nhắc`);
   assert.strictEqual(reminder?.remainingDays, remainingDays);
 }
-for (let overdueDays = 1; overdueDays <= 3; overdueDays += 1) {
+for (const overdueDays of [1, 2, 3, 4, 30, 365]) {
   const day = String(20 + overdueDays).padStart(2, "0");
-  const reminder = classifyDeadlineReminder({ ...baseItem, dueDate: "2026-07-20" }, `2026-07-${day}`);
+  const todayKey = overdueDays <= 11 ? `2026-07-${day}` : shiftDateKey("2026-07-20", overdueDays);
+  const reminder = classifyDeadlineReminder({ ...baseItem, dueDate: "2026-07-20" }, todayKey);
   assert.strictEqual(reminder?.phase, "overdue", `D+${overdueDays} phải được nhắc`);
   assert.strictEqual(reminder?.overdueDays, overdueDays);
 }
-assert.strictEqual(classifyDeadlineReminder({ ...baseItem, dueDate: "2026-07-20" }, "2026-07-24"), null, "D+4 phải dừng nhắc cá nhân");
 assert.strictEqual(classifyDeadlineReminder({ ...baseItem, dueDate: "2026-07-20", status: "Hoàn thành", progress: 100 }, "2026-07-20"), null, "Việc hoàn thành không được nhắc");
 
 const categories = new Map([["pilot-t03", { name: "HDSD Lending Hub" }]]);
@@ -66,7 +69,10 @@ const fridayPlan = buildNotificationPlan([
   { ...baseItem, id: "near-1", dueDate: "2026-07-18" },
   { ...baseItem, id: "near-2", taskId: "SQ2-T03-002", dueDate: "2026-07-19" },
   { ...baseItem, id: "old-overdue", taskId: "SQ2-T03-003", dueDate: "2026-07-10" },
-  { ...baseItem, id: "completed", taskId: "SQ2-T03-004", dueDate: "2026-07-10", status: "Hoàn thành", progress: 100 },
+  { ...baseItem, id: "completed-late", taskId: "SQ2-T03-004", dueDate: "2026-07-10", completedDate: "2026-07-13", status: "Hoàn thành", progress: 100 },
+  { ...baseItem, id: "completed-before-period", taskId: "SQ2-T03-006", dueDate: "2026-07-01", completedDate: "2026-07-10", status: "Hoàn thành", progress: 100 },
+  { ...baseItem, id: "completed-on-time", taskId: "SQ2-T03-007", dueDate: "2026-07-15", completedDate: "2026-07-15", status: "Hoàn thành", progress: 100 },
+  { ...baseItem, id: "completed-without-date", taskId: "SQ2-T03-008", dueDate: "2026-07-10", completedDate: "", status: "Hoàn thành", progress: 100 },
   { ...baseItem, id: "missing-email", taskId: "SQ2-T03-005", dueDate: "2026-07-18", assigneeEmail: "" }
 ], {
   todayKey: "2026-07-17",
@@ -75,10 +81,21 @@ const fridayPlan = buildNotificationPlan([
 });
 
 assert.strictEqual(fridayPlan.assigneeDigests.length, 1, "Mỗi người chỉ nhận một digest/ngày");
-assert.strictEqual(fridayPlan.assigneeDigests[0].items.length, 2, "Digest phải gộp hai việc trong D-5 đến D+3");
+assert.strictEqual(fridayPlan.assigneeDigests[0].items.length, 3, "Digest phải gộp việc từ D-5 và mọi việc còn quá hạn");
 assert.strictEqual(fridayPlan.missingAssigneeEmails.length, 1, "Task thiếu email phải được báo trong preview");
 assert.ok(fridayPlan.managerDigest, "Thứ Sáu phải có mail quản lý");
-assert.strictEqual(fridayPlan.managerDigest.items.length, 1, "Mail quản lý phải giữ việc quá hạn lâu hơn D+3");
+assert.strictEqual(fridayPlan.managerDigest.overdueItems.length, 1, "Mail quản lý phải giữ mọi việc đang quá hạn");
+assert.strictEqual(fridayPlan.managerDigest.completedLateItems.length, 1, "Mail quản lý phải giữ việc hoàn thành trễ trong kỳ");
+assert.strictEqual(fridayPlan.managerDigest.completedLateItems[0].completedLateDays, 3);
+assert.strictEqual(fridayPlan.managerDigest.reportStartKey, "2026-07-11", "Kỳ thứ Sáu phải bao phủ bảy ngày từ thứ Bảy");
+assert.strictEqual(fridayPlan.managerCompletedLateTaskCount, 1);
+
+const managerEmail = renderManagerDigest(fridayPlan.managerDigest, { appBaseUrl: "https://example.test" }, "2026-07-17");
+assert.match(managerEmail, /Đang quá hạn/);
+assert.match(managerEmail, /Đã hoàn thành trễ trong kỳ/);
+assert.match(managerEmail, /Hoàn thành trễ 3 ngày/);
+assert.match(managerEmail, /13\/07\/2026/);
+assert.doesNotMatch(managerEmail, /undefined|NaN/);
 
 const emptyFridayPlan = buildNotificationPlan([], {
   todayKey: "2026-07-17",
@@ -86,6 +103,7 @@ const emptyFridayPlan = buildNotificationPlan([], {
 });
 assert.ok(emptyFridayPlan.managerDigest, "Thứ Sáu vẫn gửi tổng kết khi không có ai quá hạn");
 assert.strictEqual(emptyFridayPlan.managerDigest.items.length, 0);
+assert.strictEqual(emptyFridayPlan.managerDigest.completedLateItems.length, 0);
 
 const saturdayPlan = buildNotificationPlan([], {
   todayKey: "2026-07-18",
@@ -170,7 +188,7 @@ async function checkFreshDatabaseDefaults() {
 }
 
 checkFreshDatabaseDefaults()
-  .then(() => console.log("Deadline notification checks passed: daily schedule, D-5..D+3, Friday digest, fresh DB defaults, encryption, OAuth state and MIME."))
+  .then(() => console.log("Deadline notification checks passed: daily schedule, D-5 until completion, Friday active/late-completed digest, fresh DB defaults, encryption, OAuth state and MIME."))
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;

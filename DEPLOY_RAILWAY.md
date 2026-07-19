@@ -39,7 +39,7 @@ The refresh token is encrypted before it is stored in Postgres. Never commit the
 
 The existing web service schedules the notification job itself. Set `DEADLINE_NOTIFICATION_SCHEDULER_ENABLED=true` and `DEADLINE_NOTIFICATION_RUN_UTC_HOUR=1`; 01:00 UTC is 08:00 in Vietnam. A deploy or restart after 08:00 schedules the first run for the next day, so it never sends a late duplicate immediately after startup.
 
-The job sends one combined daily email per assignee for tasks in D-5 through D+3, and sends the manager digest only on Friday. Notification keys and a Postgres advisory lock prevent duplicate sends across retries or multiple web replicas. `npm run notify:deadlines` remains available as a manual one-shot fallback; do not schedule it in a second service while the in-process scheduler is enabled.
+The job sends one combined daily email per assignee from D-5 until the task is completed. On Friday, the manager digest contains both tasks that are still overdue and tasks completed late during the seven-day reporting period. Notification keys and a Postgres advisory lock prevent duplicate sends across retries or multiple web replicas. `npm run notify:deadlines` remains available as a manual one-shot fallback; do not schedule it in a second service while the in-process scheduler is enabled.
 
 ## 3. Deploy
 

@@ -270,8 +270,8 @@ function createDeadlineNotificationService(options = {}) {
           recipient: plan.managerDigest.recipients.join(","),
           recipients: plan.managerDigest.recipients,
           scheduledDate: todayKey,
-          itemCount: plan.managerDigest.items.length,
-          subject: `[Squad 2 UAT] Tổng kết công việc quá hạn - ${formatViDate(todayKey)}`,
+          itemCount: plan.managerDigest.overdueItems.length + plan.managerDigest.completedLateItems.length,
+          subject: `[Squad 2 UAT] Tổng kết tuân thủ deadline tuần - ${formatViDate(todayKey)}`,
           html: renderManagerDigest(plan.managerDigest, settings, todayKey)
         });
         collectOutcome(result, outcome);
@@ -444,8 +444,23 @@ function buildNotificationPlan(workItems, options = {}) {
     .map((item) => decorateDeadlineItem(item, todayKey, categories))
     .filter((item) => item.daysOverdue >= 1)
     .sort(compareDeadlineItems);
+  const reportStartKey = shiftDateKey(todayKey, -6);
+  const completedLateItems = (workItems || [])
+    .filter(isCompletedWorkItem)
+    .map((item) => decorateCompletedLateItem(item, categories))
+    .filter((item) => item.completedLateDays >= 1
+      && item.completedDate >= reportStartKey
+      && item.completedDate <= todayKey)
+    .sort(compareCompletedLateItems);
   const managerDigest = shouldBuildManagerDigest && managerEmails.length
-    ? { recipients: managerEmails, items: overdueItems }
+    ? {
+      recipients: managerEmails,
+      items: overdueItems,
+      overdueItems,
+      completedLateItems,
+      reportStartKey,
+      reportEndKey: todayKey
+    }
     : null;
 
   return {
@@ -453,6 +468,7 @@ function buildNotificationPlan(workItems, options = {}) {
     assigneeDigests,
     managerDigest,
     managerOverdueTaskCount: overdueItems.length,
+    managerCompletedLateTaskCount: completedLateItems.length,
     missingAssigneeEmails
   };
 }
@@ -465,7 +481,7 @@ function classifyDeadlineReminder(item, todayKey) {
   if (remainingDays >= 0 && remainingDays <= 5) {
     return { phase: "upcoming", remainingDays, overdueDays: 0 };
   }
-  if (remainingDays < 0 && remainingDays >= -3) {
+  if (remainingDays < 0) {
     return { phase: "overdue", remainingDays, overdueDays: Math.abs(remainingDays) };
   }
   return null;
@@ -485,6 +501,23 @@ function decorateDeadlineItem(item, todayKey, categories) {
   };
 }
 
+function decorateCompletedLateItem(item, categories) {
+  const dueDate = normalizeDateKey(item?.dueDate);
+  const completedDate = normalizeDateKey(item?.completedDate);
+  const completedLateDays = dueDate && completedDate ? dayDifference(dueDate, completedDate) : 0;
+  return {
+    ...item,
+    categoryName: categories.get(String(item?.categoryId || ""))?.name
+      || categories.get(String(item?.categoryId || ""))
+      || "",
+    dueDate,
+    completedDate,
+    completedLateDays: Math.max(0, Number(completedLateDays) || 0),
+    remainingDays: 0,
+    daysOverdue: 0
+  };
+}
+
 function summarizePlan(plan, settings = {}) {
   return {
     todayKey: plan.todayKey,
@@ -493,6 +526,7 @@ function summarizePlan(plan, settings = {}) {
     assigneeTaskCount: plan.assigneeDigests.reduce((total, digest) => total + digest.items.length, 0),
     managerDigest: Boolean(plan.managerDigest),
     managerOverdueTaskCount: Number(plan.managerOverdueTaskCount || 0),
+    managerCompletedLateTaskCount: Number(plan.managerCompletedLateTaskCount || 0),
     missingAssigneeEmailCount: plan.missingAssigneeEmails.length,
     recipients: plan.assigneeDigests.map((digest) => ({
       email: digest.recipient,
@@ -510,6 +544,12 @@ function compareDeadlineItems(a, b) {
   const due = String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31"));
   if (due) return due;
   return String(a.taskId || a.title || "").localeCompare(String(b.taskId || b.title || ""), "vi");
+}
+
+function compareCompletedLateItems(a, b) {
+  const completed = String(b.completedDate || "").localeCompare(String(a.completedDate || ""));
+  if (completed) return completed;
+  return compareDeadlineItems(a, b);
 }
 
 function renderAssigneeDigest(digest, settings, todayKey) {
@@ -534,26 +574,33 @@ function buildAssigneeSubject(digest, todayKey) {
 }
 
 function renderManagerDigest(digest, settings, todayKey) {
-  const grouped = new Map();
-  for (const item of digest.items) {
-    const key = item.assignee || item.assigneeEmail || "Chưa phân công";
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key).push(item);
-  }
-  const body = digest.items.length
-    ? `${renderManagerSummary(grouped)}${renderTaskCards(digest.items, { showAssignee: true })}`
-    : `<div style="padding:24px;border:1px solid #d8e4e7;background:#f4fbf9;color:#075f58;font-weight:700;text-align:center;">Tuần này không có công việc quá hạn.</div>`;
+  const overdueItems = digest.overdueItems || digest.items || [];
+  const completedLateItems = digest.completedLateItems || [];
+  const allItems = [...overdueItems, ...completedLateItems];
+  const assigneeCount = new Set(allItems.map((item) => item.assignee || item.assigneeEmail || "Chưa phân công")).size;
+  const body = allItems.length
+    ? `${renderManagerSummary(overdueItems, completedLateItems)}
+      ${renderManagerSection("Đang quá hạn", `${overdueItems.length} công việc chưa hoàn thành`, overdueItems, "Không còn công việc nào đang quá hạn.")}
+      ${renderManagerSection("Đã hoàn thành trễ trong kỳ", `${completedLateItems.length} công việc đã hoàn thành sau deadline`, completedLateItems, "Không có công việc nào hoàn thành trễ trong kỳ báo cáo.")}`
+    : `<div style="padding:24px;border:1px solid #d8e4e7;background:#f4fbf9;color:#075f58;font-weight:700;text-align:center;">Kỳ này không có công việc đang quá hạn hoặc hoàn thành trễ.</div>`;
   return renderEmailShell({
-    eyebrow: "TỔNG KẾT THỨ SÁU",
-    title: "Báo cáo công việc quá hạn",
-    intro: digest.items.length
-      ? `Hiện có ${digest.items.length} công việc quá hạn từ một ngày trở lên, thuộc ${grouped.size} người phụ trách.`
-      : "Không có thành viên nào có công việc quá hạn tại thời điểm tổng kết.",
+    eyebrow: "TỔNG KẾT TUÂN THỦ DEADLINE • THỨ SÁU",
+    title: "Báo cáo deadline công việc tuần",
+    intro: allItems.length
+      ? `Kỳ ${formatViDate(digest.reportStartKey)} - ${formatViDate(digest.reportEndKey || todayKey)} ghi nhận ${overdueItems.length} công việc đang quá hạn và ${completedLateItems.length} công việc đã hoàn thành trễ, liên quan ${assigneeCount} người phụ trách.`
+      : `Kỳ ${formatViDate(digest.reportStartKey)} - ${formatViDate(digest.reportEndKey || todayKey)} không ghi nhận công việc đang quá hạn hoặc hoàn thành trễ.`,
     body,
     actionUrl: settings.appBaseUrl ? `${settings.appBaseUrl}/#work/task-master` : "",
     actionLabel: "Xem Task Master",
-    footer: `Báo cáo tự động tuần, chốt ngày ${formatViDate(todayKey)}.`
+    footer: `Báo cáo tự động chốt ngày ${formatViDate(todayKey)}. Công việc hoàn thành trễ vẫn được giữ trong báo cáo của kỳ tương ứng theo Ngày hoàn thành thực tế.`
   });
+}
+
+function renderManagerSection(title, subtitle, items, emptyText) {
+  const content = items.length
+    ? renderTaskCards(items, { showAssignee: true })
+    : `<div style="padding:16px;background:#f5f8fa;color:#657282;border:1px solid #e1e8eb;text-align:center;">${escapeHtml(emptyText)}</div>`;
+  return `<div style="margin:22px 0 10px;"><div style="font-size:17px;font-weight:700;color:#172033;">${escapeHtml(title)}</div><div style="margin-top:3px;font-size:12px;color:#6c7785;">${escapeHtml(subtitle)}</div></div>${content}`;
 }
 
 function renderManagerStatusEmail(report, settings, todayKey) {
@@ -582,12 +629,20 @@ function renderOperationSummary(report) {
   return `<table role="presentation" style="width:100%;border-collapse:separate;border-spacing:8px 0;margin:0 -8px;"><tr>${cells.map((cell) => `<td style="width:33.33%;padding:12px;background:${cell.background};border-radius:6px;color:${cell.color};"><div style="font-size:22px;font-weight:700;">${cell.value}</div><div style="margin-top:3px;font-size:12px;font-weight:700;">${cell.label}</div></td>`).join("")}</tr></table>`;
 }
 
-function renderManagerSummary(grouped) {
+function renderManagerSummary(overdueItems, completedLateItems) {
+  const grouped = new Map();
+  const add = (item, field) => {
+    const name = item.assignee || item.assigneeEmail || "Chưa phân công";
+    if (!grouped.has(name)) grouped.set(name, { overdue: 0, completedLate: 0 });
+    grouped.get(name)[field] += 1;
+  };
+  overdueItems.forEach((item) => add(item, "overdue"));
+  completedLateItems.forEach((item) => add(item, "completedLate"));
   const rows = [...grouped.entries()]
     .sort(([a], [b]) => a.localeCompare(b, "vi"))
-    .map(([name, items]) => `<tr><td style="padding:8px 10px;border-bottom:1px solid #e4eaee;">${escapeHtml(name)}</td><td style="padding:8px 10px;border-bottom:1px solid #e4eaee;text-align:right;font-weight:700;">${items.length}</td></tr>`)
+    .map(([name, counts]) => `<tr><td style="padding:8px 10px;border-bottom:1px solid #e4eaee;">${escapeHtml(name)}</td><td style="padding:8px 10px;border-bottom:1px solid #e4eaee;text-align:center;font-weight:700;color:#bd2525;">${counts.overdue}</td><td style="padding:8px 10px;border-bottom:1px solid #e4eaee;text-align:center;font-weight:700;color:#9a6200;">${counts.completedLate}</td></tr>`)
     .join("");
-  return `<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 18px;"><thead><tr><th style="padding:9px 10px;background:#087f78;color:#fff;text-align:left;">Người phụ trách</th><th style="padding:9px 10px;background:#087f78;color:#fff;text-align:right;">Việc quá hạn</th></tr></thead><tbody>${rows}</tbody></table>`;
+  return `<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 18px;"><thead><tr><th style="padding:9px 10px;background:#087f78;color:#fff;text-align:left;">Người phụ trách</th><th style="padding:9px 10px;background:#087f78;color:#fff;text-align:center;">Đang quá hạn</th><th style="padding:9px 10px;background:#087f78;color:#fff;text-align:center;">Hoàn thành trễ</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function renderDeadlineSummary({ upcomingCount = 0, dueTodayCount = 0, overdueCount = 0 }) {
@@ -601,13 +656,18 @@ function renderDeadlineSummary({ upcomingCount = 0, dueTodayCount = 0, overdueCo
 
 function renderTaskCards(items, options = {}) {
   return items.map((item) => {
-    const timing = item.daysOverdue > 0
+    const timing = item.completedLateDays > 0
+      ? `<strong style="color:#9a6200;">Hoàn thành trễ ${item.completedLateDays} ngày</strong>`
+      : item.daysOverdue > 0
       ? `<strong style="color:#c62828;">Quá hạn ${item.daysOverdue} ngày</strong>`
       : item.remainingDays === 0
         ? `<strong style="color:#b26a00;">Đến hạn hôm nay</strong>`
         : `<span style="color:#875700;">Còn ${item.remainingDays} ngày</span>`;
-    const urgencyColor = item.daysOverdue > 0 ? "#d43b3b" : item.remainingDays === 0 ? "#d28a00" : "#00867e";
+    const urgencyColor = item.completedLateDays > 0 ? "#d28a00" : item.daysOverdue > 0 ? "#d43b3b" : item.remainingDays === 0 ? "#d28a00" : "#00867e";
     const progress = Math.max(0, Math.min(100, Number(item.progress) || 0));
+    const completedCell = item.completedDate
+      ? `<td style="padding:8px 10px;background:#f5f8fa;color:#344255;"><span style="font-size:11px;color:#758190;">HOÀN THÀNH THỰC TẾ</span><br><strong>${escapeHtml(formatViDate(item.completedDate))}</strong></td>`
+      : "";
     return `<table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 12px;border:1px solid #dfe7ea;border-left:5px solid ${urgencyColor};background:#fff;"><tr><td style="padding:16px;">
       <div style="font-size:12px;color:#607080;font-weight:700;">${escapeHtml(item.taskId || "-")}${item.categoryName ? ` • ${escapeHtml(item.categoryName)}` : ""}</div>
       <div style="margin-top:6px;font-size:16px;line-height:1.45;font-weight:700;color:#172033;">${escapeHtml(item.title || "-")}</div>
@@ -616,6 +676,7 @@ function renderTaskCards(items, options = {}) {
         <td style="padding:8px 10px;background:#f5f8fa;color:#344255;"><span style="font-size:11px;color:#758190;">TRẠNG THÁI</span><br><strong>${escapeHtml(item.status || "Chưa bắt đầu")}</strong></td>
         <td style="padding:8px 10px;background:#f5f8fa;color:#344255;"><span style="font-size:11px;color:#758190;">TIẾN ĐỘ</span><br><strong>${progress}%</strong></td>
         <td style="padding:8px 10px;background:#f5f8fa;color:#344255;"><span style="font-size:11px;color:#758190;">DEADLINE</span><br><strong>${escapeHtml(formatViDate(item.dueDate))}</strong> • ${timing}</td>
+        ${completedCell}
       </tr></table>
     </td></tr></table>`;
   }).join("");
@@ -635,7 +696,7 @@ function renderOperationalPreview({ target, plan, settings, todayKey }) {
   const upcomingCount = previewItems.length - overdueCount - dueTodayCount;
   const body = previewItems.length
     ? `${renderDeadlineSummary({ upcomingCount, dueTodayCount, overdueCount })}${renderTaskCards(previewItems, { showAssignee: true })}`
-    : `<div style="padding:22px;background:#f1f8f7;border-left:4px solid #00867e;color:#075f58;font-weight:700;">Hôm nay không có công việc nào thuộc diện nhắc từ D-5 đến D+3.</div>`;
+    : `<div style="padding:22px;background:#f1f8f7;border-left:4px solid #00867e;color:#075f58;font-weight:700;">Hôm nay không có công việc nào thuộc diện nhắc từ D-5 đến khi hoàn thành.</div>`;
   return renderEmailShell({
     eyebrow: "BẢN GỬI THỬ • DỮ LIỆU THỰC TẾ HÔM NAY",
     title: `${previewItems.length} công việc đang thuộc diện nhắc deadline`,
@@ -825,6 +886,14 @@ function dayDifference(fromDateKey, toDateKey) {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
 }
 
+function shiftDateKey(dateKey, days) {
+  const normalized = normalizeDateKey(dateKey);
+  if (!normalized) return "";
+  const date = new Date(`${normalized}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + Number(days || 0));
+  return date.toISOString().slice(0, 10);
+}
+
 function isFridayDateKey(dateKey) {
   const normalized = normalizeDateKey(dateKey);
   return Boolean(normalized) && new Date(`${normalized}T12:00:00Z`).getUTCDay() === 5;
@@ -935,6 +1004,7 @@ module.exports = {
   classifyDeadlineReminder,
   dateKeyInTimeZone,
   dayDifference,
+  shiftDateKey,
   isFridayDateKey,
   nextDailyRunAt,
   normalizeDateKey,
@@ -942,6 +1012,7 @@ module.exports = {
   hasGmailSendScope,
   buildAssigneeSubject,
   renderAssigneeDigest,
+  renderManagerDigest,
   renderOperationalPreview,
   buildMimeMessage,
   encryptValue,
