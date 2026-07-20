@@ -239,8 +239,8 @@ const modules = {
             { key: "taskId", label: "Task ID", type: "text", defaultValue: getNextWorkItemTaskId },
             { key: "title", label: "Tên công việc", type: "text", required: true, full: true },
             { key: "description", label: "Mô tả", type: "textarea", full: true },
-            { key: "assignee", label: "Người thực hiện", type: "select", options: () => getWorkPeopleOptions() },
-            { key: "collaborators", label: "Đầu mối nghiệp vụ", type: "select", options: () => getWorkPeopleOptions(), full: true },
+            { key: "assignees", label: "Người thực hiện", type: "multiPeople", options: () => getWorkPeopleOptions(), full: true },
+            { key: "businessContacts", label: "Đầu mối nghiệp vụ", type: "multiPeople", options: () => getWorkPeopleOptions(), full: true },
             { key: "status", label: "Trạng thái", type: "select", options: workStatusOptions, defaultValue: "Chưa bắt đầu" },
             { key: "progress", label: "% hoàn thành", type: "percent", defaultValue: 0 },
             { key: "priority", label: "Ưu tiên", type: "select", options: workPriorityOptions, defaultValue: "Trung bình" },
@@ -261,7 +261,7 @@ const modules = {
             { key: "taskId", label: "Task ID", width: "132px", render: renderWorkTaskIdCell },
             { key: "categoryName", label: "Nhóm công việc", width: "210px", render: renderWorkCategoryCell },
             { key: "title", label: "Tên công việc", width: "300px", render: renderWorkTitleCell },
-            { key: "assignee", label: "Người thực hiện", width: "180px", render: (row) => strongText(row.assignee || "-", row.assigneeEmail) },
+            { key: "assignees", label: "Người thực hiện", width: "220px", render: (row) => renderWorkPeopleCell(getWorkItemAssignees(row)) },
             { key: "status", label: "Trạng thái", width: "140px", render: (row) => renderWorkStatus(row.status) },
             { key: "progress", label: "% hoàn thành", width: "150px", render: (row) => progressCell(row.progress) },
             { key: "priority", label: "Ưu tiên", width: "110px", render: (row) => renderWorkPriority(row.priority) },
@@ -1212,6 +1212,7 @@ function normalizeState(raw) {
         const collection = modules[id].collection;
         nextState[collection] = Array.isArray(source[collection]) ? source[collection] : [];
     });
+    nextState.workItems = nextState.workItems.map((row) => normalizeWorkItemPeople(row));
     nextState.memberKpiResults = Array.isArray(source.memberKpiResults) ? source.memberKpiResults : [];
     nextState.updatedAt = typeof source.updatedAt === "string" ? source.updatedAt : null;
     return nextState;
@@ -3736,7 +3737,7 @@ function formatWorkCategoryDueShort(value) {
 
 function renderWorkPlanFilterBar(showGroup = true) {
     const categoryOptions = getWorkCategorySelectOptions();
-    const assignees = uniqueTextValues(appState.workItems.map((row) => row.assignee));
+    const assignees = uniqueTextValues(appState.workItems.flatMap((row) => getWorkItemAssignees(row).map((person) => person.name || person.email)));
     return `
         <div class="work-filter-bar">
             ${showGroup ? `<label>
@@ -3790,11 +3791,21 @@ function getFilteredWorkRows(forcedCategoryId = "") {
     const query = ui.query.trim().toLowerCase();
     return rows.filter((row) => {
         if (forcedCategoryId && String(row.categoryId || "") !== String(forcedCategoryId)) return false;
-        const matchQuery = !query || Object.values(row).some((value) => String(value ?? "").toLowerCase().includes(query));
+        const peopleSearchText = [
+            ...getWorkItemAssignees(row),
+            ...getWorkItemBusinessContacts(row)
+        ].flatMap((person) => [person.name, person.email]).filter(Boolean).join(" ").toLocaleLowerCase("vi");
+        const matchQuery = !query
+            || Object.values(row).some((value) => String(value ?? "").toLocaleLowerCase("vi").includes(query))
+            || peopleSearchText.includes(query);
         if (!matchQuery) return false;
         const matchLegacyFilters = (mod.filters || []).every((filter) => {
             const selected = ui.filters[`${mod.collection}:${filter.key}`];
-            return !selected || String(row[filter.key] || "") === String(selected);
+            if (!selected) return true;
+            if (filter.key === "assignee") {
+                return getWorkItemAssignees(row).some((person) => String(person.name || person.email) === String(selected));
+            }
+            return String(row[filter.key] || "") === String(selected);
         });
         if (!matchLegacyFilters) return false;
         const view = ui.workView === "approval" ? "all" : (ui.workView || "all");
@@ -3824,15 +3835,18 @@ function getWorkRowsForDisplay() {
             if (categoryA !== categoryB) return categoryA - categoryB;
             const orderA = Number(a.sortOrder);
             const orderB = Number(b.sortOrder);
-            if (Number.isFinite(orderA) && Number.isFinite(orderB) && orderA !== orderB) return orderA - orderB;
+            if (Number.isFinite(orderA) && Number.isFinite(orderB) && orderA !== orderB) return orderB - orderA;
             if (Number.isFinite(orderA) !== Number.isFinite(orderB)) return Number.isFinite(orderA) ? -1 : 1;
-            return String(a.taskId || a.title || "").localeCompare(String(b.taskId || b.title || ""), "vi", { numeric: true });
+            const created = String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+            if (created) return created;
+            return String(b.taskId || b.title || "").localeCompare(String(a.taskId || a.title || ""), "vi", { numeric: true });
         })
         .map((row) => {
         const category = categoryById.get(String(row.categoryId || ""));
         const categoryKey = String(row.categoryId || "");
-        const displayOrder = (localOrderByCategory.get(categoryKey) || 0) + 1;
-        localOrderByCategory.set(categoryKey, displayOrder);
+        const fallbackOrder = (localOrderByCategory.get(categoryKey) || 0) + 1;
+        localOrderByCategory.set(categoryKey, fallbackOrder);
+        const displayOrder = Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : fallbackOrder;
         return {
             ...row,
             displayOrder,
@@ -4945,8 +4959,8 @@ function renderWorkProgressModal() {
                             </div>
                             <div class="rail-card">
                                 <span>Người thực hiện</span>
-                                <strong>${e(row.assignee || "-")}</strong>
-                                <small>${e(row.assigneeEmail || "Không có email")}</small>
+                                <strong>${e(formatWorkPeopleNames(getWorkItemAssignees(row)) || "-")}</strong>
+                                <small>${e(formatWorkPeopleEmails(getWorkItemAssignees(row)) || "Không có email")}</small>
                             </div>
                             <div class="rail-card ${getWorkItemWarning(row) === "Quá hạn" ? "is-danger" : ""}">
                                 <span>Deadline</span>
@@ -5304,13 +5318,78 @@ function renderComboOptions(options) {
     `).join("");
 }
 
+function workPersonKey(person) {
+    const normalized = normalizeWorkPerson(person);
+    if (!normalized) return "";
+    return normalized.email || `name:${normalized.name.toLocaleLowerCase("vi")}`;
+}
+
+function renderPeopleMultiChips(people, locked = false) {
+    const normalized = normalizeWorkPeopleList(people);
+    if (!normalized.length) return `<span class="people-multi-placeholder">Chọn thành viên...</span>`;
+    return normalized.map((person) => `
+        <span class="people-chip" title="${e(person.email || person.name)}">
+            <span>${e(person.name || person.email)}</span>
+            ${locked ? "" : `<button type="button" data-people-remove="${e(workPersonKey(person))}" title="Bỏ ${e(person.name || person.email)}" aria-label="Bỏ ${e(person.name || person.email)}"><i class="fa-solid fa-xmark"></i></button>`}
+        </span>
+    `).join("");
+}
+
+function renderPeopleMultiField(field, value, locked = false) {
+    const selected = normalizeWorkPeopleList(value);
+    const selectedKeys = new Set(selected.map(workPersonKey));
+    const options = normalizeWorkPeopleList([
+        ...getFieldOptions(field),
+        ...selected
+    ]).sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email), "vi"));
+    return `
+        <div class="people-multi ${locked ? "is-locked" : ""}" data-people-multi data-people-key="${e(field.key)}">
+            <input type="hidden" name="${e(field.key)}" value="${e(JSON.stringify(selected))}">
+            <div class="people-multi-control" data-people-control>
+                <div class="people-multi-chips" data-people-chips>${renderPeopleMultiChips(selected, locked)}</div>
+                ${locked ? `<i class="fa-solid fa-lock people-multi-lock" aria-hidden="true"></i>` : `
+                    <button class="people-multi-toggle" type="button" data-people-toggle title="Mở danh sách ${e(field.label)}" aria-label="Mở danh sách ${e(field.label)}" aria-expanded="false">
+                        <i class="fa-solid fa-chevron-down"></i>
+                    </button>
+                `}
+            </div>
+            ${locked ? "" : `
+                <div class="people-multi-menu" data-people-menu>
+                    <div class="people-multi-search-wrap">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="search" data-people-search placeholder="Tìm theo tên hoặc email" autocomplete="off" aria-label="Tìm thành viên">
+                    </div>
+                    <div class="people-multi-actions">
+                        <button type="button" data-people-select-all>Chọn tất cả</button>
+                        <button type="button" data-people-clear>Xóa lựa chọn</button>
+                    </div>
+                    <div class="people-multi-options" data-people-options>
+                        ${options.map((person) => {
+                            const key = workPersonKey(person);
+                            return `
+                                <label class="people-multi-option" data-people-option-row data-search-text="${e(`${person.name || ""} ${person.email || ""}`.toLocaleLowerCase("vi"))}">
+                                    <input type="checkbox" data-people-option value="${e(key)}" data-person-name="${e(person.name || person.email)}" data-person-email="${e(person.email || "")}" ${selectedKeys.has(key) ? "checked" : ""}>
+                                    <span><strong>${e(person.name || person.email)}</strong>${person.email ? `<small>${e(person.email)}</small>` : ""}</span>
+                                </label>
+                            `;
+                        }).join("")}
+                        <div class="people-multi-empty" data-people-empty hidden>Không tìm thấy thành viên phù hợp.</div>
+                    </div>
+                </div>
+            `}
+        </div>
+    `;
+}
+
 function renderField(field, row) {
+    const canChooseWorkAssignees = authState.user?.role === "admin" || row?._ownership?.isGroupEditor === true;
     const selfAssignmentField = ui.modal?.tab === "workItems"
-        && authState.user?.role !== "admin"
-        && ["assignee", "assigneeEmail"].includes(field.key);
-    const selfAssignmentValue = field.key === "assignee"
-        ? authState.user?.name || authState.user?.username || ""
-        : authState.user?.email || authState.user?.username || "";
+        && field.key === "assignees"
+        && !canChooseWorkAssignees;
+    const selfAssignmentValue = [{
+        name: authState.user?.name || authState.user?.username || "",
+        email: authState.user?.email || authState.user?.username || ""
+    }];
     const value = selfAssignmentField ? selfAssignmentValue : row ? row[field.key] ?? "" : getDefaultFieldValue(field);
     const lockedWorkStartDate = ui.modal?.tab === "workItems"
         && field.key === "startDate"
@@ -5320,8 +5399,8 @@ function renderField(field, row) {
     const label = e(field.label);
     const wrapper = `field ${field.full ? "full" : ""}`;
     let control = "";
-    if (selfAssignmentField) {
-        control = `<input class="field-input" name="${e(field.key)}" type="text" value="${e(value)}" readonly aria-readonly="true">`;
+    if (field.type === "multiPeople") {
+        control = renderPeopleMultiField(field, value, selfAssignmentField);
     } else if (lockedWorkStartDate) {
         control = `<input class="field-input is-locked" name="${e(field.key)}" type="date" value="${e(value)}" readonly aria-readonly="true" data-locked-start-date>`;
     } else if (field.type === "select") {
@@ -5361,6 +5440,7 @@ function renderField(field, row) {
         <div class="${wrapper}">
             <label>${label}${field.required ? `<span class="required-chip">Bắt buộc</span>` : ""}</label>
             ${control}
+            ${selfAssignmentField ? `<small class="field-lock-note"><i class="fa-solid fa-lock"></i> Tài khoản thường chỉ được tự nhận công việc; admin hoặc người quản lý nhóm có thể phân công nhiều người.</small>` : ""}
             ${lockedWorkStartDate ? `<small class="field-lock-note"><i class="fa-solid fa-lock"></i> Đã khóa sau khi tạo công việc.</small>` : ""}
         </div>
     `;
@@ -5579,6 +5659,7 @@ function bindEvents() {
     bindTableScrollbars();
 
     bindComboFields();
+    bindPeopleMultiFields();
 
     const form = document.getElementById("recordForm");
     if (form) {
@@ -5592,8 +5673,9 @@ function bindEvents() {
     const modal = document.getElementById("recordModal");
     if (modal) {
         modal.addEventListener("click", (event) => {
-            if (event.target.closest("[data-combo-field]")) return;
+            if (event.target.closest("[data-combo-field], [data-people-multi]")) return;
             closeComboFields();
+            closePeopleMultiFields();
             if (event.target === modal) closeModal();
         });
     }
@@ -5937,6 +6019,102 @@ function filterComboOptions(combo) {
 function closeComboFields(except = null) {
     document.querySelectorAll("[data-combo-field].open").forEach((combo) => {
         if (combo !== except) combo.classList.remove("open");
+    });
+}
+
+function selectedPeopleFromMulti(root) {
+    return [...root.querySelectorAll("[data-people-option]:checked")].map((input) => ({
+        name: input.dataset.personName || "",
+        email: input.dataset.personEmail || ""
+    }));
+}
+
+function syncPeopleMulti(root) {
+    const selected = normalizeWorkPeopleList(selectedPeopleFromMulti(root));
+    const hidden = root.querySelector('input[type="hidden"]');
+    const chips = root.querySelector("[data-people-chips]");
+    if (hidden) hidden.value = JSON.stringify(selected);
+    if (chips) chips.innerHTML = renderPeopleMultiChips(selected, false);
+}
+
+function filterPeopleMulti(root) {
+    const query = normalizeLookupKey(root.querySelector("[data-people-search]")?.value || "");
+    let visible = 0;
+    root.querySelectorAll("[data-people-option-row]").forEach((row) => {
+        const match = !query || normalizeLookupKey(row.dataset.searchText || row.textContent).includes(query);
+        row.hidden = !match;
+        if (match) visible += 1;
+    });
+    const empty = root.querySelector("[data-people-empty]");
+    if (empty) empty.hidden = visible > 0;
+}
+
+function openPeopleMulti(root) {
+    if (!root || root.classList.contains("is-locked")) return;
+    closePeopleMultiFields(root);
+    closeComboFields();
+    root.classList.add("open");
+    root.querySelector("[data-people-toggle]")?.setAttribute("aria-expanded", "true");
+    const search = root.querySelector("[data-people-search]");
+    if (search) {
+        search.value = "";
+        filterPeopleMulti(root);
+        window.setTimeout(() => search.focus(), 0);
+    }
+}
+
+function closePeopleMultiFields(except = null) {
+    document.querySelectorAll("[data-people-multi].open").forEach((root) => {
+        if (root === except) return;
+        root.classList.remove("open");
+        root.querySelector("[data-people-toggle]")?.setAttribute("aria-expanded", "false");
+    });
+}
+
+function bindPeopleMultiFields() {
+    document.querySelectorAll("[data-people-multi]:not(.is-locked)").forEach((root) => {
+        const toggle = root.querySelector("[data-people-toggle]");
+        const control = root.querySelector("[data-people-control]");
+        const search = root.querySelector("[data-people-search]");
+        toggle?.addEventListener("click", (event) => {
+            event.stopPropagation();
+            if (root.classList.contains("open")) closePeopleMultiFields();
+            else openPeopleMulti(root);
+        });
+        control?.addEventListener("click", (event) => {
+            if (event.target.closest("[data-people-remove], [data-people-toggle]")) return;
+            openPeopleMulti(root);
+        });
+        root.addEventListener("change", (event) => {
+            if (!event.target.matches("[data-people-option]")) return;
+            syncPeopleMulti(root);
+        });
+        root.addEventListener("click", (event) => {
+            const remove = event.target.closest("[data-people-remove]");
+            if (remove) {
+                const checkbox = [...root.querySelectorAll("[data-people-option]")]
+                    .find((input) => input.value === remove.dataset.peopleRemove);
+                if (checkbox) checkbox.checked = false;
+                syncPeopleMulti(root);
+                return;
+            }
+            if (event.target.closest("[data-people-select-all]")) {
+                root.querySelectorAll("[data-people-option-row]:not([hidden]) [data-people-option]")
+                    .forEach((input) => { input.checked = true; });
+                syncPeopleMulti(root);
+                return;
+            }
+            if (event.target.closest("[data-people-clear]")) {
+                root.querySelectorAll("[data-people-option]").forEach((input) => { input.checked = false; });
+                syncPeopleMulti(root);
+            }
+        });
+        search?.addEventListener("input", () => filterPeopleMulti(root));
+        search?.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            closePeopleMultiFields();
+            toggle?.focus();
+        });
     });
 }
 
@@ -6772,6 +6950,14 @@ async function handleSubmit(event) {
         const input = form.elements[field.key];
         let value = input?.value ?? "";
         if (typeof value === "string") value = value.trim();
+        if (field.type === "multiPeople") {
+            try {
+                value = normalizeWorkPeopleList(value ? JSON.parse(value) : []);
+            } catch {
+                showToast(`${field.label} có dữ liệu không hợp lệ. Vui lòng chọn lại.`);
+                return;
+            }
+        }
         if ((field.type === "number" || field.type === "percent") && value !== "") {
             value = Number(value);
         }
@@ -6781,11 +6967,17 @@ async function handleSubmit(event) {
         payload.owner = normalizeOwnerOption(payload.owner);
     }
     if (mod.collection === "workItems") {
-        if (authState.user?.role !== "admin") {
-            payload.assignee = authState.user?.name || authState.user?.username || "";
-            payload.assigneeEmail = authState.user?.email || authState.user?.username || "";
+        const current = ui.modal.id
+            ? appState.workItems.find((row) => row.id === ui.modal.id)
+            : null;
+        const canChooseWorkAssignees = authState.user?.role === "admin" || current?._ownership?.isGroupEditor === true;
+        if (!canChooseWorkAssignees) {
+            payload.assignees = [{
+                name: authState.user?.name || authState.user?.username || "",
+                email: authState.user?.email || authState.user?.username || ""
+            }];
         }
-        if (!payload.assigneeEmail) payload.assigneeEmail = emailForWorkAssignee(payload.assignee);
+        Object.assign(payload, normalizeWorkItemPeople(payload));
         if (!payload.taskId && payload.categoryId) payload.taskId = getNextWorkItemTaskIdForCategory(payload.categoryId);
         if (payload.progress === "") payload.progress = 0;
     }
@@ -7192,6 +7384,14 @@ function getFilteredRows(mod) {
     return rows.filter((row) => {
         if (t01MetricPredicate && !t01MetricPredicate(row)) return false;
         const searchableValues = Object.values(row);
+        if (mod.collection === "workItems") {
+            searchableValues.push(
+                formatWorkPeopleNames(getWorkItemAssignees(row)),
+                formatWorkPeopleEmails(getWorkItemAssignees(row)),
+                formatWorkPeopleNames(getWorkItemBusinessContacts(row)),
+                formatWorkPeopleEmails(getWorkItemBusinessContacts(row))
+            );
+        }
         if (mod.collection === "daily") {
             searchableValues.push(formatDateText(row.date), formatDailyTesterLabel(row.tester));
         }
@@ -7199,7 +7399,11 @@ function getFilteredRows(mod) {
         if (!matchQuery) return false;
         const matchLegacyFilters = (mod.filters || []).every((filter) => {
             const selected = ui.filters[`${mod.collection}:${filter.key}`];
-            return !selected || row[filter.key] === selected;
+            if (!selected) return true;
+            if (mod.collection === "workItems" && filter.key === "assignee") {
+                return getWorkItemAssignees(row).some((person) => String(person.name || person.email) === String(selected));
+            }
+            return row[filter.key] === selected;
         });
         if (!matchLegacyFilters) return false;
         return mod.columns.every((col) => {
@@ -7297,6 +7501,9 @@ function getEditableFields(mod) {
 function getColumnFilterOptions(mod, col, field) {
     const fieldOptions = getFieldOptions(field);
     if (field?.type === "select" && fieldOptions.length) return fieldOptions.map(optionValue);
+    if (mod.collection === "workItems" && (col.key === "assignees" || col.key === "assignee")) {
+        return uniqueTextValues(getWorkRowsForDisplay().flatMap((row) => getWorkItemAssignees(row).map((person) => person.name || person.email)));
+    }
     const sourceRows = mod.collection === "workItems" ? getWorkRowsForDisplay() : getDisplayRows(mod.collection);
     const values = uniqueValues(sourceRows, col.key);
     if (values.length > 0 && values.length <= 8) return values;
@@ -7387,6 +7594,71 @@ function emailForWorkAssignee(name) {
     return workAssigneeEmailByName[String(name || "").trim()] || "";
 }
 
+function normalizeWorkPerson(entry) {
+    if (entry == null) return null;
+    const raw = typeof entry === "object" && !Array.isArray(entry)
+        ? entry
+        : (String(entry || "").includes("@") ? { email: entry } : { name: entry });
+    let name = String(raw.name || raw.label || "").replace(/\s+/g, " ").trim();
+    let email = String(raw.email || "").trim().toLowerCase();
+    if (!email && String(raw.value || "").includes("@")) email = String(raw.value).trim().toLowerCase();
+    if (!email && name) email = emailForWorkAssignee(name);
+    if (!name && email) {
+        name = Object.entries(workAssigneeEmailByName)
+            .find(([, candidate]) => String(candidate).toLowerCase() === email)?.[0] || email;
+    }
+    if (!name && !email) return null;
+    return { name: name || email, email };
+}
+
+function normalizeWorkPeopleList(value, fallback = []) {
+    const source = Array.isArray(value) ? value : fallback;
+    const people = [];
+    const seen = new Set();
+    for (const entry of source || []) {
+        const person = normalizeWorkPerson(entry);
+        if (!person) continue;
+        const key = person.email || `name:${person.name.toLocaleLowerCase("vi")}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        people.push(person);
+    }
+    return people;
+}
+
+function splitLegacyWorkPeople(value) {
+    return String(value || "").split(/[\n;,]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function normalizeWorkItemPeople(row) {
+    const record = { ...(row || {}) };
+    const legacyAssignees = record.assignee || record.assigneeEmail
+        ? [{ name: record.assignee || "", email: record.assigneeEmail || "" }]
+        : [];
+    record.assignees = normalizeWorkPeopleList(record.assignees, legacyAssignees);
+    record.businessContacts = normalizeWorkPeopleList(record.businessContacts, splitLegacyWorkPeople(record.collaborators));
+    record.assignee = record.assignees[0]?.name || "";
+    record.assigneeEmail = record.assignees[0]?.email || "";
+    record.collaborators = record.businessContacts.map((person) => person.name || person.email).filter(Boolean).join(", ");
+    return record;
+}
+
+function getWorkItemAssignees(row) {
+    return normalizeWorkItemPeople(row).assignees;
+}
+
+function getWorkItemBusinessContacts(row) {
+    return normalizeWorkItemPeople(row).businessContacts;
+}
+
+function formatWorkPeopleNames(people, separator = ", ") {
+    return normalizeWorkPeopleList(people).map((person) => person.name || person.email).filter(Boolean).join(separator);
+}
+
+function formatWorkPeopleEmails(people, separator = ", ") {
+    return normalizeWorkPeopleList(people).map((person) => person.email).filter(Boolean).join(separator);
+}
+
 function getWorkItemWarning(row) {
     const status = String(row?.status || "").trim();
     if (status === "Hoàn thành") return "Đã xong";
@@ -7425,12 +7697,21 @@ function getT01MetricPredicate(collection) {
 }
 
 function getWorkPeopleOptions() {
-    return uniqueTextValues([
-        ...workAssigneeOptions,
-        ...(appState.personnel || []).map((row) => row.name),
-        ...(appState.workItems || []).map((row) => row.assignee),
-        ...(appState.workItems || []).map((row) => row.collaborators)
-    ]);
+    const people = [
+        ...workAssigneeOptions.map((name) => ({ name, email: emailForWorkAssignee(name) })),
+        ...(appState.personnel || []).map((row) => ({ name: row.name || row.email, email: row.email || "" })),
+        ...(appState.workItems || []).flatMap((row) => [
+            ...getWorkItemAssignees(row),
+            ...getWorkItemBusinessContacts(row)
+        ])
+    ];
+    return normalizeWorkPeopleList(people)
+        .sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email), "vi"))
+        .map((person) => ({
+            ...person,
+            value: person.email || `name:${person.name.toLocaleLowerCase("vi")}`,
+            label: person.name || person.email
+        }));
 }
 
 function getHandoffLevel1Options() {
@@ -7455,6 +7736,14 @@ function getHandoffLevel2Options(rowOrLevel1 = null) {
 }
 
 function getColumnRawValue(row, col) {
+    if (col.key === "assignees" || col.key === "assignee") {
+        const people = getWorkItemAssignees(row);
+        return `${formatWorkPeopleNames(people)} ${formatWorkPeopleEmails(people)}`.trim();
+    }
+    if (col.key === "businessContacts" || col.key === "collaborators") {
+        const people = getWorkItemBusinessContacts(row);
+        return `${formatWorkPeopleNames(people)} ${formatWorkPeopleEmails(people)}`.trim();
+    }
     if (col.key === "progress") {
         if (row.executedCases !== undefined || row.totalCases !== undefined) return percent(row.executedCases, row.totalCases);
         return row.progress;
@@ -7741,7 +8030,21 @@ function renderWorkTitleCell(row) {
         <div class="work-title-cell">
             ${titleMarkup}
             ${row.description ? `<span>${e(row.description)}</span>` : ""}
-            ${row.collaborators ? `<small>Đầu mối nghiệp vụ: ${e(row.collaborators)}</small>` : ""}
+            ${getWorkItemBusinessContacts(row).length ? `<small>Đầu mối nghiệp vụ: ${e(formatWorkPeopleNames(getWorkItemBusinessContacts(row)))}</small>` : ""}
+        </div>
+    `;
+}
+
+function renderWorkPeopleCell(people) {
+    const normalized = normalizeWorkPeopleList(people);
+    if (!normalized.length) return `<span style="color:#9ca3af">-</span>`;
+    const visible = normalized.slice(0, 2);
+    const remaining = normalized.length - visible.length;
+    const fullLabel = normalized.map((person) => person.email ? `${person.name || person.email} · ${person.email}` : person.name).join("\n");
+    return `
+        <div class="work-people-cell" title="${e(fullLabel)}">
+            ${visible.map((person) => `<span><strong>${e(person.name || person.email)}</strong>${person.email ? `<small>${e(person.email)}</small>` : ""}</span>`).join("")}
+            ${remaining > 0 ? `<details class="work-people-more"><summary aria-label="Xem thêm ${e(remaining)} người">+${e(remaining)} người</summary><div>${normalized.map((person) => `<span><strong>${e(person.name || person.email)}</strong>${person.email ? `<small>${e(person.email)}</small>` : ""}</span>`).join("")}</div></details>` : ""}
         </div>
     `;
 }
@@ -7865,13 +8168,15 @@ function isAssignedWorkItem(row) {
     const identities = [authState.user?.email, authState.user?.username]
         .map((value) => String(value || "").trim().toLowerCase())
         .filter(Boolean);
-    const assigneeEmail = String(row?.assigneeEmail || "").trim().toLowerCase();
-    const assigneeName = String(row?.assignee || "").trim().toLowerCase();
     const userName = String(authState.user?.name || "").trim().toLowerCase();
+    const assigned = getWorkItemAssignees(row).some((person) => {
+        const email = String(person.email || "").trim().toLowerCase();
+        const name = String(person.name || "").trim().toLowerCase();
+        return (email && identities.includes(email)) || (name && userName && name === userName);
+    });
     return Boolean(
         row?._ownership?.isLinkedOwner ||
-        (assigneeEmail && identities.includes(assigneeEmail)) ||
-        (assigneeName && userName && assigneeName === userName)
+        assigned
     );
 }
 

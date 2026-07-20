@@ -28,6 +28,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
   const collapsedSidebarShot = path.join(os.tmpdir(), "squad2-sidebar-collapsed.png");
   const dashboardShot = path.join(os.tmpdir(), "squad2-work-dashboard.png");
   const taskMasterShot = path.join(os.tmpdir(), "squad2-task-master.png");
+  const multiSelectShot = path.join(os.tmpdir(), "squad2-work-people-multiselect.png");
   const inputsShot = path.join(os.tmpdir(), "squad2-work-inputs.png");
   const personnelMapShot = path.join(os.tmpdir(), "squad2-personnel-map.png");
   const memberKpiShot = path.join(os.tmpdir(), "squad2-member-kpi.png");
@@ -172,12 +173,15 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       order: row.cells[0]?.textContent?.trim() || "",
       category: row.cells[2]?.textContent?.trim() || ""
     })));
-    const firstOrderByCategory = new Map();
+    const ordersByCategory = new Map();
     visibleWorkOrders.forEach((row) => {
-      if (row.category && !firstOrderByCategory.has(row.category)) firstOrderByCategory.set(row.category, row.order);
+      if (!row.category || !/^\d+$/.test(row.order)) return;
+      if (!ordersByCategory.has(row.category)) ordersByCategory.set(row.category, []);
+      ordersByCategory.get(row.category).push(Number(row.order));
     });
-    if (firstOrderByCategory.size < 2 || [...firstOrderByCategory.values()].some((order) => order !== "1")) {
-      throw new Error(`STT chưa reset từ 1 theo từng nhóm: ${JSON.stringify([...firstOrderByCategory.entries()])}`);
+    const invalidOrder = [...ordersByCategory.values()].some((orders) => orders.some((order, index) => index > 0 && order > orders[index - 1]));
+    if (ordersByCategory.size < 2 || invalidOrder || ![...ordersByCategory.values()].some((orders) => orders[0] > 1)) {
+      throw new Error(`Công việc chưa xếp mới → cũ và giữ STT gốc: ${JSON.stringify([...ordersByCategory.entries()])}`);
     }
     await page.screenshot({ path: taskMasterShot, fullPage: true });
     await page.locator('[data-action="open-create"]').first().click();
@@ -185,10 +189,25 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await assertOptionCount(page, "categoryId", 13);
     await assertOptionCount(page, "status", 4);
     await assertOptionCount(page, "priority", 4);
-    await assertOptionCount(page, "assignee", 11);
-    await assertOptionCount(page, "collaborators", 11);
-    await assertFieldLabel(page, "assignee", "Người thực hiện");
-    await assertFieldLabel(page, "collaborators", "Đầu mối nghiệp vụ");
+    await assertFieldLabel(page, "assignees", "Người thực hiện");
+    await assertFieldLabel(page, "businessContacts", "Đầu mối nghiệp vụ");
+    const assigneeMulti = page.locator('[data-people-key="assignees"]');
+    const contactMulti = page.locator('[data-people-key="businessContacts"]');
+    if (await assigneeMulti.locator('[data-people-option]').count() < 10
+      || await contactMulti.locator('[data-people-option]').count() < 10) {
+      throw new Error("Multi-select chưa nạp đủ danh sách thành viên.");
+    }
+    await assigneeMulti.locator('[data-people-toggle]').click();
+    await assigneeMulti.locator('[data-people-option][data-person-email="huyng@bidv.com.vn"]').check();
+    await assigneeMulti.locator('[data-people-option][data-person-email="sinhhc@bidv.com.vn"]').check();
+    const selectedAssignees = JSON.parse(await page.locator('[name="assignees"]').inputValue());
+    if (selectedAssignees.length !== 2) throw new Error("Người thực hiện chưa chọn được nhiều người.");
+    await assigneeMulti.locator('[data-people-toggle]').click();
+    await contactMulti.locator('[data-people-toggle]').click();
+    await contactMulti.locator('[data-people-option][data-person-email="giangnc2@bidv.com.vn"]').check();
+    const selectedContacts = JSON.parse(await page.locator('[name="businessContacts"]').inputValue());
+    if (selectedContacts.length !== 1) throw new Error("Đầu mối nghiệp vụ chưa lưu được lựa chọn.");
+    await page.screenshot({ path: multiSelectShot, fullPage: false });
     await assertFieldLabel(page, "startDate", "Ngày giao việc");
     if (await page.locator('[name="status"] option[value="Chờ phê duyệt"], [name="status"] option[value="Quá hạn"]').count()) {
       throw new Error("Form tạo công việc vẫn cho phép trạng thái đã bị loại bỏ.");
@@ -210,7 +229,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       || validSaveStates.some(Boolean)) {
       throw new Error("Form đầy đủ chưa mở lại nút Lưu sau khi trạng thái và tiến độ hợp lệ.");
     }
-    if (await page.locator('[name="assigneeEmail"]').count()) {
+    if (await page.locator('[name="assigneeEmail"], [name="collaborators"]').count()) {
       throw new Error("Email người thực hiện là field kỹ thuật và không được hiện trong form người dùng.");
     }
     await page.locator('[data-action="close-modal"]').first().click();
@@ -382,7 +401,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       throw new Error("Route T03 chưa tự mở đúng nhánh Pre-Pilot.");
     }
     const firstLocalOrder = (await page.locator('[data-resizable-table="workItems"] tbody tr').first().locator("td").first().textContent() || "").trim();
-    if (firstLocalOrder !== "1") throw new Error(`STT đầu nhóm T03 phải là 1, nhận ${firstLocalOrder || "trống"}.`);
+    if (firstLocalOrder !== "22") throw new Error(`Công việc mới nhất của T03 phải nằm trên cùng với STT 22, nhận ${firstLocalOrder || "trống"}.`);
     const firstWorkTitle = page.locator('.work-title-link[data-action="open-edit"]').first();
     if (!await firstWorkTitle.isVisible()) throw new Error("Tên công việc chưa hiển thị thành liên kết sửa kế hoạch.");
     await firstWorkTitle.click();
@@ -541,6 +560,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       collapsedSidebarScreenshot: collapsedSidebarShot,
       dashboardScreenshot: dashboardShot,
       taskMasterScreenshot: taskMasterShot,
+      multiSelectScreenshot: multiSelectShot,
       inputsScreenshot: inputsShot,
       personnelMapScreenshot: personnelMapShot,
       memberKpiScreenshot: memberKpiShot,

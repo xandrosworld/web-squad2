@@ -184,9 +184,14 @@ function createDeadlineNotificationService(options = {}) {
       order by recipient asc
     `, [todayKey]);
     const notificationData = await readNotificationData(pool);
-    const assigneeByEmail = new Map(notificationData.workItems
-      .filter((item) => normalizeEmail(item.assigneeEmail))
-      .map((item) => [normalizeEmail(item.assigneeEmail), item.assignee || item.assigneeEmail]));
+    const assigneeByEmail = new Map();
+    notificationData.workItems.forEach((item) => {
+      notificationAssignees(item).forEach((person) => {
+        if (person.email && !assigneeByEmail.has(person.email)) {
+          assigneeByEmail.set(person.email, person.name || person.email);
+        }
+      });
+    });
     const deliveries = logResult.rows.map((row) => ({
       recipient: normalizeEmail(row.recipient),
       assignee: assigneeByEmail.get(normalizeEmail(row.recipient)) || row.recipient,
@@ -420,14 +425,30 @@ function buildNotificationPlan(workItems, options = {}) {
   for (const item of activeItems) {
     const reminder = classifyDeadlineReminder(item, todayKey);
     if (!reminder) continue;
-    const recipient = normalizeEmail(item.assigneeEmail || "");
     const normalizedItem = decorateDeadlineItem(item, todayKey, categories);
-    if (!recipient) {
-      missingAssigneeEmails.push({ id: item.id || "", taskId: item.taskId || "", title: item.title || "" });
-      continue;
+    const assignees = notificationAssignees(item);
+    if (!assignees.length) {
+      missingAssigneeEmails.push({ id: item.id || "", taskId: item.taskId || "", title: item.title || "", assignee: "" });
     }
-    if (!groups.has(recipient)) groups.set(recipient, []);
-    groups.get(recipient).push({ ...normalizedItem, reminder });
+    for (const assignee of assignees) {
+      const recipient = normalizeEmail(assignee.email);
+      if (!recipient) {
+        missingAssigneeEmails.push({
+          id: item.id || "",
+          taskId: item.taskId || "",
+          title: item.title || "",
+          assignee: assignee.name || ""
+        });
+        continue;
+      }
+      if (!groups.has(recipient)) groups.set(recipient, []);
+      groups.get(recipient).push({
+        ...normalizedItem,
+        assignee: assignee.name || recipient,
+        assigneeEmail: recipient,
+        reminder
+      });
+    }
   }
 
   const assigneeDigests = [...groups.entries()]
@@ -490,8 +511,11 @@ function classifyDeadlineReminder(item, todayKey) {
 function decorateDeadlineItem(item, todayKey, categories) {
   const dueDate = normalizeDateKey(item?.dueDate);
   const remainingDays = dueDate ? dayDifference(todayKey, dueDate) : null;
+  const assignees = notificationAssignees(item);
   return {
     ...item,
+    assignee: assignees.map((person) => person.name || person.email).filter(Boolean).join(", "),
+    assigneeEmail: assignees.map((person) => person.email).filter(Boolean).join(", "),
     categoryName: categories.get(String(item?.categoryId || ""))?.name
       || categories.get(String(item?.categoryId || ""))
       || "",
@@ -505,8 +529,11 @@ function decorateCompletedLateItem(item, categories) {
   const dueDate = normalizeDateKey(item?.dueDate);
   const completedDate = normalizeDateKey(item?.completedDate);
   const completedLateDays = dueDate && completedDate ? dayDifference(dueDate, completedDate) : 0;
+  const assignees = notificationAssignees(item);
   return {
     ...item,
+    assignee: assignees.map((person) => person.name || person.email).filter(Boolean).join(", "),
+    assigneeEmail: assignees.map((person) => person.email).filter(Boolean).join(", "),
     categoryName: categories.get(String(item?.categoryId || ""))?.name
       || categories.get(String(item?.categoryId || ""))
       || "",
@@ -516,6 +543,27 @@ function decorateCompletedLateItem(item, categories) {
     remainingDays: 0,
     daysOverdue: 0
   };
+}
+
+function notificationAssignees(item) {
+  const source = Array.isArray(item?.assignees)
+    ? item.assignees
+    : (item?.assignee || item?.assigneeEmail ? [{ name: item.assignee || "", email: item.assigneeEmail || "" }] : []);
+  const people = [];
+  const seen = new Set();
+  for (const entry of source) {
+    const raw = entry && typeof entry === "object" && !Array.isArray(entry)
+      ? entry
+      : (String(entry || "").includes("@") ? { email: entry } : { name: entry });
+    const email = normalizeEmail(raw.email || "");
+    const name = String(raw.name || raw.label || email || "").replace(/\s+/g, " ").trim();
+    if (!name && !email) continue;
+    const key = email || `name:${normalizeLookup(name)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    people.push({ name: name || email, email });
+  }
+  return people;
 }
 
 function summarizePlan(plan, settings = {}) {

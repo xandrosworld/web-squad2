@@ -90,6 +90,34 @@ assert.strictEqual(fridayPlan.managerDigest.completedLateItems[0].completedLateD
 assert.strictEqual(fridayPlan.managerDigest.reportStartKey, "2026-07-11", "Kỳ thứ Sáu phải bao phủ bảy ngày từ thứ Bảy");
 assert.strictEqual(fridayPlan.managerCompletedLateTaskCount, 1);
 
+const multiAssigneePlan = buildNotificationPlan([{
+  ...baseItem,
+  id: "multi-assignee",
+  taskId: "SQ2-RSD-999",
+  dueDate: "2026-07-20",
+  assignees: [
+    { name: "Mai Tấn Thành", email: "thanhmt@bidv.com.vn" },
+    { name: "Huỳnh Công Sinh", email: "sinhhc@bidv.com.vn" },
+    { name: "Thành trùng", email: "THANHMT@BIDV.COM.VN" }
+  ],
+  businessContacts: [{ name: "Nguyễn Châu Giang", email: "giangnc2@bidv.com.vn" }]
+}], {
+  todayKey: "2026-07-17",
+  managerEmails: [],
+  categories
+});
+assert.deepEqual(
+  multiAssigneePlan.assigneeDigests.map((digest) => digest.recipient).sort(),
+  ["sinhhc@bidv.com.vn", "thanhmt@bidv.com.vn"],
+  "Mỗi người thực hiện phải nhận một email riêng và email trùng phải được loại bỏ."
+);
+assert.equal(multiAssigneePlan.assigneeDigests.every((digest) => digest.items.length === 1), true);
+assert.equal(
+  multiAssigneePlan.assigneeDigests.some((digest) => digest.recipient === "giangnc2@bidv.com.vn"),
+  false,
+  "Đầu mối nghiệp vụ tuyệt đối không được nhận email nhắc việc."
+);
+
 const managerEmail = renderManagerDigest(fridayPlan.managerDigest, { appBaseUrl: "https://example.test" }, "2026-07-17");
 assert.match(managerEmail, /Đang quá hạn/);
 assert.match(managerEmail, /Đã hoàn thành trễ trong kỳ/);

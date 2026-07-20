@@ -178,7 +178,9 @@ function buildReportModel(state, context) {
   });
 
   const entries = [];
-  selectedTasks.forEach((task) => entries.push(buildTaskEntry(task, context.apiBase)));
+  selectedTasks.forEach((task) => {
+    reportTaskAssignees(task).forEach((person) => entries.push(buildTaskEntry(task, context.apiBase, person)));
+  });
 
   const defectByPerson = groupBy(q2Defects, (row) => clean(row.tester) || ownerName(row.owner) || "Không xác định");
   defectByPerson.forEach((rows, name) => {
@@ -267,7 +269,23 @@ function isSelectedQ2Task(task) {
   return inQ2(task.deadline) && !clean(task.completedDate) && number(task.progress) < 100;
 }
 
-function buildTaskEntry(task, apiBase) {
+function reportTaskAssignees(task) {
+  const source = Array.isArray(task.assignees) && task.assignees.length
+    ? task.assignees
+    : [{ name: task.assignee || "", email: task.assigneeEmail || "" }];
+  const seen = new Set();
+  return source.map((person) => ({
+    name: clean(person?.name || person?.label),
+    email: clean(person?.email).toLowerCase()
+  })).filter((person) => {
+    const key = person.email || identityKey(person.name);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildTaskEntry(task, apiBase, person = null) {
   const completion = Math.max(0, Math.min(1, number(task.progress) / 100));
   const completed = completion >= 1 || /hoàn thành/i.test(clean(task.status));
   const taskCode = task.taskId || task.id;
@@ -282,7 +300,7 @@ function buildTaskEntry(task, apiBase) {
     sourceId: task.id,
     sourceCode: task.taskId || task.id,
     sourceCount: 1,
-    personName: clean(task.assignee) || clean(task.assigneeEmail) || "Không xác định",
+    personName: clean(person?.name) || clean(person?.email) || clean(task.assignee) || clean(task.assigneeEmail) || "Không xác định",
     activity: clean(task.title) || description || taskCode || "Công việc quý II",
     basis: `Công việc ${taskCode} được giao ngày ${assignmentDate}; ${deadline}. Trạng thái tại kỳ báo cáo: ${clean(task.status) || "chưa cập nhật"}; tiến độ ${round2(completion * 100)}%${description ? `. Nội dung: ${description}` : "."}`,
     quality: completed

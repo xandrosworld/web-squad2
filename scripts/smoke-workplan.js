@@ -36,6 +36,11 @@ if (!password) {
     assignee: assignee.user.name || assignee.user.email,
     assigneeEmail: assignee.user.email || assignee.user.username,
     collaborators: "",
+    assignees: [
+      { name: assignee.user.name || assignee.user.email, email: assignee.user.email || assignee.user.username },
+      { name: admin.user.name || admin.user.email, email: admin.user.email || admin.user.username }
+    ],
+    businessContacts: [],
     status: "Chưa bắt đầu",
     progress: 0,
     priority: "Cao",
@@ -84,6 +89,9 @@ if (!password) {
     const createdItem = findRecord(itemCreated.data.state || {}, "workItems", itemId);
     if (!createdItem || Number(createdItem.sortOrder) !== 1) {
       throw new Error(`Work item đầu tiên trong nhóm phải có STT 1, nhận ${createdItem?.sortOrder ?? "trống"}.`);
+    }
+    if (createdItem.assignees?.length !== 2) {
+      throw new Error("Backend chưa lưu đủ nhiều người thực hiện.");
     }
 
     await expectStatus("admin cannot change locked start date", request(`/api/records/workItems/${itemId}`, {
@@ -153,6 +161,9 @@ if (!password) {
     const selfItem = findRecord(selfCreated.data.state || {}, "workItems", selfItemId);
     if (!selfItem || String(selfItem.assigneeEmail || "").toLowerCase() !== String(assignee.user.email || assignee.user.username).toLowerCase()) {
       throw new Error("Regular user's new item was not self-assigned by the backend.");
+    }
+    if (selfItem.assignees?.length !== 1) {
+      throw new Error("Backend phải chặn tài khoản thường tự phân công thêm người khác.");
     }
 
     const attemptedOverreach = {
@@ -282,5 +293,8 @@ function assertWorkItemRestrictedUpdate(updated, original) {
   }
   if (updated.note !== "Assignee progress update") {
     throw new Error("Assignee note was not saved.");
+  }
+  if (updated.assignees?.length !== original.assignees?.length) {
+    throw new Error("Cập nhật tiến độ đã làm mất danh sách người thực hiện.");
   }
 }

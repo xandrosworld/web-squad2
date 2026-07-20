@@ -163,6 +163,8 @@ const pilotWorkPlanSeedKey = "pilot_workplan_seed_v1";
 const deliveryWorkCategoriesMigrationKey = "delivery_work_categories_v1";
 const workItemInvariantMigrationKey = "work_item_status_progress_v1";
 const workItemInvariantBackupKey = "backup_work_item_status_progress_v1";
+const workItemPeopleMigrationKey = "work_item_people_v1";
+const workItemPeopleBackupKey = "backup_work_item_people_v1";
 const legacyStartDateBackfillField = "_allowStartDateBackfill";
 const pilotWorkPlanDocumentUrl = "https://drive.google.com/drive/folders/1mraUTa3nb4bVhikApO9i-uCB-THKbVWd";
 const workAssigneeDirectory = {
@@ -1249,6 +1251,8 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     }
     const scopedWorkItemEditor = collection === "workItems"
       && enforceWorkItemGroupEditorScope(req.user, current, record);
+    const fullyManagedWorkItem = collection === "workItems"
+      && canFullyManageWorkItem(req.user, current);
     if (collection === "workCategories" && !canManageWorkCategories(req.user)) {
       throw httpError(403, "Chỉ admin được sửa nhóm công việc.");
     }
@@ -1260,10 +1264,10 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
       record.taskPrefix = current.data?.taskPrefix || systemCategory?.taskPrefix || "SQ2-T01";
       record.sortOrder = current.data?.sortOrder ?? systemCategory?.sortOrder ?? 1;
     }
-    if (collection === "workItems" && !scopedWorkItemEditor && !canFullyManageWorkItem(req.user, current)) {
+    if (collection === "workItems" && !scopedWorkItemEditor && !fullyManagedWorkItem) {
       record = mergeWorkItemProgressUpdate(current.data, record);
     }
-    if (collection === "workItems" && req.user.role !== "admin" && !scopedWorkItemEditor) {
+    if (collection === "workItems" && req.user.role !== "admin" && !scopedWorkItemEditor && fullyManagedWorkItem) {
       assignWorkItemToUser(record, req.user);
     }
     stripComputedFields(collection, record);
@@ -1421,6 +1425,9 @@ module.exports = {
   __testCanFullyManageWorkItem: canFullyManageWorkItem,
   __testDecorateRecord: decorateRecord,
   __testEnforceWorkItemGroupEditorScope: enforceWorkItemGroupEditorScope,
+  __testNormalizeWorkItemPeople: normalizeWorkItemPeople,
+  __testWorkItemAssignees: workItemAssignees,
+  __testWorkItemBusinessContacts: workItemBusinessContacts,
   __testToImportCellDate: toImportCellDate,
   runDeadlineNotificationJob,
   closeDatabase
@@ -1528,6 +1535,7 @@ function ensureSchema() {
       await ensurePilotWorkPlanSeed();
       await ensureDeliveryWorkCategories();
       await ensureWorkItemInvariantMigration();
+      await ensureWorkItemPeopleMigration();
       await ensureWorkKpiConfig();
     })().catch((error) => {
       schemaPromise = null;
@@ -3042,7 +3050,7 @@ function addWorkPlanWorksheet(workbook, state) {
   const categories = collectionRows(state, "workCategories").sort(compareStateRecords);
   const categoryMap = new Map(categories.map((category) => [String(category.id), category]));
   const itemsByCategory = new Map();
-  collectionRows(state, "workItems").sort(compareStateRecords).forEach((item) => {
+  collectionRows(state, "workItems").sort(compareWorkItemsNewestFirst).forEach((item) => {
     const key = String(item.categoryId || "");
     if (!itemsByCategory.has(key)) itemsByCategory.set(key, []);
     itemsByCategory.get(key).push(item);
@@ -3063,13 +3071,13 @@ function addWorkPlanWorksheet(workbook, state) {
       note: category.note || "",
       updatedAt: category.updatedAt || category.createdAt || ""
     });
-    (itemsByCategory.get(String(category.id)) || []).forEach((item, index) => {
-      rows.push(workPlanExportRow(item, categoryMap, index + 1));
+    (itemsByCategory.get(String(category.id)) || []).forEach((item) => {
+      rows.push(workPlanExportRow(item, categoryMap));
     });
     itemsByCategory.delete(String(category.id));
   });
   for (const ungroupedItems of itemsByCategory.values()) {
-    ungroupedItems.forEach((item, index) => rows.push(workPlanExportRow(item, categoryMap, index + 1)));
+    ungroupedItems.forEach((item) => rows.push(workPlanExportRow(item, categoryMap)));
   }
 
   rows.forEach((rowData, index) => {
@@ -3097,19 +3105,31 @@ function addWorkPlanWorksheet(workbook, state) {
   });
 }
 
-function workPlanExportRow(item, categoryMap, localSortOrder) {
+function compareWorkItemsNewestFirst(a, b) {
+  const sortA = Number(a?.sortOrder);
+  const sortB = Number(b?.sortOrder);
+  if (Number.isFinite(sortA) && Number.isFinite(sortB) && sortA !== sortB) return sortB - sortA;
+  if (Number.isFinite(sortA) !== Number.isFinite(sortB)) return Number.isFinite(sortA) ? -1 : 1;
+  const created = String(b?.createdAt || "").localeCompare(String(a?.createdAt || ""));
+  if (created) return created;
+  return String(b?.taskId || b?.title || "").localeCompare(String(a?.taskId || a?.title || ""), "vi", { numeric: true });
+}
+
+function workPlanExportRow(item, categoryMap) {
   const category = categoryMap.get(String(item.categoryId || ""));
+  const assignees = workItemAssignees(item);
+  const businessContacts = workItemBusinessContacts(item);
   return {
     recordType: "Công việc",
-    sortOrder: localSortOrder || item.sortOrder || "",
+    sortOrder: item.sortOrder || "",
     taskPrefix: category?.taskPrefix || "",
     taskId: item.taskId || "",
     categoryName: category?.name || item.categoryName || "Chưa phân nhóm",
     title: item.title || "",
     description: item.description || "",
-    assignee: item.assignee || "",
-    assigneeEmail: item.assigneeEmail || "",
-    collaborators: item.collaborators || "",
+    assignee: assignees.map((person) => person.name || person.email).filter(Boolean).join("\n"),
+    assigneeEmail: assignees.map((person) => person.email).filter(Boolean).join("\n"),
+    collaborators: businessContacts.map((person) => person.name || person.email).filter(Boolean).join("\n"),
     status: item.status || "",
     progress: item.progress || 0,
     priority: item.priority || "",
@@ -3670,7 +3690,9 @@ function canCreateWorkItem(user) {
 function assignWorkItemToUser(record, user) {
   const email = String(user?.email || user?.username || "").trim().toLowerCase();
   if (!email) throw httpError(403, "Tài khoản chưa có email để tự nhận đầu việc.");
-  record.assignee = String(user?.name || user?.username || email).trim();
+  const name = String(user?.name || user?.username || email).trim();
+  record.assignees = [{ name, email }];
+  record.assignee = name;
   record.assigneeEmail = email;
   return record;
 }
@@ -3693,7 +3715,7 @@ function mergeWorkItemProgressUpdate(existingRecord, inputRecord) {
 
 function decorateRecord(row, viewer) {
   const isOwner = Boolean(row.created_by && row.created_by === viewer?.id);
-  const linkedOwner = ownerAccountLinkForRecord(row.data);
+  const linkedOwner = ownerAccountLinkForRecord(row.data, viewer);
   const isLinkedOwner = Boolean(viewer && isOwnerAccountLinkForUser(linkedOwner, viewer));
   const isGroupEditor = Boolean(viewer && isWorkItemGroupEditor(viewer, row.data));
   const canManage = Boolean(viewer && (viewer.role === "admin" || isOwner || isGroupEditor));
@@ -3720,17 +3742,24 @@ function decorateRecord(row, viewer) {
   };
 }
 
-function ownerAccountLinkForRecord(record) {
-  const assigneeEmail = String(record?.assigneeEmail || "").trim().toLowerCase();
-  if (assigneeEmail) {
-    return {
+function ownerAccountLinksForRecord(record) {
+  const assigneeLinks = workItemAssignees(record)
+    .filter((person) => normalizeIdentity(person.email))
+    .map((person) => ({
       code: "",
-      label: record?.assignee || assigneeEmail,
-      email: assigneeEmail
-    };
-  }
+      label: person.name || person.email,
+      email: normalizeIdentity(person.email)
+    }));
+  if (assigneeLinks.length) return assigneeLinks;
   const code = ownerCodeFromValue(record?.owner);
-  return ownerAccountLinks.find((link) => link.code === code) || null;
+  const legacyLink = ownerAccountLinks.find((link) => link.code === code);
+  return legacyLink ? [legacyLink] : [];
+}
+
+function ownerAccountLinkForRecord(record, user = null) {
+  const links = ownerAccountLinksForRecord(record);
+  if (!user) return links[0] || null;
+  return links.find((link) => isOwnerAccountLinkForUser(link, user)) || links[0] || null;
 }
 
 function ownerCodeFromValue(value) {
@@ -3740,7 +3769,8 @@ function ownerCodeFromValue(value) {
 }
 
 function isLinkedOwnerUser(user, record) {
-  return isOwnerAccountLinkForUser(ownerAccountLinkForRecord(record), user);
+  return ownerAccountLinksForRecord(record)
+    .some((link) => isOwnerAccountLinkForUser(link, user));
 }
 
 function isOwnerAccountLinkForUser(link, user) {
@@ -3901,6 +3931,7 @@ function normalizeState(input) {
       ? source[collection].map((record) => normalizeRecord(record))
       : [];
   }
+  normalizeWorkItemsForValidation(state.workItems);
   applyWorkbookRules(state);
   applyWorkKpiRules(state);
   assignSortOrder(state);
@@ -3970,16 +4001,19 @@ function applyWorkKpiRules(state) {
     if (!people.has(email)) people.set(email, { email, name: row.memberName || email, personnel: {} });
   });
   (state.workItems || []).forEach((row) => {
-    const email = normalizeIdentity(row.assigneeEmail || workAssigneeDirectory[row.assignee]);
-    if (!email) return;
-    if (!people.has(email)) people.set(email, { email, name: row.assignee || email, personnel: {} });
+    workItemAssignees(row).forEach((assignee) => {
+      const email = normalizeIdentity(assignee.email || workAssigneeDirectory[assignee.name]);
+      if (!email) return;
+      if (!people.has(email)) people.set(email, { email, name: assignee.name || email, personnel: {} });
+    });
   });
 
   const today = localDateString(new Date());
   state.memberKpiResults = [...people.values()]
     .map((person, index) => {
       const input = inputByEmail.get(person.email) || {};
-      const tasks = (state.workItems || []).filter((row) => normalizeIdentity(row.assigneeEmail || workAssigneeDirectory[row.assignee]) === person.email);
+      const tasks = (state.workItems || []).filter((row) => workItemAssignees(row)
+        .some((assignee) => normalizeIdentity(assignee.email || workAssigneeDirectory[assignee.name]) === person.email));
       const completedTasks = tasks.filter((row) => row.status === "Hoàn thành");
       const datedCompletedTasks = completedTasks.filter((row) => isDateOnly(row.completedDate) && isDateOnly(row.dueDate));
       const progress = tasks.length ? round(averageAll(tasks.map((row) => Number(row.progress || 0)))) : null;
@@ -4102,6 +4136,7 @@ async function applyRecordDefaults(client, collection, record) {
     record.status = normalizeWorkStatus(record.status);
     if (isBlank(record.priority)) record.priority = "Trung bình";
     if (isBlank(record.assigneeEmail)) record.assigneeEmail = emailForWorkAssignee(record.assignee);
+    normalizeWorkItemPeople(record);
     if (isBlank(record.progress)) record.progress = 0;
     if (record.status === "Hoàn thành") {
       if (isBlank(record.completedDate)) record.completedDate = localDateString(new Date());
@@ -4141,6 +4176,7 @@ function validateWorkItemStatusProgress(record) {
 
 function normalizeWorkItemsForValidation(items) {
   for (const record of items || []) {
+    normalizeWorkItemPeople(record);
     record.status = normalizeWorkStatus(record.status);
     if (record.progress == null || String(record.progress).trim() === "") record.progress = 0;
   }
@@ -4283,6 +4319,8 @@ function validateRecordForCollection(collection, record, options = {}) {
   }
 
   if (collection === "workItems") {
+    normalizeWorkItemPeople(record);
+    validateWorkItemPeople(record);
     validateWorkItemStatusProgress(record);
   }
 
@@ -4395,6 +4433,88 @@ async function ensureWorkItemInvariantMigration() {
       insert into app_meta (key, value, updated_at)
       values ($1, $2::jsonb, now())
     `, [workItemInvariantMigrationKey, JSON.stringify(summary)]);
+    if (changedRecords) await touchMeta(client);
+    await client.query("commit");
+    return summary;
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function ensureWorkItemPeopleMigration() {
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [workItemPeopleMigrationKey]);
+    const existing = await client.query(
+      "select value from app_meta where key = $1 for update",
+      [workItemPeopleMigrationKey]
+    );
+    if (existing.rows[0]) {
+      await client.query("commit");
+      return existing.rows[0].value;
+    }
+
+    const result = await client.query(`
+      select id, data, created_by, updated_by, created_at, updated_at
+      from uat_records
+      where collection = 'workItems'
+      order by id
+      for update
+    `);
+    const backup = result.rows.map((row) => ({
+      id: row.id,
+      data: row.data,
+      createdBy: row.created_by,
+      updatedBy: row.updated_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+    await client.query(`
+      insert into app_meta (key, value, updated_at)
+      values ($1, $2::jsonb, now())
+      on conflict (key) do nothing
+    `, [workItemPeopleBackupKey, JSON.stringify({ createdAt: new Date().toISOString(), records: backup })]);
+
+    let changedRecords = 0;
+    let assigneeLinks = 0;
+    let businessContactLinks = 0;
+    let recordsWithMultipleAssignees = 0;
+    for (const row of result.rows) {
+      const data = { ...(row.data || {}) };
+      const before = JSON.stringify(data);
+      normalizeWorkItemPeople(data);
+      validateWorkItemPeople(data);
+      assigneeLinks += data.assignees.length;
+      businessContactLinks += data.businessContacts.length;
+      if (data.assignees.length > 1) recordsWithMultipleAssignees += 1;
+      if (JSON.stringify(data) === before) continue;
+      await client.query(`
+        update uat_records
+        set data = $1::jsonb,
+            updated_at = now()
+        where collection = 'workItems' and id = $2
+      `, [JSON.stringify(data), row.id]);
+      changedRecords += 1;
+    }
+
+    const summary = {
+      version: 1,
+      appliedAt: new Date().toISOString(),
+      totalRecords: result.rows.length,
+      changedRecords,
+      assigneeLinks,
+      businessContactLinks,
+      recordsWithMultipleAssignees,
+      backupKey: workItemPeopleBackupKey
+    };
+    await client.query(`
+      insert into app_meta (key, value, updated_at)
+      values ($1, $2::jsonb, now())
+    `, [workItemPeopleMigrationKey, JSON.stringify(summary)]);
     if (changedRecords) await touchMeta(client);
     await client.query("commit");
     return summary;
@@ -4574,6 +4694,10 @@ function buildPilotWorkPlanSeedRecords(nowIso) {
         assignee: item.assignee || "",
         assigneeEmail,
         collaborators: item.collaborators || "",
+        assignees: item.assignee ? [{ name: item.assignee, email: assigneeEmail }] : [],
+        businessContacts: item.collaborators
+          ? normalizeWorkPeopleList(null, splitLegacyPeople(item.collaborators))
+          : [],
         status: "Chưa bắt đầu",
         progress: 0,
         priority: item.priority || "Trung bình",
@@ -4593,6 +4717,94 @@ function buildPilotWorkPlanSeedRecords(nowIso) {
 
 function emailForWorkAssignee(name) {
   return workAssigneeDirectory[String(name || "").trim()] || "";
+}
+
+function normalizeWorkPerson(entry) {
+  if (entry == null) return null;
+  const raw = typeof entry === "object" && !Array.isArray(entry)
+    ? entry
+    : (String(entry || "").includes("@") ? { email: entry } : { name: entry });
+  let name = String(raw.name || raw.label || "").replace(/\s+/g, " ").trim();
+  let email = String(raw.email || raw.value || "").trim().toLowerCase();
+  if (email && !email.includes("@")) {
+    if (!name) name = email;
+    email = "";
+  }
+  if (!email && name) email = emailForWorkAssignee(name);
+  if (!name && email) {
+    const matched = Object.entries(workAssigneeDirectory)
+      .find(([, candidate]) => normalizeIdentity(candidate) === normalizeIdentity(email));
+    name = matched?.[0] || email;
+  }
+  if (!name && !email) return null;
+  return { name: name || email, email };
+}
+
+function splitLegacyPeople(value) {
+  if (Array.isArray(value)) return value;
+  return String(value || "")
+    .split(/[\n;,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeWorkPeopleList(value, fallback = []) {
+  const source = Array.isArray(value) ? value : fallback;
+  const people = [];
+  const seen = new Set();
+  for (const entry of source || []) {
+    const person = normalizeWorkPerson(entry);
+    if (!person) continue;
+    const key = normalizeIdentity(person.email) || `name:${normalizeIdentity(person.name)}`;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    people.push(person);
+  }
+  return people;
+}
+
+function normalizeWorkItemPeople(record) {
+  if (!record || typeof record !== "object") return record;
+  const legacyAssignees = record.assignee || record.assigneeEmail
+    ? [{ name: record.assignee || "", email: record.assigneeEmail || "" }]
+    : [];
+  const legacyContacts = splitLegacyPeople(record.collaborators);
+  const assignees = normalizeWorkPeopleList(record.assignees, legacyAssignees);
+  const businessContacts = normalizeWorkPeopleList(record.businessContacts, legacyContacts);
+  record.assignees = assignees;
+  record.businessContacts = businessContacts;
+  record.assignee = assignees[0]?.name || "";
+  record.assigneeEmail = assignees[0]?.email || "";
+  record.collaborators = businessContacts.map((person) => person.name || person.email).filter(Boolean).join(", ");
+  return record;
+}
+
+function workItemAssignees(record) {
+  return normalizeWorkItemPeople({ ...(record || {}) }).assignees;
+}
+
+function workItemBusinessContacts(record) {
+  return normalizeWorkItemPeople({ ...(record || {}) }).businessContacts;
+}
+
+function validateWorkItemPeople(record) {
+  const groups = [
+    ["Người thực hiện", record.assignees],
+    ["Đầu mối nghiệp vụ", record.businessContacts]
+  ];
+  for (const [label, people] of groups) {
+    if (!Array.isArray(people)) throw httpError(400, `${label} phải là danh sách.`);
+    if (people.length > 50) throw httpError(400, `${label} không được vượt quá 50 người.`);
+    for (const person of people) {
+      if (!person || typeof person !== "object" || Array.isArray(person) || !String(person.name || person.email || "").trim()) {
+        throw httpError(400, `${label} chứa thành viên không hợp lệ.`);
+      }
+      const email = String(person.email || "").trim();
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw httpError(400, `${label} chứa email không hợp lệ.`);
+      }
+    }
+  }
 }
 
 async function ensureSeedAdmin() {
