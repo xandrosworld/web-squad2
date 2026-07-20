@@ -165,6 +165,8 @@ const workItemInvariantMigrationKey = "work_item_status_progress_v1";
 const workItemInvariantBackupKey = "backup_work_item_status_progress_v1";
 const workItemPeopleMigrationKey = "work_item_people_v1";
 const workItemPeopleBackupKey = "backup_work_item_people_v1";
+const workItemPeopleIdentityMigrationKey = "work_item_people_identity_v1";
+const workItemPeopleIdentityBackupKey = "backup_work_item_people_identity_v1";
 const legacyStartDateBackfillField = "_allowStartDateBackfill";
 const pilotWorkPlanDocumentUrl = "https://drive.google.com/drive/folders/1mraUTa3nb4bVhikApO9i-uCB-THKbVWd";
 const workAssigneeDirectory = {
@@ -1536,6 +1538,7 @@ function ensureSchema() {
       await ensureDeliveryWorkCategories();
       await ensureWorkItemInvariantMigration();
       await ensureWorkItemPeopleMigration();
+      await ensureWorkItemPeopleIdentityMigration();
       await ensureWorkKpiConfig();
     })().catch((error) => {
       schemaPromise = null;
@@ -4526,6 +4529,85 @@ async function ensureWorkItemPeopleMigration() {
   }
 }
 
+async function ensureWorkItemPeopleIdentityMigration() {
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [workItemPeopleIdentityMigrationKey]);
+    const existing = await client.query(
+      "select value from app_meta where key = $1 for update",
+      [workItemPeopleIdentityMigrationKey]
+    );
+    if (existing.rows[0]) {
+      await client.query("commit");
+      return existing.rows[0].value;
+    }
+
+    const result = await client.query(`
+      select id, data, created_by, updated_by, created_at, updated_at
+      from uat_records
+      where collection = 'workItems'
+      order by id
+      for update
+    `);
+    const changes = [];
+    for (const row of result.rows) {
+      const data = { ...(row.data || {}) };
+      const before = JSON.stringify(data);
+      normalizeWorkItemPeople(data);
+      validateWorkItemPeople(data);
+      if (JSON.stringify(data) !== before) changes.push({ row, data });
+    }
+
+    const backup = changes.map(({ row }) => ({
+      id: row.id,
+      data: row.data,
+      createdBy: row.created_by,
+      updatedBy: row.updated_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+    await client.query(`
+      insert into app_meta (key, value, updated_at)
+      values ($1, $2::jsonb, now())
+      on conflict (key) do nothing
+    `, [workItemPeopleIdentityBackupKey, JSON.stringify({
+      createdAt: new Date().toISOString(),
+      records: backup
+    })]);
+
+    for (const { row, data } of changes) {
+      await client.query(`
+        update uat_records
+        set data = $1::jsonb,
+            updated_at = now()
+        where collection = 'workItems' and id = $2
+      `, [JSON.stringify(data), row.id]);
+    }
+
+    const summary = {
+      version: 1,
+      appliedAt: new Date().toISOString(),
+      totalRecords: result.rows.length,
+      changedRecords: changes.length,
+      affectedTaskIds: changes.map(({ data }) => data.taskId || data.id).filter(Boolean),
+      backupKey: workItemPeopleIdentityBackupKey
+    };
+    await client.query(`
+      insert into app_meta (key, value, updated_at)
+      values ($1, $2::jsonb, now())
+    `, [workItemPeopleIdentityMigrationKey, JSON.stringify(summary)]);
+    if (changes.length) await touchMeta(client);
+    await client.query("commit");
+    return summary;
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function ensurePilotWorkPlanSeed() {
   const client = await getPool().connect();
   try {
@@ -4716,7 +4798,30 @@ function buildPilotWorkPlanSeedRecords(nowIso) {
 }
 
 function emailForWorkAssignee(name) {
-  return workAssigneeDirectory[String(name || "").trim()] || "";
+  return canonicalWorkAssignee(name)?.email || "";
+}
+
+function normalizeWorkPersonNameKey(value) {
+  return String(value || "")
+    .trim()
+    .toLocaleLowerCase("vi")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/\s+/g, " ");
+}
+
+function canonicalWorkAssignee(name, email = "") {
+  const normalizedEmail = normalizeIdentity(email);
+  const normalizedName = normalizeWorkPersonNameKey(name);
+  const entries = Object.entries(workAssigneeDirectory);
+  const matchedByEmail = normalizedEmail
+    ? entries.find(([, candidateEmail]) => normalizeIdentity(candidateEmail) === normalizedEmail)
+    : null;
+  const matched = matchedByEmail || (normalizedName
+    ? entries.find(([candidateName]) => normalizeWorkPersonNameKey(candidateName) === normalizedName)
+    : null);
+  return matched ? { name: matched[0], email: normalizeIdentity(matched[1]) } : null;
 }
 
 function normalizeWorkPerson(entry) {
@@ -4730,6 +4835,8 @@ function normalizeWorkPerson(entry) {
     if (!name) name = email;
     email = "";
   }
+  const canonical = canonicalWorkAssignee(name, email);
+  if (canonical) return canonical;
   if (!email && name) email = emailForWorkAssignee(name);
   if (!name && email) {
     const matched = Object.entries(workAssigneeDirectory)

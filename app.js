@@ -7591,7 +7591,30 @@ function getNextWorkItemTaskIdForCategory(categoryId) {
 }
 
 function emailForWorkAssignee(name) {
-    return workAssigneeEmailByName[String(name || "").trim()] || "";
+    return canonicalWorkAssignee(name)?.email || "";
+}
+
+function normalizeWorkPersonNameKey(value) {
+    return String(value || "")
+        .trim()
+        .toLocaleLowerCase("vi")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d")
+        .replace(/\s+/g, " ");
+}
+
+function canonicalWorkAssignee(name, email = "") {
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedName = normalizeWorkPersonNameKey(name);
+    const entries = Object.entries(workAssigneeEmailByName);
+    const matchedByEmail = normalizedEmail
+        ? entries.find(([, candidateEmail]) => String(candidateEmail).toLowerCase() === normalizedEmail)
+        : null;
+    const matched = matchedByEmail || (normalizedName
+        ? entries.find(([candidateName]) => normalizeWorkPersonNameKey(candidateName) === normalizedName)
+        : null);
+    return matched ? { name: matched[0], email: String(matched[1]).toLowerCase() } : null;
 }
 
 function normalizeWorkPerson(entry) {
@@ -7602,6 +7625,8 @@ function normalizeWorkPerson(entry) {
     let name = String(raw.name || raw.label || "").replace(/\s+/g, " ").trim();
     let email = String(raw.email || "").trim().toLowerCase();
     if (!email && String(raw.value || "").includes("@")) email = String(raw.value).trim().toLowerCase();
+    const canonical = canonicalWorkAssignee(name, email);
+    if (canonical) return canonical;
     if (!email && name) email = emailForWorkAssignee(name);
     if (!name && email) {
         name = Object.entries(workAssigneeEmailByName)

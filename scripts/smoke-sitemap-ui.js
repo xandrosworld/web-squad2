@@ -197,6 +197,12 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       || await contactMulti.locator('[data-people-option]').count() < 10) {
       throw new Error("Multi-select chưa nạp đủ danh sách thành viên.");
     }
+    const assigneeOptionNames = await assigneeMulti.locator('[data-people-option]')
+      .evaluateAll((options) => options.map((option) => option.dataset.personName || ""));
+    if (assigneeOptionNames.includes("Bui Thi Mai Phuong")
+      || assigneeOptionNames.filter((name) => name === "Bùi Thị Mai Phương").length !== 1) {
+      throw new Error(`Multi-select chưa hợp nhất danh tính Bùi Thị Mai Phương: ${JSON.stringify(assigneeOptionNames)}`);
+    }
     await assigneeMulti.locator('[data-people-toggle]').click();
     await assigneeMulti.locator('[data-people-option][data-person-email="huyng@bidv.com.vn"]').check();
     await assigneeMulti.locator('[data-people-option][data-person-email="sinhhc@bidv.com.vn"]').check();

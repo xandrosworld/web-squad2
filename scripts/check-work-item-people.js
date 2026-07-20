@@ -38,6 +38,34 @@ assert.equal(multi.collaborators, "Bùi Thị Mai Phương");
 assert.equal(workItemAssignees(multi).length, 2);
 assert.equal(workItemBusinessContacts(multi).length, 1);
 
+const canonicalIdentity = normalizeWorkItemPeople({
+  id: "canonical-identity",
+  assignees: [
+    { name: "Bui Thi Mai Phuong", email: "" },
+    { name: "Bùi Thị Mai Phương", email: "phuongbtm@bidv.com.vn" }
+  ],
+  businessContacts: [
+    { name: "Bui Thi Mai Phuong", email: "" }
+  ]
+});
+assert.deepEqual(canonicalIdentity.assignees, [
+  { name: "Bùi Thị Mai Phương", email: "phuongbtm@bidv.com.vn" }
+], "Tên không dấu và bản ghi chuẩn phải được hợp nhất thành một người.");
+assert.deepEqual(canonicalIdentity.businessContacts, [
+  { name: "Bùi Thị Mai Phương", email: "phuongbtm@bidv.com.vn" }
+], "Đầu mối nghiệp vụ phải dùng cùng danh tính chuẩn.");
+assert.equal(canonicalIdentity.assignee, "Bùi Thị Mai Phương");
+assert.equal(canonicalIdentity.assigneeEmail, "phuongbtm@bidv.com.vn");
+assert.equal(canonicalIdentity.collaborators, "Bùi Thị Mai Phương");
+
+const emailWins = normalizeWorkItemPeople({
+  id: "email-wins",
+  assignees: [{ name: "Bui Thi Mai Phuong", email: "huyng@bidv.com.vn" }]
+});
+assert.deepEqual(emailWins.assignees, [
+  { name: "Nguyễn Gia Huy", email: "huyng@bidv.com.vn" }
+], "Email hợp lệ phải là khóa định danh ưu tiên khi tên và email xung đột.");
+
 const secondAssignee = {
   id: "user-sinh",
   username: "sinhhc",
@@ -68,6 +96,7 @@ console.log(JSON.stringify({
   checked: {
     legacyMigration: true,
     duplicateEmailRemoval: true,
+    canonicalIdentityNormalization: true,
     multipleAssigneePermission: true,
     businessContactsSeparated: true
   }
