@@ -279,6 +279,21 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     }
     await page.screenshot({ path: inputsShot, fullPage: true });
     await assertRoute(page, "common/personnel/list", "[data-resizable-table=personnel]");
+    const personnelHeaders = await page.locator('[data-resizable-table="personnel"] thead th').allTextContents();
+    for (const header of ["Ngày vào BIDV", "Cấp lương", "Bậc lương"]) {
+      if (!personnelHeaders.some((value) => value.includes(header))) {
+        throw new Error(`Danh sách nhân sự thiếu cột ${header}.`);
+      }
+    }
+    await page.locator('[data-resizable-table="personnel"] [data-action="open-edit"]').first().click();
+    await page.waitForSelector("#recordForm");
+    await assertFieldLabel(page, "bidvJoinDate", "Ngày vào BIDV");
+    await assertFieldLabel(page, "salaryGrade", "Cấp lương");
+    await assertFieldLabel(page, "salaryStep", "Bậc lương");
+    if (await page.locator('[name="bidvJoinDate"]').getAttribute("type") !== "date") {
+      throw new Error("Ngày vào BIDV phải dùng trường chọn ngày.");
+    }
+    await page.locator('[data-action="close-modal"]').first().click();
     await assertRoute(page, "common/personnel/map", ".personnel-map");
     if (await page.locator(".personnel-map .member-avatar img").count() !== 1) {
       throw new Error("Sơ đồ nhân sự không hiển thị avatar tài khoản đã được cấu hình.");
@@ -586,7 +601,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
 async function buildFixtureState() {
   const state = emptyState();
   state.personnel = [
-    { id: "person-thanh", staffCode: "NV01", name: "Mai Tấn Thành", email: "thanhmt@bidv.com.vn", role: "Điều phối", status: "Hoạt động" },
+    { id: "person-thanh", staffCode: "NV01", name: "Mai Tấn Thành", email: "thanhmt@bidv.com.vn", role: "Điều phối", status: "Hoạt động", bidvJoinDate: "2020-01-15", salaryGrade: "Cấp 5", salaryStep: "Bậc 3" },
     { id: "person-huy", staffCode: "NV02", name: "Nguyễn Gia Huy", email: "huyng@bidv.com.vn", role: "Tester", status: "Hoạt động" }
   ];
   state.features = [

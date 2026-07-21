@@ -323,7 +323,10 @@ const modules = {
             { key: "birthYear", label: "Năm sinh", type: "number" },
             { key: "phone", label: "SĐT", type: "text" },
             { key: "email", label: "Email", type: "text" },
-            { key: "unit", label: "Đơn vị", type: "text" }
+            { key: "unit", label: "Đơn vị", type: "text" },
+            { key: "bidvJoinDate", label: "Ngày vào BIDV", type: "date" },
+            { key: "salaryGrade", label: "Cấp lương", type: "text" },
+            { key: "salaryStep", label: "Bậc lương", type: "text" }
         ],
         filters: [
             { key: "role", label: "Vai trò" },
@@ -339,7 +342,10 @@ const modules = {
             { key: "birthYear", label: "Năm sinh", width: "96px" },
             { key: "phone", label: "SĐT", width: "130px" },
             { key: "email", label: "Email", width: "220px" },
-            { key: "unit", label: "Đơn vị", width: "150px" }
+            { key: "unit", label: "Đơn vị", width: "150px" },
+            { key: "bidvJoinDate", label: "Ngày vào BIDV", width: "150px", render: (row) => formatDate(row.bidvJoinDate) },
+            { key: "salaryGrade", label: "Cấp lương", width: "130px" },
+            { key: "salaryStep", label: "Bậc lương", width: "130px" }
         ]
     },
     schedule: {

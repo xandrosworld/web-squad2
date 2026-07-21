@@ -139,6 +139,12 @@ const mojibakePattern = /\u00c3[\u0080-\u00bf]|\u00c2[\u0080-\u00bf]|\u00e1\u00b
   if (JSON.stringify(actualSheets) !== JSON.stringify(expectedSheets)) {
     throw new Error(`Unexpected Excel sheets: ${actualSheets.join(", ")}`);
   }
+  const personnelHeaders = workbook.getWorksheet("NhanSu_UAT").getRow(1).values.slice(1);
+  for (const header of ["Ngày vào BIDV", "Cấp lương", "Bậc lương"]) {
+    if (!personnelHeaders.includes(header)) {
+      throw new Error(`Exported NhanSu_UAT is missing ${header}.`);
+    }
+  }
   if (workbook.getWorksheet("Lich_UAT").state !== "hidden") {
     throw new Error("Exported Lich_UAT sheet should stay hidden like the source workbook.");
   }

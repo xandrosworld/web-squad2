@@ -420,6 +420,11 @@ const collectionRules = {
     }
   }
 };
+const personnelExtendedFields = [
+  { key: "bidvJoinDate", label: "Ngày vào BIDV", column: 10 },
+  { key: "salaryGrade", label: "Cấp lương", column: 11 },
+  { key: "salaryStep", label: "Bậc lương", column: 12 }
+];
 const excelSheets = [
   {
     collection: "personnel",
@@ -433,7 +438,10 @@ const excelSheets = [
       ["birthYear", "Năm sinh", 12, "number"],
       ["phone", "SĐT", 16],
       ["email", "Email", 28],
-      ["unit", "Đơn vị", 22]
+      ["unit", "Đơn vị", 22],
+      ["bidvJoinDate", "Ngày vào BIDV", 16, "date"],
+      ["salaryGrade", "Cấp lương", 14],
+      ["salaryStep", "Bậc lương", 14]
     ]
   },
   {
@@ -1430,6 +1438,7 @@ module.exports = {
   __testNormalizeWorkItemPeople: normalizeWorkItemPeople,
   __testWorkItemAssignees: workItemAssignees,
   __testWorkItemBusinessContacts: workItemBusinessContacts,
+  __testPreservePersonnelExtendedFields: preservePersonnelExtendedFields,
   __testToImportCellDate: toImportCellDate,
   runDeadlineNotificationJob,
   closeDatabase
@@ -1650,7 +1659,9 @@ async function parseWorkbookImportState(buffer) {
   validatePlanTesterHeader(workbook.getWorksheet("PhanCong_UAT"));
   const state = emptyState();
   state.features = parseDmChucNangSheet(workbook.getWorksheet("DM_ChucNang"));
-  state.personnel = parsePersonnelSheet(workbook.getWorksheet("NhanSu_UAT"));
+  const personnelWorksheet = workbook.getWorksheet("NhanSu_UAT");
+  state._personnelImportFields = detectPersonnelImportFields(personnelWorksheet);
+  state.personnel = parsePersonnelSheet(personnelWorksheet);
   state.schedule = parseScheduleSheet(workbook.getWorksheet("Lich_UAT"));
   state.handoffs = parseHandoffSheet(workbook.getWorksheet("Lich_BG_US"));
   state.plans = parsePlanSheet(workbook.getWorksheet("PhanCong_UAT"));
@@ -1726,9 +1737,25 @@ function parsePersonnelSheet(worksheet) {
       birthYear: toImportNumber(cellValueAt(row, 6)),
       phone: cellTextAt(row, 7),
       email: cellTextAt(row, 8),
-      unit: cellTextAt(row, 9)
+      unit: cellTextAt(row, 9),
+      bidvJoinDate: toImportDate(cellValueAt(row, 10)),
+      salaryGrade: cellTextAt(row, 11),
+      salaryStep: cellTextAt(row, 12)
     };
   });
+}
+
+function detectPersonnelImportFields(worksheet) {
+  return Object.fromEntries(personnelExtendedFields.map(({ key, label, column }) => {
+    if (!worksheet) return [key, false];
+    const expectedLabel = lookupKey(label);
+    const hasHeader = [1, 2, 3].some((rowNumber) => lookupKey(cellTextAt(worksheet.getRow(rowNumber), column)) === expectedLabel);
+    let hasData = false;
+    for (let rowNumber = 4; rowNumber <= worksheet.rowCount && !hasData; rowNumber += 1) {
+      hasData = !isBlank(cellValueAt(worksheet.getRow(rowNumber), column));
+    }
+    return [key, hasHeader || hasData];
+  }));
 }
 
 function parseScheduleSheet(worksheet) {
@@ -2815,6 +2842,35 @@ function isWorkbookManagedRecord(row) {
   return data?._import?.source === "workbook" || /^[a-f0-9]{40}$/i.test(id);
 }
 
+function preservePersonnelExtendedFields(importState, existingRows) {
+  const importedFields = importState?._personnelImportFields || {};
+  const existingPersonnel = (existingRows || [])
+    .filter((row) => row.collection === "personnel" && isWorkbookManagedRecord(row));
+  const byId = new Map(existingPersonnel.map((row) => [String(row.id || ""), row.data || {}]));
+  const byStaffCode = new Map(existingPersonnel
+    .map((row) => row.data || {})
+    .filter((row) => !isBlank(row.staffCode))
+    .map((row) => [lookupKey(row.staffCode), row]));
+  const byEmail = new Map(existingPersonnel
+    .map((row) => row.data || {})
+    .filter((row) => !isBlank(row.email))
+    .map((row) => [normalizeIdentity(row.email), row]));
+  let preservedFieldCount = 0;
+
+  for (const record of importState?.personnel || []) {
+    const existing = byId.get(String(record.id || ""))
+      || byStaffCode.get(lookupKey(record.staffCode))
+      || byEmail.get(normalizeIdentity(record.email));
+    if (!existing) continue;
+    for (const { key } of personnelExtendedFields) {
+      if (importedFields[key] || !isBlank(record[key]) || isBlank(existing[key])) continue;
+      record[key] = existing[key];
+      preservedFieldCount += 1;
+    }
+  }
+  return preservedFieldCount;
+}
+
 async function mergeWorkbookImportRecords(client, importState, actor) {
   const existing = await client.query(`
     select collection, id, data
@@ -2823,6 +2879,7 @@ async function mergeWorkbookImportRecords(client, importState, actor) {
   `, [workbookCollections]);
   const idsToReplace = new Map(workbookCollections.map((collection) => [collection, []]));
   const preserved = Object.fromEntries(workbookCollections.map((collection) => [collection, 0]));
+  preservePersonnelExtendedFields(importState, existing.rows);
 
   for (const row of existing.rows) {
     if (isWorkbookManagedRecord(row)) idsToReplace.get(row.collection)?.push(row.id);
@@ -4327,6 +4384,10 @@ function validateRecordForCollection(collection, record, options = {}) {
     validateWorkItemStatusProgress(record);
   }
 
+  if (collection === "personnel" && !isBlank(record.bidvJoinDate) && !isIsoDateOnly(String(record.bidvJoinDate))) {
+    throw httpError(400, "Ngày vào BIDV không hợp lệ.");
+  }
+
   if (collection === "kpiConfig") {
     const totalWeight = [
       "progressWeight",
@@ -5288,7 +5349,7 @@ function aiCollectionName(collection) {
 function aiFieldOrder(collection) {
   return {
     features: ["stt", "code", "storyCode", "jiraCode", "group", "name", "sprint", "owner", "uatHandoff", "handoffStatus", "totalCases", "passedCases", "failedCases", "blockedCases", "defectOpen", "blockerOpen", "criticalOpen", "uatResult", "status", "completionRate", "uatWarning"],
-    personnel: ["staffCode", "name", "role", "scope", "status", "birthYear", "phone", "email", "unit"],
+    personnel: ["staffCode", "name", "role", "scope", "status", "birthYear", "phone", "email", "unit", "bidvJoinDate", "salaryGrade", "salaryStep"],
     schedule: ["sprint", "devStart", "devEnd", "handoffDate", "startDate", "endDate", "note"],
     handoffs: ["jiraCode", "code", "storyCode", "sectionLevel1", "sectionLevel2", "name", "sprint", "uatHandoff", "uatStart", "uatEnd", "handoffStatus", "uatStatus"],
     plans: ["code", "jiraCode", "group", "feature", "sprint", "uatHandoff", "owner", "nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "testStatus", "progress", "uatStatus", "devStatus", "priority", "note"],
@@ -5311,6 +5372,9 @@ function aiFieldLegend() {
     jiraCode: "Mã Jira",
     group: "Nhóm chức năng",
     name: "Tên chức năng",
+    bidvJoinDate: "Ngày vào BIDV",
+    salaryGrade: "Cấp lương",
+    salaryStep: "Bậc lương",
     owner: "Đầu mối nghiệp vụ/chủ quản",
     uatHandoff: "Ngày bàn giao UAT",
     handoffStatus: "Trạng thái bàn giao",

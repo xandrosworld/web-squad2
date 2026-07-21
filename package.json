@@ -18,6 +18,7 @@
     "check:group-editor": "node scripts/check-group-editor-policy.js",
     "check:work-item-invariants": "node scripts/check-work-item-invariants.js",
     "check:work-item-people": "node scripts/check-work-item-people.js",
+    "check:personnel-fields": "node scripts/check-personnel-fields.js",
     "check:work-item-export": "node scripts/check-work-item-export.js",
     "check:deadline-notifications": "node scripts/check-deadline-notifications.js",
     "import:workbook:db": "node scripts/import-workbook-to-db.js",
