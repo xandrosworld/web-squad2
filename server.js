@@ -3536,8 +3536,11 @@ function auditMergePreservation(existingState, mergedState) {
     const mergedRows = collectionRows(mergedState, collection);
     for (const row of existingManualRows) {
       const preserved = mergedRows.some((candidate) => (
-        candidate.id === row.id
-        && canonicalRecord(candidate, ["sortOrder"]) === canonicalRecord(row, ["sortOrder"])
+        (
+          candidate.id === row.id
+          && canonicalRecord(candidate, ["sortOrder"]) === canonicalRecord(row, ["sortOrder"])
+        )
+        || (collection === "daily" && dailyRowsEquivalent(candidate, row))
       ));
       if (!preserved) mismatches.push(`${collection}:${row.id} manual row was not preserved`);
     }

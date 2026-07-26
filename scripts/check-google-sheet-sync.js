@@ -137,6 +137,38 @@ assert.doesNotThrow(
   "Google Sheet phải giữ được dòng legacy thiếu ngày đã có trong nguồn thật"
 );
 
+const manualDailyRow = {
+  id: "manual-daily-row",
+  date: "",
+  feature: "QUAN HỆ TCTD - TĐRR",
+  sprint: "Sprint 14",
+  tester: "Hoàng Thành Trí",
+  totalCases: 12,
+  passedCases: 4,
+  bugStatus: "Open"
+};
+const migratedDailyRow = {
+  ...manualDailyRow,
+  id: "google-sheet-daily-row",
+  _import: { source: "google-sheet" }
+};
+assert.strictEqual(
+  auditMergePreservation(
+    { daily: [manualDailyRow] },
+    { daily: [migratedDailyRow] }
+  ).ok,
+  true,
+  "Dòng daily thủ công đã có nội dung tương đương trên Sheet phải được coi là chuyển nguồn, không phải mất dữ liệu"
+);
+assert.strictEqual(
+  auditMergePreservation(
+    { daily: [manualDailyRow] },
+    { daily: [{ ...migratedDailyRow, totalCases: 11 }] }
+  ).ok,
+  false,
+  "Audit vẫn phải chặn khi nội dung dòng daily thực sự bị thay đổi"
+);
+
 function excelValueToGridValue(value) {
   if (value == null || value === "") return {};
   if (value instanceof Date) {
