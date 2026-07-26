@@ -5276,10 +5276,13 @@ function requireCollection(collection) {
   return collection;
 }
 
-function validateWorkbookImportState(state) {
+function validateWorkbookImportState(state, options = {}) {
   for (const collection of workbookCollections) {
     for (const record of state[collection] || []) {
-      validateRecordForCollection(collection, record, { preserveWorkbookSource: true });
+      validateRecordForCollection(collection, record, {
+        preserveWorkbookSource: true,
+        allowLegacyDailyWithoutDate: options.allowLegacyDailyWithoutDate === true
+      });
     }
   }
 }
@@ -5289,6 +5292,13 @@ function validateRecordForCollection(collection, record, options = {}) {
   if (!rules) throw httpError(404, "Phân hệ dữ liệu không hợp lệ.");
 
   for (const field of rules.required) {
+    if (
+      collection === "daily"
+      && field === "date"
+      && options.allowLegacyDailyWithoutDate
+    ) {
+      continue;
+    }
     if (isBlank(record[field])) {
       throw httpError(400, `${field} là trường bắt buộc.`);
     }
@@ -6730,7 +6740,7 @@ async function loadGoogleSheetSource(db, options = {}) {
   if (!stateRecordTotal(parsed.state, GOOGLE_SHEET_SOURCE_COLLECTIONS)) {
     throw httpError(422, "Google Sheet không có dữ liệu nguồn được hỗ trợ.");
   }
-  validateWorkbookImportState(parsed.state);
+  validateWorkbookImportState(parsed.state, { allowLegacyDailyWithoutDate: true });
   return {
     settings: { ...settings, spreadsheetId, spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit` },
     spreadsheetId,

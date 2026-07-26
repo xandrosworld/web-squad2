@@ -15,7 +15,8 @@ const {
   parseGoogleSpreadsheetImportState,
   mergeWorkbookSourceState,
   auditWorkbookObjectAgainstSource,
-  auditMergePreservation
+  auditMergePreservation,
+  validateWorkbookImportState
 } = require("../server");
 
 function cell(value, options = {}) {
@@ -118,6 +119,23 @@ const settings = normalizeGoogleSheetSettings({ spreadsheetUrl: `https://docs.go
 assert.strictEqual(settings.spreadsheetId, id);
 assert.strictEqual(settings.intervalMinutes, 60);
 assert.strictEqual(settings.enabled, true);
+
+const legacyDailyWithoutDate = {
+  daily: [{
+    id: "legacy-daily-without-date",
+    date: "",
+    tester: "Hoàng Thành Trí"
+  }]
+};
+assert.throws(
+  () => validateWorkbookImportState(legacyDailyWithoutDate),
+  /date/,
+  "Import workbook thông thường vẫn phải bắt buộc ngày"
+);
+assert.doesNotThrow(
+  () => validateWorkbookImportState(legacyDailyWithoutDate, { allowLegacyDailyWithoutDate: true }),
+  "Google Sheet phải giữ được dòng legacy thiếu ngày đã có trong nguồn thật"
+);
 
 function excelValueToGridValue(value) {
   if (value == null || value === "") return {};
