@@ -7344,35 +7344,46 @@ function importJsonFile(file, input) {
 }
 
 async function importExcelFile(file, input) {
-    if (!confirm("Đồng bộ Excel sẽ cập nhật lại các bản ghi có nguồn từ workbook. Các bản ghi nhập trực tiếp trên app vẫn được giữ nguyên. Tiếp tục?")) {
+    if (!confirm("Hệ thống sẽ kiểm tra toàn bộ workbook trước khi đồng bộ. Dữ liệu nhập trực tiếp trên web và Kế hoạch công việc vẫn được giữ nguyên. Tiếp tục?")) {
         input.value = "";
         return;
     }
     ui.saving = true;
-    showToast("Đang đồng bộ workbook Excel...");
+    showToast("Đang kiểm tra workbook, chưa thay đổi dữ liệu...");
     try {
-        const response = await fetch(`${API_BASE}/import/excel`, {
+        const requestHeaders = {
+            "Content-Type": file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "X-Source-Filename": encodeURIComponent(file.name || "workbook.xlsx")
+        };
+        const previewResponse = await fetch(`${API_BASE}/import/excel/merge?dryRun=1`, {
             method: "POST",
             credentials: "same-origin",
-            headers: {
-                "Content-Type": file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            },
+            headers: requestHeaders,
             body: file
         });
-        const text = await response.text();
-        let data = {};
-        try {
-            data = text ? JSON.parse(text) : {};
-        } catch {
-            data = { error: text || "API không trả về JSON hợp lệ" };
+        const preview = await readImportApiResponse(previewResponse);
+        if (!previewResponse.ok || !preview.ok) {
+            throw new Error(importAuditError(preview, previewResponse.status));
         }
-        if (!response.ok) throw new Error(data.error || `API lỗi ${response.status}`);
+
+        showToast(`Đã kiểm tra ${preview.goldenAudit?.checkedCells || 0} ô, đang đồng bộ an toàn...`);
+        const response = await fetch(`${API_BASE}/import/excel/merge`, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: requestHeaders,
+            body: file
+        });
+        const data = await readImportApiResponse(response);
+        if (!response.ok || !data.ok) throw new Error(importAuditError(data, response.status));
         appState = normalizeState(data.state || appState);
         setDataStatus("online", "Railway Postgres đang hoạt động");
         localStorage.setItem(MIGRATION_FLAG_KEY, "uploaded");
         cacheState();
-        const preservedCount = Object.values(data.preserved || {}).reduce((total, value) => total + Number(value || 0), 0);
-        showToast(`Đã đồng bộ workbook Excel${preservedCount ? `, giữ lại ${preservedCount} bản ghi nhập trên app` : ""}.`);
+        const preservedCount = Object.values(data.merge || {}).reduce(
+            (total, value) => total + Number(value?.preservedManual || 0),
+            0
+        );
+        showToast(`Đã đồng bộ workbook và tạo bản khôi phục${preservedCount ? `; giữ ${preservedCount} bản ghi web` : ""}.`);
     } catch (error) {
         setDataStatus("offline", error.message || "Không nhập được Excel");
         showToast(error.message ? `Không nhập được Excel: ${error.message}` : "File Excel không hợp lệ.");
@@ -7381,6 +7392,25 @@ async function importExcelFile(file, input) {
         input.value = "";
         render();
     }
+}
+
+async function readImportApiResponse(response) {
+    const text = await response.text();
+    try {
+        return text ? JSON.parse(text) : {};
+    } catch {
+        return { error: text || "API không trả về JSON hợp lệ" };
+    }
+}
+
+function importAuditError(data, status) {
+    if (data?.error) return data.error;
+    const mismatch = data?.goldenAudit?.mismatches?.[0] || data?.preservationAudit?.mismatches?.[0];
+    if (mismatch && typeof mismatch === "object") {
+        return `Dữ liệu lệch tại ${mismatch.cell || "workbook"}; hệ thống chưa thay đổi DB.`;
+    }
+    if (mismatch) return `${mismatch}; hệ thống chưa thay đổi DB.`;
+    return `API lỗi ${status}`;
 }
 
 function getFilteredRows(mod) {

@@ -8,7 +8,7 @@ const {
   buildExcelWorkbook
 } = require("../server");
 
-const workbookPath = path.resolve(process.argv[2] || "SQ02_UAT_Squad2_QuanLy_US_Date-2.7.xlsx");
+const workbookPath = path.resolve(process.argv[2] || "SQ02_UAT_Squad2_QuanLy_US_Date-new-26.7.xlsx");
 
 main().catch((error) => {
   console.error(error.message || error);
@@ -152,11 +152,13 @@ function testComputedOverwrite(baseState) {
   const state = clone(baseState);
   const feature = state.features.find((row) => row.jiraCode);
   const plan = state.plans.find((row) => row.jiraCode);
-  const defect = state.defects.find((row) => row.foundDate);
+  const defect = state.defects.find((row) => row.foundDate) || state.defects[0];
   assert(feature && plan && defect, "Missing source rows for computed overwrite test.");
 
   feature.totalCases = 9999;
   plan.totalCases = 9999;
+  defect.foundDate = defect.foundDate || "2026-07-01";
+  defect.resolvedDate = "";
   defect.aging = 9999;
   applyWorkbookRules(state);
 

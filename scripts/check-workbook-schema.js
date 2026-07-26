@@ -4,7 +4,39 @@ const path = require("path");
 const ExcelJS = require("exceljs");
 const { buildExcelWorkbook, parseWorkbookImportState } = require("../server");
 
-const workbookPath = path.resolve(process.argv[2] || "SQ02_UAT_Squad2_QuanLy_US_Date-2.7.xlsx");
+const workbookPath = path.resolve(process.argv[2] || "SQ02_UAT_Squad2_QuanLy_US_Date-new-26.7.xlsx");
+const isFinal26JulyWorkbook = /new-26\.7/i.test(path.basename(workbookPath));
+const expectedData = isFinal26JulyWorkbook
+  ? {
+    daily: 37,
+    defects: 74,
+    userStories: 86,
+    bugSources: 74,
+    featureTotalCases: 278,
+    firstDefect: {
+      bugId: "PS0142025-10631",
+      linkedUsKey: "PS0142025-8074",
+      tester: "Lê Trần Sơn"
+    },
+    defectStatuses: { Open: 22, Closed: 18, "SIT Pass": 18 },
+    sourceStatuses: { Open: 24, Closed: 18, "SIT Pass": 18 },
+    dashboard: { totalDefects: 74, reopenRate: "0.20%", validLinked: 54, handledRate: "66.67%" }
+  }
+  : {
+    daily: 30,
+    defects: 64,
+    userStories: 84,
+    bugSources: 64,
+    featureTotalCases: 224,
+    firstDefect: {
+      bugId: "PS0142025-10272",
+      linkedUsKey: "PS0142025-5937",
+      tester: "Nguyễn Gia Huy"
+    },
+    defectStatuses: { Open: 15, Closed: 17, "SIT Pass": 14 },
+    sourceStatuses: { Open: 16, Closed: 17, "SIT Pass": 14 },
+    dashboard: { totalDefects: 64, reopenRate: "0.10%", validLinked: 49, handledRate: "69.39%" }
+  };
 
 const expectedHeaders = {
   NhanSu_UAT: ["Mã nhân sự", "Họ tên", "Vai trò", "Phạm vi chính", "Trạng thái", "Năm sinh", "SĐT", "Email", "Đơn vị"],
@@ -79,10 +111,10 @@ async function main() {
   if (state.features.length !== 77) throw new Error(`Expected 77 DM_ChucNang source rows, got ${state.features.length}`);
   if (state.handoffs.length !== 77) throw new Error(`Expected 77 Lich_BG_US source rows, got ${state.handoffs.length}`);
   if (state.plans.length !== 77) throw new Error(`Expected 77 PhanCong_UAT source rows, got ${state.plans.length}`);
-  if (state.daily.length !== 30) throw new Error(`Expected 30 DieuHanh_Ngay rows, got ${state.daily.length}`);
-  if (state.defects.length !== 64) throw new Error(`Expected 64 DEFECT_LOG rows, got ${state.defects.length}`);
-  if (state.userStories.length !== 84) throw new Error(`Expected 84 DS_US rows, got ${state.userStories.length}`);
-  if (state.bugSources.length !== 64) throw new Error(`Expected 64 DS.Loi rows, got ${state.bugSources.length}`);
+  if (state.daily.length !== expectedData.daily) throw new Error(`Expected ${expectedData.daily} DieuHanh_Ngay rows, got ${state.daily.length}`);
+  if (state.defects.length !== expectedData.defects) throw new Error(`Expected ${expectedData.defects} DEFECT_LOG rows, got ${state.defects.length}`);
+  if (state.userStories.length !== expectedData.userStories) throw new Error(`Expected ${expectedData.userStories} DS_US rows, got ${state.userStories.length}`);
+  if (state.bugSources.length !== expectedData.bugSources) throw new Error(`Expected ${expectedData.bugSources} DS.Loi rows, got ${state.bugSources.length}`);
   if (state.defectSummary.length !== 77) throw new Error(`Expected 77 Tong hop loi rows, got ${state.defectSummary.length}`);
   if (state.weekly.length !== 16) throw new Error(`Expected 16 ChatLuong_Tuan rows, got ${state.weekly.length}`);
   if (state.readiness.length !== 16) throw new Error(`Expected 16 TongKet_Sprint rows, got ${state.readiness.length}`);
@@ -94,10 +126,10 @@ async function main() {
   if (totalCases !== 2754) {
     throw new Error(`Expected PhanCong_UAT total testcase 2754, got plans=${totalCases}`);
   }
-  if (featureTotalCases !== 224) {
-    throw new Error(`Expected DM_ChucNang daily-driven total testcase 224, got features=${featureTotalCases}`);
+  if (featureTotalCases !== expectedData.featureTotalCases) {
+    throw new Error(`Expected DM_ChucNang daily-driven total testcase ${expectedData.featureTotalCases}, got features=${featureTotalCases}`);
   }
-  assertUpdatedWorkbookCalculations(state);
+  assertUpdatedWorkbookCalculations(state, expectedData);
   assertHandoffSections(state.handoffs);
 
   const exportedWorkbook = buildExcelWorkbook(state);
@@ -122,10 +154,10 @@ async function main() {
   assertExportCell(exportedWorkbook, "Dashboard_UAT", "B5", 47);
   assertExportCell(exportedWorkbook, "Dashboard_UAT", "B7", "61%");
   assertExportCell(exportedWorkbook, "Dashboard_UAT", "B14", "31%");
-  assertExportCell(exportedWorkbook, "DEFECT_Dashboard", "B4", 64);
-  assertExportCell(exportedWorkbook, "DEFECT_Dashboard", "B12", "0.10%");
-  assertExportCell(exportedWorkbook, "DEFECT_Dashboard", "B22", 49);
-  assertExportCell(exportedWorkbook, "DEFECT_Dashboard", "B26", "69.39%");
+  assertExportCell(exportedWorkbook, "DEFECT_Dashboard", "B4", expectedData.dashboard.totalDefects);
+  assertExportCell(exportedWorkbook, "DEFECT_Dashboard", "B12", expectedData.dashboard.reopenRate);
+  assertExportCell(exportedWorkbook, "DEFECT_Dashboard", "B22", expectedData.dashboard.validLinked);
+  assertExportCell(exportedWorkbook, "DEFECT_Dashboard", "B26", expectedData.dashboard.handledRate);
 
   console.log(JSON.stringify({
     ok: true,
@@ -175,7 +207,7 @@ function assertHandoffSections(handoffs) {
   if (!hasNested) throw new Error("Lich_BG_US missing nested section mapping.");
 }
 
-function assertUpdatedWorkbookCalculations(state) {
+function assertUpdatedWorkbookCalculations(state, expected) {
   const firstWeekly = state.weekly[0] || {};
   if (firstWeekly.sprint !== "Sprint 1&2" || firstWeekly.totalStories !== 1) {
     throw new Error(`ChatLuong_Tuan first row mismatch: ${JSON.stringify(firstWeekly)}`);
@@ -185,10 +217,13 @@ function assertUpdatedWorkbookCalculations(state) {
     throw new Error(`TongKet_Sprint first row mismatch: ${JSON.stringify(firstReadiness)}`);
   }
   const firstDefect = state.defects[0] || {};
-  if (firstDefect.bugId !== "PS0142025-10272" || firstDefect.linkedUsKey !== "PS0142025-5937") {
+  if (
+    firstDefect.bugId !== expected.firstDefect.bugId
+    || firstDefect.linkedUsKey !== expected.firstDefect.linkedUsKey
+  ) {
     throw new Error(`DEFECT_LOG first row mismatch: ${JSON.stringify(firstDefect)}`);
   }
-  if (firstDefect.tester !== "Nguyễn Gia Huy") {
+  if (firstDefect.tester !== expected.firstDefect.tester) {
     throw new Error(`DEFECT_LOG tester lookup mismatch: ${JSON.stringify(firstDefect)}`);
   }
   const defectsWithTester = state.defects.filter((row) => row.tester).length;
@@ -196,11 +231,19 @@ function assertUpdatedWorkbookCalculations(state) {
     throw new Error(`DEFECT_LOG tester lookup missed too many rows: ${defectsWithTester}/${state.defects.length}`);
   }
   const defectStatusCounts = countBy(state.defects, "status");
-  if (defectStatusCounts.Open !== 15 || defectStatusCounts.Closed !== 17 || defectStatusCounts["SIT Pass"] !== 14) {
+  if (
+    defectStatusCounts.Open !== expected.defectStatuses.Open
+    || defectStatusCounts.Closed !== expected.defectStatuses.Closed
+    || defectStatusCounts["SIT Pass"] !== expected.defectStatuses["SIT Pass"]
+  ) {
     throw new Error(`DEFECT_LOG status counts mismatch: ${JSON.stringify(defectStatusCounts)}`);
   }
   const sourceStatusCounts = countBy(state.bugSources, "status");
-  if (sourceStatusCounts.Open !== 16 || sourceStatusCounts.Closed !== 17 || sourceStatusCounts["SIT Pass"] !== 14) {
+  if (
+    sourceStatusCounts.Open !== expected.sourceStatuses.Open
+    || sourceStatusCounts.Closed !== expected.sourceStatuses.Closed
+    || sourceStatusCounts["SIT Pass"] !== expected.sourceStatuses["SIT Pass"]
+  ) {
     throw new Error(`DS.Loi status counts mismatch: ${JSON.stringify(sourceStatusCounts)}`);
   }
   const matrixParticipation = sum(state.matrix, "totalParticipation");

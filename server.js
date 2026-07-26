@@ -87,6 +87,13 @@ const planningCollections = ["workCategories", "workItems", "kpiConfig", "member
 const collections = [...workbookCollections, ...planningCollections];
 const collectionSet = new Set(collections);
 const computedCollections = new Set(["defectSummary"]);
+const workbookSourceMergeCollections = ["daily", "defects", "userStories", "bugSources"];
+const workbookSourceIdentityFields = {
+  defects: "bugId",
+  userStories: "issueKey",
+  bugSources: "issueKey"
+};
+const defectManualFields = ["owner", "resolvedDate", "note"];
 const functionGroups = [
   "Luồng xử lý",
   "Thông tin KH",
@@ -1059,6 +1066,163 @@ app.get("/api/export/work-items", asyncHandler(async (req, res) => {
   res.send(Buffer.from(buffer));
 }));
 
+app.post("/api/import/excel/merge", requireAdmin, express.raw({
+  type: () => true,
+  limit: requestBodyLimit
+}), asyncHandler(async (req, res) => {
+  await ensureSchema();
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+    throw httpError(400, "Invalid or empty Excel file.");
+  }
+
+  const dryRun = parseBooleanFlag(req.query.dryRun);
+  const sourceName = normalizeImportSourceName(req.headers["x-source-filename"]);
+  const sourceSha256 = crypto.createHash("sha256").update(req.body).digest("hex");
+  const importedAt = new Date().toISOString();
+  const importState = await parseWorkbookImportState(req.body);
+  if (!stateRecordTotal(importState, workbookSourceMergeCollections)) {
+    throw httpError(400, "No supported source data was found in the Excel file.");
+  }
+  validateWorkbookImportState(importState);
+  prepareWorkbookImportState(importState, importedAt);
+
+  const client = await getPool().connect();
+  try {
+    await client.query("begin isolation level repeatable read");
+    const existingState = await readState(client);
+    const merged = mergeWorkbookSourceState(existingState, importState, {
+      importedAt,
+      source: "workbook"
+    });
+    const [goldenAudit, preservationAudit] = await Promise.all([
+      auditWorkbookMergeAgainstSource(req.body, merged.state),
+      Promise.resolve(auditMergePreservation(existingState, merged.state))
+    ]);
+
+    if (!goldenAudit.ok || !preservationAudit.ok) {
+      await client.query("rollback");
+      res.status(422).json({
+        ok: false,
+        dryRun,
+        sourceName,
+        sourceSha256,
+        merge: merged.summary,
+        goldenAudit,
+        preservationAudit
+      });
+      return;
+    }
+
+    const preview = {
+      ok: true,
+      dryRun,
+      sourceName,
+      sourceSha256,
+      imported: summarizeImportState(importState, workbookSourceMergeCollections),
+      output: summarizeImportState(merged.state, workbookCollections),
+      merge: merged.summary,
+      goldenAudit,
+      preservationAudit
+    };
+
+    if (dryRun) {
+      await client.query("rollback");
+      res.json(preview);
+      return;
+    }
+
+    const snapshot = await createImportSnapshot(client, {
+      sourceName,
+      sourceSha256,
+      actorId: req.user.id
+    });
+    const persistence = await persistMergedWorkbookState(
+      client,
+      existingState,
+      merged.state,
+      req.user.id
+    );
+    const updatedAt = await touchMeta(client);
+    const persistedState = await readState(client);
+    const persistenceAudit = auditPersistedMergeState(merged.state, persistedState);
+    if (!persistenceAudit.ok) {
+      const error = new Error(`Persisted merge verification failed: ${persistenceAudit.mismatches.join("; ")}`);
+      error.status = 500;
+      throw error;
+    }
+
+    await client.query("commit");
+    res.json({
+      ...preview,
+      dryRun: false,
+      snapshotId: snapshot.id,
+      snapshotRecords: snapshot.recordCount,
+      persistence,
+      persistenceAudit,
+      updatedAt,
+      state: applyWorkbookRulesForResponse(await readState(getPool(), req.user))
+    });
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+app.get("/api/import/snapshots", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const limit = Math.max(1, Math.min(20, Number(req.query.limit || 10)));
+  const result = await getPool().query(`
+    select id, source_name, source_sha256, record_count, created_by, created_at
+    from uat_import_snapshots
+    order by created_at desc
+    limit $1
+  `, [limit]);
+  res.json({
+    snapshots: result.rows.map((row) => ({
+      id: row.id,
+      sourceName: row.source_name,
+      sourceSha256: row.source_sha256 || "",
+      recordCount: Number(row.record_count || 0),
+      createdBy: row.created_by || "",
+      createdAt: row.created_at?.toISOString?.() || row.created_at
+    }))
+  });
+}));
+
+app.post("/api/import/snapshots/:id/restore", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const snapshotId = String(req.params.id || "").trim();
+  if (!snapshotId || String(req.body.confirmSnapshotId || "") !== snapshotId) {
+    throw httpError(400, "confirmSnapshotId must match the snapshot being restored.");
+  }
+
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    const safetySnapshot = await createImportSnapshot(client, {
+      sourceName: `before-restore-${snapshotId}`,
+      sourceSha256: "",
+      actorId: req.user.id
+    });
+    const restored = await restoreImportSnapshot(client, snapshotId);
+    await client.query("commit");
+    res.json({
+      ok: true,
+      restoredSnapshotId: snapshotId,
+      safetySnapshotId: safetySnapshot.id,
+      restoredRecords: restored.recordCount,
+      state: applyWorkbookRulesForResponse(await readState(getPool(), req.user))
+    });
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
 app.post("/api/import/excel", requireAdmin, express.raw({
   type: () => true,
   limit: requestBodyLimit
@@ -1421,6 +1585,10 @@ module.exports = {
   canonicalTesterDirectory,
   validateWorkbookImportState,
   prepareWorkbookImportState,
+  mergeWorkbookSourceState,
+  auditWorkbookMergeAgainstSource,
+  auditMergePreservation,
+  auditPersistedMergeState,
   isWorkbookManagedRecord,
   __testApplyWorkKpiRules: applyWorkKpiRules,
   __testDefaultWorkKpiConfig: defaultWorkKpiConfig,
@@ -1539,6 +1707,19 @@ function ensureSchema() {
 
       create index if not exists idx_email_notification_log_date
         on email_notification_log (scheduled_date desc, kind, status);
+
+      create table if not exists uat_import_snapshots (
+        id text primary key,
+        source_name text not null,
+        source_sha256 text,
+        record_count integer not null default 0,
+        snapshot jsonb not null,
+        created_by text,
+        created_at timestamptz not null default now()
+      );
+
+      create index if not exists idx_uat_import_snapshots_created
+        on uat_import_snapshots (created_at desc);
     `);
       await ensureSeedAdmin();
       await ensureDefaultUsers();
@@ -1878,7 +2059,7 @@ function parseDailySheet(worksheet) {
     const executedCases = Number(passedCases || 0) + Number(failedCases || 0);
     if (!date && !jiraCode && !tester && !totalCases && !executedCases && !blocker) return null;
     return {
-      id: importId("daily", date, jiraCode, tester, row.number),
+      id: importId("daily", date, jiraCode, tester, feature, sprint),
       date,
       sprint,
       code: "",
@@ -1914,8 +2095,8 @@ function parseDefectSheet(worksheet) {
     if (!bugId && !linkedUsKey && !severity && !status && !note) return null;
     if (!bugId) return null;
     if (!Number.isFinite(Number(stt)) || Number(stt) <= 0) return null;
-    return {
-      id: importId("defects", bugId || linkedUsKey, row.number),
+    return markSourceInvalidFields({
+      id: importId("defects", bugId),
       stt,
       bugId,
       linkedUsKey,
@@ -1931,7 +2112,10 @@ function parseDefectSheet(worksheet) {
       resolvedDate: toImportDate(cellValueAt(row, 11)),
       aging: toImportNumber(cellValueAt(row, 12)),
       note
-    };
+    }, [
+      ...(isInvalidWorkbookCell(row.getCell(8)) ? ["foundDate"] : []),
+      ...(isInvalidWorkbookCell(row.getCell(12)) ? ["aging"] : [])
+    ]);
   });
 }
 
@@ -1976,7 +2160,7 @@ function parseBugSourceSheet(worksheet) {
     if (!issueKey) return null;
     const reporter = cellTextAt(row, 9);
     const linkedUsKey = cellTextAt(row, 20);
-    return {
+    return markSourceInvalidFields({
       id: importId("bugSources", issueKey),
       reporterLookup: cellTextAt(row, 1),
       testerLookup: cellTextAt(row, 2),
@@ -1999,7 +2183,11 @@ function parseBugSourceSheet(worksheet) {
       inwardBlocks: cellTextAt(row, 19),
       linkedUsKey,
       tester: reporterMap.get(lookupKey(reporter)) || cellTextAt(row, 2)
-    };
+    }, [
+      ...(isInvalidWorkbookCell(row.getCell(14)) ? ["created"] : []),
+      ...(isInvalidWorkbookCell(row.getCell(15)) ? ["updated"] : []),
+      ...(isInvalidWorkbookCell(row.getCell(16)) ? ["dueDate"] : [])
+    ]);
   });
 }
 
@@ -2242,6 +2430,26 @@ function cellLinksAt(row, column) {
   addLink(cell.value?.hyperlink);
   extractUrls(cellTextAt(row, column)).forEach(addLink);
   return links;
+}
+
+function isInvalidWorkbookCell(cell) {
+  const value = unwrapExcelCellValue(cell?.value);
+  if (value instanceof Date) return Number.isNaN(value.getTime());
+  const text = String(value ?? cell?.text ?? "").trim();
+  return /^#+$/.test(text)
+    || /^invalid date$/i.test(text)
+    || /^#(?:value|ref|num|name|n\/a|div\/0)[!?]?$/i.test(text);
+}
+
+function markSourceInvalidFields(record, fields) {
+  const invalidFields = [...new Set((fields || []).filter(Boolean))];
+  if (!invalidFields.length) return record;
+  Object.defineProperty(record, "_sourceInvalidFields", {
+    configurable: true,
+    enumerable: false,
+    value: invalidFields
+  });
+  return record;
 }
 
 function extractUrls(value) {
@@ -2558,6 +2766,12 @@ function sameLookup(left, right) {
   return lookupKey(left) === lookupKey(right);
 }
 
+function sameNonBlankLookup(left, right) {
+  const leftKey = lookupKey(left);
+  const rightKey = lookupKey(right);
+  return Boolean(leftKey && rightKey && leftKey === rightKey);
+}
+
 function sprintMatches(left, right) {
   if (sameLookup(left, right)) return true;
   const leftSingle = singleSprintNumber(left);
@@ -2578,22 +2792,23 @@ function hasDailyFeatureLink(row) {
 
 function defectMatchesFeature(defect, feature, userStory = null) {
   if (!defect || !feature) return false;
-  return sameLookup(defect.featureJiraCode, feature.jiraCode)
-    || sameLookup(defect.jiraCode, feature.jiraCode)
-    || sameLookup(defect.linkedUsKey, userStory?.issueKey)
-    || sameLookup(defect.featureName, feature.name)
-    || sameLookup(defect.storyName, feature.name);
+  return sameNonBlankLookup(defect.featureJiraCode, feature.jiraCode)
+    || sameNonBlankLookup(defect.jiraCode, feature.jiraCode)
+    || sameNonBlankLookup(defect.linkedUsKey, userStory?.issueKey)
+    || sameNonBlankLookup(defect.featureName, feature.name)
+    || sameNonBlankLookup(defect.storyName, feature.name);
 }
 
 function bugSourceMatchesFeature(bug, feature, userStory = null) {
   if (!bug || !feature) return false;
-  return sameLookup(bug.featureJiraCode, feature.jiraCode)
-    || sameLookup(bug.jiraCode, feature.jiraCode)
-    || sameLookup(bug.linkedUsKey, userStory?.issueKey);
+  return sameNonBlankLookup(bug.featureJiraCode, feature.jiraCode)
+    || sameNonBlankLookup(bug.jiraCode, feature.jiraCode)
+    || sameNonBlankLookup(bug.linkedUsKey, userStory?.issueKey);
 }
 
 function buildDefectSummaryRows(state) {
   const features = collectionRows(state, "features");
+  const sourceSummaryRows = collectionRows(state, "defectSummary");
   const handoffs = collectionRows(state, "handoffs");
   const plans = collectionRows(state, "plans");
   const daily = collectionRows(state, "daily");
@@ -2601,16 +2816,23 @@ function buildDefectSummaryRows(state) {
   const userStories = collectionRows(state, "userStories");
   const bugSources = collectionRows(state, "bugSources");
   const userStoryByJira = lookupBy(userStories, "jiraCode");
+  const sourceSummaryByJira = lookupBy(sourceSummaryRows, "jiraCode");
   const handoffByJira = lookupBy(handoffs, "jiraCode");
   const handoffByFeatureName = lookupBy(handoffs, "name");
 
   return features.map((feature, index) => {
     const story = userStoryByJira.get(lookupKey(feature.jiraCode));
+    const sourceSummary = sourceSummaryByJira.get(lookupKey(feature.jiraCode));
+    const sourceUsKey = sourceSummary?.usKey || story?.issueKey || feature.usKey || "";
     const handoff = handoffByJira.get(lookupKey(feature.jiraCode)) || handoffByFeatureName.get(lookupKey(feature.name));
     const planRows = plans.filter((plan) => sameLookup(plan.jiraCode, feature.jiraCode) || sameLookup(plan.feature, feature.name));
     const dailyRows = daily.filter((item) => sameLookup(item.jiraCode, feature.jiraCode) || sameLookup(item.feature, feature.name));
-    const linkedDefects = defects.filter((defect) => defectMatchesFeature(defect, feature, story));
-    const linkedBugSources = bugSources.filter((bug) => bugSourceMatchesFeature(bug, feature, story));
+    const linkedDefects = sourceUsKey
+      ? defects.filter((defect) => sameNonBlankLookup(defect.linkedUsKey, sourceUsKey))
+      : defects.filter((defect) => defectMatchesFeature(defect, feature, story));
+    const linkedBugSources = sourceUsKey
+      ? bugSources.filter((bug) => sameNonBlankLookup(bug.linkedUsKey, sourceUsKey))
+      : bugSources.filter((bug) => bugSourceMatchesFeature(bug, feature, story));
     const bugRows = linkedBugSources.length ? linkedBugSources : linkedDefects.map((defect) => ({
       priority: defect.severity,
       status: defect.status
@@ -2637,7 +2859,7 @@ function buildDefectSummaryRows(state) {
       code: feature.code || "",
       storyCode: feature.storyCode || "",
       jiraCode: feature.jiraCode || "",
-      usKey: story?.issueKey || feature.usKey || "",
+      usKey: sourceUsKey,
       group: feature.group || "",
       name: feature.name || "",
       sprint: feature.sprint || handoff?.sprint || "",
@@ -2834,6 +3056,467 @@ function prepareWorkbookImportState(state, importedAt = new Date().toISOString()
     }
   }
   return state;
+}
+
+function mergeWorkbookSourceState(existingState, importState, options = {}) {
+  const importedAt = options.importedAt || new Date().toISOString();
+  const sheetByCollection = new Map(excelSheets.map((sheet) => [sheet.collection, sheet.name]));
+  const mergedState = cloneSerializable(existingState);
+  const summary = {};
+
+  for (const collection of ["userStories", "bugSources", "defects"]) {
+    const identityField = workbookSourceIdentityFields[collection];
+    const existingRows = collectionRows(existingState, collection);
+    const incomingRows = collectionRows(importState, collection);
+    const existingByIdentity = lookupBy(existingRows, identityField);
+    const incomingIdentityKeys = new Set();
+    let carriedInvalidFields = 0;
+    let carriedDefectManualFields = 0;
+
+    const mergedRows = incomingRows.map((incoming) => {
+      const identityKey = lookupKey(incoming?.[identityField]);
+      if (identityKey) incomingIdentityKeys.add(identityKey);
+      const existing = existingByIdentity.get(identityKey);
+      const invalidFields = new Set(incoming?._sourceInvalidFields || []);
+      const record = {
+        ...incoming,
+        _import: {
+          source: options.source || "workbook",
+          sheet: sheetByCollection.get(collection) || collection,
+          importedAt
+        }
+      };
+
+      for (const field of invalidFields) {
+        if (!existing || isBlank(existing[field])) continue;
+        record[field] = existing[field];
+        carriedInvalidFields += 1;
+      }
+
+      if (collection === "defects" && options.preserveDefectManualFields !== false) {
+        for (const field of defectManualFields) {
+          const nextValue = existing ? existing[field] : "";
+          if (!existing || sameLookup(record[field], nextValue)) {
+            record[field] = nextValue;
+            continue;
+          }
+          record[field] = nextValue;
+          carriedDefectManualFields += 1;
+        }
+      }
+
+      return record;
+    });
+
+    const preservedManualRows = existingRows
+      .filter((row) => !isWorkbookManagedRecord(row))
+      .filter((row) => !incomingIdentityKeys.has(lookupKey(row?.[identityField])))
+      .map((row) => cloneSerializable(row));
+    mergedState[collection] = [...mergedRows, ...preservedManualRows];
+    summary[collection] = {
+      existing: existingRows.length,
+      incoming: incomingRows.length,
+      output: mergedState[collection].length,
+      preservedManual: preservedManualRows.length,
+      carriedInvalidFields,
+      carriedDefectManualFields
+    };
+  }
+
+  const existingDaily = collectionRows(existingState, "daily");
+  const incomingDaily = collectionRows(importState, "daily");
+  const managedDaily = existingDaily.filter((row) => isWorkbookManagedRecord(row));
+  let carriedDailyFields = 0;
+  const mergedDaily = incomingDaily.map((incoming) => {
+    const existing = findDailyCarryForwardMatch(incoming, managedDaily);
+    const record = {
+      ...incoming,
+      _import: {
+        source: options.source || "workbook",
+        sheet: sheetByCollection.get("daily") || "DieuHanh_Ngay",
+        importedAt
+      }
+    };
+    if (existing) {
+      for (const field of ["code", "jiraCode", "feature", "sprint"]) {
+        if (!isBlank(record[field]) || isBlank(existing[field])) continue;
+        record[field] = existing[field];
+        carriedDailyFields += 1;
+      }
+    }
+    record.id = importId("daily", record.date, record.jiraCode, record.tester, record.feature, record.sprint);
+    return record;
+  });
+  const preservedManualDaily = existingDaily
+    .filter((row) => !isWorkbookManagedRecord(row))
+    .filter((row) => !mergedDaily.some((incoming) => dailyRowsEquivalent(incoming, row)))
+    .map((row) => cloneSerializable(row));
+  mergedState.daily = [...mergedDaily, ...preservedManualDaily];
+  summary.daily = {
+    existing: existingDaily.length,
+    incoming: incomingDaily.length,
+    output: mergedState.daily.length,
+    preservedManual: preservedManualDaily.length,
+    carriedFields: carriedDailyFields
+  };
+
+  // Keep the workbook's row-to-US mapping as the calculation skeleton.
+  mergedState.defectSummary = cloneSerializable(collectionRows(importState, "defectSummary"));
+  applyWorkbookRules(mergedState);
+  assignSortOrder(mergedState);
+  mergedState.updatedAt = importedAt;
+  return { state: mergedState, summary };
+}
+
+function findDailyCarryForwardMatch(incoming, existingRows) {
+  const candidates = (existingRows || []).filter((existing) => (
+    sameNonBlankLookup(existing.date, incoming.date)
+    && sameNonBlankLookup(existing.tester, incoming.tester)
+  ));
+  if (!candidates.length) return null;
+  const byJira = candidates.find((existing) => sameNonBlankLookup(existing.jiraCode, incoming.jiraCode));
+  if (byJira) return byJira;
+  const incomingLinks = new Set([
+    ...(incoming.blockerLinks || []),
+    ...extractUrls(incoming.blocker || "")
+  ].map(lookupKey).filter(Boolean));
+  if (incomingLinks.size) {
+    const byLink = candidates.find((existing) => [
+      ...(existing.blockerLinks || []),
+      ...extractUrls(existing.blocker || "")
+    ].some((link) => incomingLinks.has(lookupKey(link))));
+    if (byLink) return byLink;
+  }
+  return candidates.find((existing) => (
+    sameNonBlankLookup(existing.feature, incoming.feature)
+    && sprintMatches(existing.sprint, incoming.sprint)
+  )) || null;
+}
+
+function dailyRowsEquivalent(left, right) {
+  return [
+    "date",
+    "sprint",
+    "jiraCode",
+    "feature",
+    "tester",
+    "totalCases",
+    "passedCases",
+    "failedCases",
+    "bugStatus",
+    "maxBugSeverity",
+    "bugDetail",
+    "blocker",
+    "handler",
+    "dueDate"
+  ].every((field) => sameLookup(left?.[field], right?.[field]));
+}
+
+function cloneSerializable(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function parseBooleanFlag(value) {
+  return /^(1|true|yes|on)$/i.test(String(value || "").trim());
+}
+
+function normalizeImportSourceName(value) {
+  const raw = String(value || "workbook.xlsx").trim();
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch (_error) {
+    decoded = raw;
+  }
+  return path.basename(decoded)
+    .replace(/[\u0000-\u001f\u007f]+/g, "")
+    .slice(0, 180) || "workbook.xlsx";
+}
+
+async function auditWorkbookMergeAgainstSource(buffer, state) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const mismatches = [];
+  let checkedCells = 0;
+
+  const compareCell = (label, expected, cell) => {
+    checkedCells += 1;
+    const actual = workbookAuditCellValue(cell);
+    if (workbookAuditValuesEqual(expected, actual)) return;
+    mismatches.push({
+      cell: label,
+      expected: workbookAuditPrintable(expected),
+      actual: workbookAuditPrintable(actual)
+    });
+  };
+
+  const defectDashboard = workbook.getWorksheet("DEFECT_Dashboard");
+  if (!defectDashboard) {
+    mismatches.push({ cell: "DEFECT_Dashboard", expected: "sheet", actual: "missing" });
+  } else {
+    auditDashboardTable(
+      defectDashboard,
+      4,
+      1,
+      getDefectDashboardKpiRows(state),
+      "DEFECT_Dashboard KPI",
+      compareCell
+    );
+    auditDashboardTable(
+      defectDashboard,
+      4,
+      4,
+      getDefectDashboardMatrixRows(state),
+      "DEFECT_Dashboard matrix",
+      compareCell
+    );
+    auditDashboardTable(
+      defectDashboard,
+      18,
+      1,
+      getDefectUserStorySummaryRows(state),
+      "DEFECT_Dashboard US",
+      compareCell
+    );
+    auditDashboardTable(
+      defectDashboard,
+      18,
+      4,
+      getDefectStatusSummaryRows(state),
+      "DEFECT_Dashboard status",
+      compareCell
+    );
+    auditDashboardTable(
+      defectDashboard,
+      26,
+      4,
+      getDefectPrioritySummaryRows(state),
+      "DEFECT_Dashboard severity",
+      compareCell
+    );
+  }
+
+  const defectSummary = workbook.getWorksheet("Tong hop loi");
+  let summaryRows = 0;
+  if (!defectSummary) {
+    mismatches.push({ cell: "Tong hop loi", expected: "sheet", actual: "missing" });
+  } else {
+    const byJira = lookupBy(collectionRows(state, "defectSummary"), "jiraCode");
+    const byUsKey = lookupBy(collectionRows(state, "defectSummary"), "usKey");
+    const summaryFields = [
+      ["totalBugs", 21],
+      ["openBugs", 22],
+      ["inProgressBugs", 23],
+      ["pendingBugs", 24],
+      ["resolvedBugs", 25],
+      ["sitPassBugs", 26],
+      ["otherBugs", 27]
+    ];
+    for (let rowNumber = 2; rowNumber <= defectSummary.rowCount; rowNumber += 1) {
+      const row = defectSummary.getRow(rowNumber);
+      const jiraCode = cellTextAt(row, 4);
+      const usKey = cellTextAt(row, 5);
+      if (!jiraCode && !usKey) continue;
+      summaryRows += 1;
+      const expectedRow = byJira.get(lookupKey(jiraCode)) || byUsKey.get(lookupKey(usKey));
+      if (!expectedRow) {
+        mismatches.push({
+          cell: `Tong hop loi!${rowNumber}`,
+          expected: jiraCode || usKey,
+          actual: "missing merged row"
+        });
+        continue;
+      }
+      for (const [field, column] of summaryFields) {
+        compareCell(
+          `Tong hop loi!${columnLetters(column)}${rowNumber}`,
+          expectedRow[field],
+          row.getCell(column)
+        );
+      }
+    }
+    if (summaryRows !== collectionRows(state, "defectSummary").length) {
+      mismatches.push({
+        cell: "Tong hop loi row count",
+        expected: collectionRows(state, "defectSummary").length,
+        actual: summaryRows
+      });
+    }
+  }
+
+  return {
+    ok: mismatches.length === 0,
+    checkedCells,
+    summaryRows,
+    mismatches
+  };
+}
+
+function auditDashboardTable(worksheet, startRow, startColumn, rows, label, compareCell) {
+  rows.forEach((values, rowIndex) => {
+    values.forEach((expected, columnIndex) => {
+      const rowNumber = startRow + rowIndex;
+      const columnNumber = startColumn + columnIndex;
+      compareCell(
+        `${label}!${columnLetters(columnNumber)}${rowNumber}`,
+        expected,
+        worksheet.getCell(rowNumber, columnNumber)
+      );
+    });
+  });
+}
+
+function workbookAuditCellValue(cell) {
+  if (cell && cell.result !== undefined && cell.result !== null) return cell.result;
+  const value = cell?.value;
+  if (value == null) return "";
+  if (value instanceof Date) return formatDateForInput(value);
+  if (typeof value !== "object") return value;
+  if (Object.prototype.hasOwnProperty.call(value, "result")) return value.result;
+  if (Array.isArray(value.richText)) return value.richText.map((part) => part.text || "").join("");
+  if (value.text != null) return value.text;
+  if (value.hyperlink != null) return value.text || value.hyperlink;
+  return String(value);
+}
+
+function workbookAuditValuesEqual(expected, actual) {
+  const normalizedExpected = normalizeWorkbookAuditValue(expected);
+  const normalizedActual = normalizeWorkbookAuditValue(actual);
+  if (normalizedExpected.type === "blank" && normalizedActual.type === "blank") return true;
+  if (normalizedExpected.type === "number" && normalizedActual.type === "number") {
+    return Math.abs(normalizedExpected.value - normalizedActual.value) <= 0.00005;
+  }
+  return normalizedExpected.type === normalizedActual.type
+    && normalizedExpected.value === normalizedActual.value;
+}
+
+function normalizeWorkbookAuditValue(value) {
+  if (isBlank(value)) return { type: "blank", value: "" };
+  if (typeof value === "number" && Number.isFinite(value)) return { type: "number", value };
+  const text = normalizeImportedText(value);
+  if (!text || text === "-") return { type: "blank", value: "" };
+  const percentage = text.match(/^(-?[\d.,]+)\s*%$/);
+  if (percentage) {
+    const parsed = Number(percentage[1].replace(",", "."));
+    if (Number.isFinite(parsed)) return { type: "number", value: parsed / 100 };
+  }
+  const numeric = Number(text.replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", "."));
+  if (Number.isFinite(numeric) && /^-?[\d.,]+$/.test(text)) {
+    return { type: "number", value: numeric };
+  }
+  return {
+    type: "text",
+    value: text.normalize("NFC").toLocaleLowerCase("vi")
+  };
+}
+
+function workbookAuditPrintable(value) {
+  if (value == null) return "";
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "object") return JSON.stringify(value);
+  return value;
+}
+
+function columnLetters(columnNumber) {
+  let number = Number(columnNumber || 0);
+  let letters = "";
+  while (number > 0) {
+    const remainder = (number - 1) % 26;
+    letters = String.fromCharCode(65 + remainder) + letters;
+    number = Math.floor((number - 1) / 26);
+  }
+  return letters;
+}
+
+function auditMergePreservation(existingState, mergedState) {
+  const mismatches = [];
+  const protectedCollections = [
+    "personnel",
+    "schedule",
+    "handoffs",
+    "guide",
+    ...planningCollections
+  ];
+  for (const collection of protectedCollections) {
+    const before = canonicalCollectionRows(collectionRows(existingState, collection));
+    const after = canonicalCollectionRows(collectionRows(mergedState, collection));
+    if (before !== after) mismatches.push(`${collection} changed`);
+  }
+
+  for (const collection of workbookSourceMergeCollections) {
+    const existingManualRows = collectionRows(existingState, collection)
+      .filter((row) => !isWorkbookManagedRecord(row));
+    const mergedRows = collectionRows(mergedState, collection);
+    for (const row of existingManualRows) {
+      const preserved = mergedRows.some((candidate) => (
+        candidate.id === row.id
+        && canonicalRecord(candidate, ["sortOrder"]) === canonicalRecord(row, ["sortOrder"])
+      ));
+      if (!preserved) mismatches.push(`${collection}:${row.id} manual row was not preserved`);
+    }
+  }
+
+  return {
+    ok: mismatches.length === 0,
+    protectedCollections,
+    preservedManual: Object.fromEntries(workbookSourceMergeCollections.map((collection) => [
+      collection,
+      collectionRows(existingState, collection).filter((row) => !isWorkbookManagedRecord(row)).length
+    ])),
+    mismatches
+  };
+}
+
+function auditPersistedMergeState(expectedState, actualState) {
+  const mismatches = [];
+  for (const collection of workbookCollections) {
+    const expected = new Map(collectionRows(expectedState, collection).map((row) => [
+      String(row.id),
+      canonicalRecord(row, ["createdAt", "updatedAt"])
+    ]));
+    const actual = new Map(collectionRows(actualState, collection).map((row) => [
+      String(row.id),
+      canonicalRecord(row, ["createdAt", "updatedAt"])
+    ]));
+    if (expected.size !== actual.size) {
+      mismatches.push(`${collection} count expected ${expected.size}, got ${actual.size}`);
+      continue;
+    }
+    for (const [id, expectedRecord] of expected.entries()) {
+      if (!actual.has(id)) {
+        mismatches.push(`${collection}:${id} missing`);
+        continue;
+      }
+      if (actual.get(id) !== expectedRecord) mismatches.push(`${collection}:${id} data mismatch`);
+    }
+  }
+  return {
+    ok: mismatches.length === 0,
+    mismatches
+  };
+}
+
+function canonicalCollectionRows(rows) {
+  return JSON.stringify((rows || [])
+    .map((row) => [String(row.id || ""), canonicalRecord(row)])
+    .sort((left, right) => left[0].localeCompare(right[0])));
+}
+
+function canonicalRecord(record, omittedFields = ["createdAt", "updatedAt"]) {
+  const omitted = new Set(omittedFields);
+  return JSON.stringify(canonicalJsonValue(record, omitted));
+}
+
+function canonicalJsonValue(value, omittedFields = new Set()) {
+  if (Array.isArray(value)) return value.map((entry) => canonicalJsonValue(entry, omittedFields));
+  if (!value || typeof value !== "object") return value;
+  return Object.keys(value)
+    .filter((key) => !omittedFields.has(key))
+    .sort()
+    .reduce((result, key) => {
+      result[key] = canonicalJsonValue(value[key], omittedFields);
+      return result;
+    }, {});
 }
 
 function isWorkbookManagedRecord(row) {
@@ -3910,6 +4593,174 @@ async function recomputeAndPersistWorkbookRules(client, actorId, viewer = null) 
     state: applyWorkbookRulesForResponse(await readState(client, viewer)),
     updatedAt: metaUpdatedAt
   };
+}
+
+async function persistMergedWorkbookState(client, currentState, mergedState, actorId, now = new Date()) {
+  const nowIso = now.toISOString();
+  const upserts = [];
+  const deletesByCollection = new Map();
+  const summary = {};
+
+  for (const collection of workbookCollections) {
+    const currentRows = collectionRows(currentState, collection);
+    const desiredRows = collectionRows(mergedState, collection);
+    const currentById = new Map(currentRows.map((row) => [String(row.id), row]));
+    const desiredIds = new Set();
+    let inserted = 0;
+    let updated = 0;
+    let unchanged = 0;
+
+    for (const desired of desiredRows) {
+      const id = String(desired.id || "").trim();
+      if (!id) throw new Error(`Cannot persist ${collection} record without an id.`);
+      desiredIds.add(id);
+      const current = currentById.get(id);
+      const nextData = cloneSerializable(desired);
+      if (current) {
+        nextData.createdAt = current.createdAt || nextData.createdAt || nowIso;
+        if (
+          canonicalRecord(current, ["createdAt", "updatedAt"])
+          === canonicalRecord(nextData, ["createdAt", "updatedAt"])
+        ) {
+          unchanged += 1;
+          continue;
+        }
+        updated += 1;
+      } else {
+        nextData.createdAt = nextData.createdAt || nowIso;
+        inserted += 1;
+      }
+      nextData.updatedAt = nowIso;
+      upserts.push({ collection, id, data: nextData });
+    }
+
+    const deletedIds = currentRows
+      .map((row) => String(row.id || ""))
+      .filter((id) => id && !desiredIds.has(id));
+    if (deletedIds.length) deletesByCollection.set(collection, deletedIds);
+    summary[collection] = {
+      existing: currentRows.length,
+      output: desiredRows.length,
+      inserted,
+      updated,
+      unchanged,
+      deleted: deletedIds.length
+    };
+  }
+
+  await bulkUpsertRecords(client, upserts, actorId, now);
+  for (const [collection, ids] of deletesByCollection.entries()) {
+    await bulkDeleteRecords(client, collection, ids);
+  }
+
+  return {
+    upserted: upserts.length,
+    deleted: [...deletesByCollection.values()].reduce((total, ids) => total + ids.length, 0),
+    collections: summary
+  };
+}
+
+async function createImportSnapshot(client, options = {}) {
+  const [recordsResult, metaResult] = await Promise.all([
+    client.query(`
+      select collection, id, data, created_by, updated_by, created_at, updated_at
+      from uat_records
+      order by collection asc, id asc
+    `),
+    client.query(`
+      select value, updated_at
+      from app_meta
+      where key = 'state'
+      limit 1
+    `)
+  ]);
+  const id = crypto.randomUUID();
+  const snapshot = {
+    version: 1,
+    records: recordsResult.rows.map((row) => ({
+      collection: row.collection,
+      id: row.id,
+      data: row.data,
+      createdBy: row.created_by || "",
+      updatedBy: row.updated_by || "",
+      createdAt: row.created_at?.toISOString?.() || row.created_at,
+      updatedAt: row.updated_at?.toISOString?.() || row.updated_at
+    })),
+    stateMeta: metaResult.rows[0]
+      ? {
+        value: metaResult.rows[0].value,
+        updatedAt: metaResult.rows[0].updated_at?.toISOString?.() || metaResult.rows[0].updated_at
+      }
+      : null
+  };
+  const sourceName = normalizeImportSourceName(options.sourceName || "workbook.xlsx");
+  await client.query(`
+    insert into uat_import_snapshots (
+      id, source_name, source_sha256, record_count, snapshot, created_by, created_at
+    )
+    values ($1, $2, $3, $4, $5::jsonb, $6, now())
+  `, [
+    id,
+    sourceName,
+    String(options.sourceSha256 || ""),
+    snapshot.records.length,
+    JSON.stringify(snapshot),
+    options.actorId || null
+  ]);
+  return { id, recordCount: snapshot.records.length };
+}
+
+async function restoreImportSnapshot(client, snapshotId) {
+  const result = await client.query(`
+    select snapshot
+    from uat_import_snapshots
+    where id = $1
+    limit 1
+  `, [snapshotId]);
+  const snapshot = result.rows[0]?.snapshot;
+  if (!snapshot || Number(snapshot.version) !== 1 || !Array.isArray(snapshot.records)) {
+    throw httpError(404, "Import snapshot was not found or is invalid.");
+  }
+  for (const row of snapshot.records) {
+    if (!collectionSet.has(String(row.collection || "")) || !String(row.id || "").trim()) {
+      throw new Error("Snapshot contains an unsupported record.");
+    }
+  }
+
+  await client.query("delete from uat_records");
+  const chunkSize = 500;
+  for (let index = 0; index < snapshot.records.length; index += chunkSize) {
+    const chunk = snapshot.records.slice(index, index + chunkSize);
+    await client.query(`
+      insert into uat_records (
+        collection, id, data, created_by, updated_by, created_at, updated_at
+      )
+      select item->>'collection',
+             item->>'id',
+             item->'data',
+             nullif(item->>'createdBy', ''),
+             nullif(item->>'updatedBy', ''),
+             coalesce((item->>'createdAt')::timestamptz, now()),
+             coalesce((item->>'updatedAt')::timestamptz, now())
+      from jsonb_array_elements($1::jsonb) as item
+    `, [JSON.stringify(chunk)]);
+  }
+
+  if (snapshot.stateMeta?.value) {
+    await client.query(`
+      insert into app_meta (key, value, updated_at)
+      values ('state', $1::jsonb, coalesce($2::timestamptz, now()))
+      on conflict (key) do update
+        set value = excluded.value,
+            updated_at = excluded.updated_at
+    `, [
+      JSON.stringify(snapshot.stateMeta.value),
+      snapshot.stateMeta.updatedAt || null
+    ]);
+  } else {
+    await touchMeta(client);
+  }
+  return { recordCount: snapshot.records.length };
 }
 
 async function bulkUpsertRecords(client, rows, actorId, now) {
