@@ -13,6 +13,18 @@ const {
   signOAuthState,
   verifyOAuthState
 } = require("./deadline-notifications");
+const {
+  GOOGLE_SHEETS_READONLY_SCOPE,
+  DEFAULT_GOOGLE_SHEET_ID,
+  GOOGLE_SHEET_SOURCE_COLLECTIONS,
+  fetchGoogleSpreadsheet,
+  spreadsheetGridToWorkbook,
+  auditGoogleSheetSourceSafety,
+  sourceStateHash,
+  normalizeGoogleSheetSettings,
+  normalizeGoogleSheetSyncState,
+  extractSpreadsheetId
+} = require("./google-sheet-sync");
 
 const app = express();
 let server = null;
@@ -42,6 +54,12 @@ const appBaseUrl = String(process.env.APP_BASE_URL || "").trim();
 const deadlineSchedulerEnabled = /^(1|true|yes)$/i.test(String(process.env.DEADLINE_NOTIFICATION_SCHEDULER_ENABLED || "false"));
 const deadlineSchedulerUtcHour = Math.max(0, Math.min(23, Number(process.env.DEADLINE_NOTIFICATION_RUN_UTC_HOUR || 1)));
 let deadlineSchedulerTimer = null;
+const googleSheetSyncSchedulerEnabled = !/^(0|false|no)$/i.test(String(process.env.GOOGLE_SHEET_SYNC_SCHEDULER_ENABLED || "true"));
+const googleSheetSyncDefaultId = extractSpreadsheetId(process.env.GOOGLE_SHEET_SYNC_SPREADSHEET_ID || DEFAULT_GOOGLE_SHEET_ID);
+const googleSheetSyncDefaultIntervalMinutes = Math.max(1, Math.min(60, Number(process.env.GOOGLE_SHEET_SYNC_INTERVAL_MINUTES || 5)));
+const googleSheetSyncSettingsMetaKey = "google_sheet_sync_settings";
+const googleSheetSyncStateMetaKey = "google_sheet_sync_state";
+let googleSheetSyncTimer = null;
 const deadlineNotificationService = createDeadlineNotificationService({
   oauthClientId: process.env.GMAIL_OAUTH_CLIENT_ID,
   oauthClientSecret: process.env.GMAIL_OAUTH_CLIENT_SECRET,
@@ -1026,6 +1044,42 @@ app.post("/api/email-notifications/run", requireAdmin, asyncHandler(async (req, 
   res.json({ result });
 }));
 
+app.get("/api/google-sheet-sync/status", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const status = await getGoogleSheetSyncStatus(getPool(), req);
+  res.json(status);
+}));
+
+app.post("/api/google-sheet-sync/settings", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const settings = await saveGoogleSheetSyncSettings(getPool(), {
+    enabled: req.body.enabled !== false,
+    spreadsheetId: req.body.spreadsheetId || req.body.spreadsheetUrl,
+    intervalMinutes: req.body.intervalMinutes,
+    minimumRowRatio: req.body.minimumRowRatio
+  }, req.user);
+  await scheduleNextGoogleSheetSync({ reset: true });
+  res.json({ settings });
+}));
+
+app.post("/api/google-sheet-sync/preview", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const preview = await previewGoogleSheetSync(getPool(), {
+    spreadsheetId: req.body.spreadsheetId || req.body.spreadsheetUrl
+  });
+  res.json({ preview });
+}));
+
+app.post("/api/google-sheet-sync/run", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const result = await runGoogleSheetSync({
+    force: true,
+    actorId: req.user.id,
+    spreadsheetId: req.body.spreadsheetId || req.body.spreadsheetUrl
+  });
+  res.json({ result });
+}));
+
 app.get("/api/state", asyncHandler(async (req, res) => {
   await ensureSchema();
   const state = await readState(getPool(), req.user);
@@ -1562,6 +1616,7 @@ if (require.main === module) {
       console.warn("APP_USER and APP_PASSWORD must be configured together to enable basic auth.");
     }
     startDeadlineNotificationScheduler();
+    startGoogleSheetSyncScheduler();
   });
 
   process.on("SIGTERM", shutdown);
@@ -1571,6 +1626,7 @@ if (require.main === module) {
 module.exports = {
   app,
   parseWorkbookImportState,
+  parseGoogleSpreadsheetImportState,
   applyWorkbookRules,
   computedFieldsByCollection,
   isComputedRecordField,
@@ -1587,6 +1643,7 @@ module.exports = {
   prepareWorkbookImportState,
   mergeWorkbookSourceState,
   auditWorkbookMergeAgainstSource,
+  auditWorkbookObjectAgainstSource,
   auditMergePreservation,
   auditPersistedMergeState,
   isWorkbookManagedRecord,
@@ -1609,6 +1666,8 @@ module.exports = {
   __testPreservePersonnelExtendedFields: preservePersonnelExtendedFields,
   __testToImportCellDate: toImportCellDate,
   runDeadlineNotificationJob,
+  runGoogleSheetSync,
+  previewGoogleSheetSync,
   closeDatabase
 };
 
@@ -1859,6 +1918,19 @@ async function parseWorkbookImportState(buffer) {
   assignSortOrder(state);
   state.updatedAt = new Date().toISOString();
   return state;
+}
+
+function parseGoogleSpreadsheetImportState(resource) {
+  const workbook = spreadsheetGridToWorkbook(resource);
+  const state = emptyState();
+  state.daily = parseDailySheet(workbook.getWorksheet("DieuHanh_Ngay"));
+  state.userStories = parseUserStorySheet(workbook.getWorksheet("DS_US"));
+  state.bugSources = parseBugSourceSheet(workbook.getWorksheet("DS.Loi"));
+  state.defects = parseDefectSheet(workbook.getWorksheet("DEFECT_LOG"));
+  state.defectSummary = parseDefectSummarySheet(workbook.getWorksheet("Tong hop loi"));
+  assignSortOrder(state);
+  state.updatedAt = new Date().toISOString();
+  return { workbook, state };
 }
 
 function parseDmChucNangSheet(worksheet) {
@@ -3045,11 +3117,22 @@ function summarizeImportState(state, targetCollections = collections) {
 }
 
 function prepareWorkbookImportState(state, importedAt = new Date().toISOString()) {
+  return prepareSourceImportState(state, {
+    importedAt,
+    source: "workbook",
+    targetCollections: workbookCollections
+  });
+}
+
+function prepareSourceImportState(state, options = {}) {
+  const importedAt = options.importedAt || new Date().toISOString();
+  const source = options.source || "workbook";
+  const targetCollections = options.targetCollections || workbookCollections;
   const sheetByCollection = new Map(excelSheets.map((sheet) => [sheet.collection, sheet.name]));
-  for (const collection of workbookCollections) {
+  for (const collection of targetCollections) {
     for (const record of state[collection] || []) {
       record._import = {
-        source: "workbook",
+        source,
         sheet: sheetByCollection.get(collection) || collection,
         importedAt
       };
@@ -3236,6 +3319,10 @@ function normalizeImportSourceName(value) {
 async function auditWorkbookMergeAgainstSource(buffer, state) {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
+  return auditWorkbookObjectAgainstSource(workbook, state);
+}
+
+function auditWorkbookObjectAgainstSource(workbook, state) {
   const mismatches = [];
   let checkedCells = 0;
 
@@ -3522,7 +3609,8 @@ function canonicalJsonValue(value, omittedFields = new Set()) {
 function isWorkbookManagedRecord(row) {
   const data = row?.data && typeof row.data === "object" ? row.data : row;
   const id = String(row?.id || data?.id || "").trim();
-  return data?._import?.source === "workbook" || /^[a-f0-9]{40}$/i.test(id);
+  return ["workbook", "google-sheet"].includes(String(data?._import?.source || ""))
+    || /^[a-f0-9]{40}$/i.test(id);
 }
 
 function preservePersonnelExtendedFields(importState, existingRows) {
@@ -6547,6 +6635,311 @@ function gmailOAuthRedirectUri(req) {
   return String(process.env.GMAIL_OAUTH_REDIRECT_URI || `${publicAppBaseUrl(req)}/api/email-notifications/oauth/callback`).trim();
 }
 
+async function readAppMetaValue(db, key) {
+  const result = await db.query("select value from app_meta where key = $1 limit 1", [key]);
+  return result.rows[0]?.value || null;
+}
+
+async function writeAppMetaValue(db, key, value) {
+  await db.query(`
+    insert into app_meta (key, value, updated_at)
+    values ($1, $2::jsonb, now())
+    on conflict (key) do update
+      set value = excluded.value,
+          updated_at = excluded.updated_at
+  `, [key, JSON.stringify(value)]);
+}
+
+async function readGoogleSheetSyncSettings(db) {
+  const stored = await readAppMetaValue(db, googleSheetSyncSettingsMetaKey);
+  return normalizeGoogleSheetSettings(stored, {
+    spreadsheetId: googleSheetSyncDefaultId,
+    intervalMinutes: googleSheetSyncDefaultIntervalMinutes,
+    minimumRowRatio: 0.5
+  });
+}
+
+async function saveGoogleSheetSyncSettings(db, input = {}, actor = {}) {
+  const current = await readGoogleSheetSyncSettings(db);
+  const requestedId = input.spreadsheetId == null || input.spreadsheetId === ""
+    ? current.spreadsheetId
+    : extractSpreadsheetId(input.spreadsheetId);
+  if (!requestedId) throw httpError(400, "Link hoặc ID Google Sheet không hợp lệ.");
+  const settings = normalizeGoogleSheetSettings({
+    ...current,
+    ...input,
+    spreadsheetId: requestedId,
+    updatedAt: new Date().toISOString(),
+    updatedBy: actor.id || ""
+  }, {
+    spreadsheetId: googleSheetSyncDefaultId,
+    intervalMinutes: googleSheetSyncDefaultIntervalMinutes
+  });
+  await writeAppMetaValue(db, googleSheetSyncSettingsMetaKey, settings);
+  return settings;
+}
+
+async function readGoogleSheetSyncState(db) {
+  return normalizeGoogleSheetSyncState(await readAppMetaValue(db, googleSheetSyncStateMetaKey));
+}
+
+async function writeGoogleSheetSyncState(db, value) {
+  const state = normalizeGoogleSheetSyncState(value);
+  await writeAppMetaValue(db, googleSheetSyncStateMetaKey, state);
+  return state;
+}
+
+async function getGoogleSheetSyncStatus(db, req = null) {
+  const [settings, syncState, googleStatus] = await Promise.all([
+    readGoogleSheetSyncSettings(db),
+    readGoogleSheetSyncState(db),
+    deadlineNotificationService.getPublicStatus(db, {
+      callbackUrl: req ? gmailOAuthRedirectUri(req) : ""
+    })
+  ]);
+  return {
+    settings,
+    syncState,
+    oauth: {
+      configured: googleStatus.configured,
+      connected: googleStatus.connected,
+      accountEmail: googleStatus.accountEmail,
+      sheetAccessConnected: googleStatus.sheetAccessConnected,
+      missingSheetScope: googleStatus.missingSheetScope
+    },
+    scheduler: {
+      processEnabled: googleSheetSyncSchedulerEnabled,
+      running: Boolean(googleSheetSyncTimer),
+      intervalMinutes: settings.intervalMinutes
+    }
+  };
+}
+
+async function loadGoogleSheetSource(db, options = {}) {
+  const settings = await readGoogleSheetSyncSettings(db);
+  const spreadsheetId = extractSpreadsheetId(options.spreadsheetId || settings.spreadsheetId);
+  if (!spreadsheetId) throw httpError(400, "Chưa cấu hình Google Sheet nguồn.");
+  const accessToken = await deadlineNotificationService.getGoogleAccessToken(db, [
+    GOOGLE_SHEETS_READONLY_SCOPE
+  ]);
+  const resource = await fetchGoogleSpreadsheet({
+    spreadsheetId,
+    accessToken
+  });
+  const parsed = parseGoogleSpreadsheetImportState(resource);
+  if (!stateRecordTotal(parsed.state, GOOGLE_SHEET_SOURCE_COLLECTIONS)) {
+    throw httpError(422, "Google Sheet không có dữ liệu nguồn được hỗ trợ.");
+  }
+  validateWorkbookImportState(parsed.state);
+  return {
+    settings: { ...settings, spreadsheetId, spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit` },
+    spreadsheetId,
+    spreadsheetTitle: String(resource?.properties?.title || "Google Sheet"),
+    workbook: parsed.workbook,
+    importState: parsed.state,
+    sourceHash: sourceStateHash(parsed.state)
+  };
+}
+
+function buildGoogleSheetSyncCandidate(source, existingState, syncState = {}) {
+  const importedAt = new Date().toISOString();
+  const safetyAudit = auditGoogleSheetSourceSafety(source.importState, existingState, {
+    minimumRatio: source.settings.minimumRowRatio
+  });
+  const preparedImportState = cloneSerializable(source.importState);
+  prepareSourceImportState(preparedImportState, {
+    importedAt,
+    source: "google-sheet",
+    targetCollections: GOOGLE_SHEET_SOURCE_COLLECTIONS
+  });
+  const merged = mergeWorkbookSourceState(existingState, preparedImportState, {
+    importedAt,
+    source: "google-sheet"
+  });
+  const goldenAudit = auditWorkbookObjectAgainstSource(source.workbook, merged.state);
+  const preservationAudit = auditMergePreservation(existingState, merged.state);
+  const ok = safetyAudit.ok && goldenAudit.ok && preservationAudit.ok;
+  return {
+    ok,
+    importedAt,
+    sourceHash: source.sourceHash,
+    unchanged: Boolean(syncState.lastSourceHash && syncState.lastSourceHash === source.sourceHash),
+    spreadsheetId: source.spreadsheetId,
+    spreadsheetTitle: source.spreadsheetTitle,
+    spreadsheetUrl: source.settings.spreadsheetUrl,
+    imported: summarizeImportState(source.importState, GOOGLE_SHEET_SOURCE_COLLECTIONS),
+    output: summarizeImportState(merged.state, workbookCollections),
+    merge: merged.summary,
+    safetyAudit,
+    goldenAudit,
+    preservationAudit,
+    existingState,
+    mergedState: merged.state
+  };
+}
+
+function publicGoogleSheetSyncCandidate(candidate) {
+  return {
+    ok: candidate.ok,
+    importedAt: candidate.importedAt,
+    sourceHash: candidate.sourceHash,
+    unchanged: candidate.unchanged,
+    spreadsheetId: candidate.spreadsheetId,
+    spreadsheetTitle: candidate.spreadsheetTitle,
+    spreadsheetUrl: candidate.spreadsheetUrl,
+    imported: candidate.imported,
+    output: candidate.output,
+    merge: candidate.merge,
+    safetyAudit: candidate.safetyAudit,
+    goldenAudit: candidate.goldenAudit,
+    preservationAudit: candidate.preservationAudit
+  };
+}
+
+async function previewGoogleSheetSync(db, options = {}) {
+  const source = await loadGoogleSheetSource(db, options);
+  const [existingState, syncState] = await Promise.all([
+    readState(db),
+    readGoogleSheetSyncState(db)
+  ]);
+  return publicGoogleSheetSyncCandidate(buildGoogleSheetSyncCandidate(source, existingState, syncState));
+}
+
+async function runGoogleSheetSync(options = {}) {
+  const db = getPool();
+  const lockClient = await db.connect();
+  const lockName = "squad2-google-sheet-sync-job";
+  let locked = false;
+  let transactionOpen = false;
+  const attemptAt = new Date().toISOString();
+  let previousSyncState = normalizeGoogleSheetSyncState();
+  try {
+    const lockResult = await lockClient.query("select pg_try_advisory_lock(hashtext($1)) as locked", [lockName]);
+    locked = Boolean(lockResult.rows[0]?.locked);
+    if (!locked) return { skipped: true, reason: "job-already-running" };
+
+    const settings = await readGoogleSheetSyncSettings(lockClient);
+    previousSyncState = await readGoogleSheetSyncState(lockClient);
+    if (!settings.enabled && !options.force) {
+      return { skipped: true, reason: "sync-disabled" };
+    }
+    await writeGoogleSheetSyncState(lockClient, {
+      ...previousSyncState,
+      lastAttemptAt: attemptAt,
+      lastStatus: "checking",
+      lastError: ""
+    });
+
+    const source = await loadGoogleSheetSource(lockClient, {
+      spreadsheetId: options.spreadsheetId || settings.spreadsheetId
+    });
+    if (!options.force && previousSyncState.lastSourceHash === source.sourceHash) {
+      const unchangedState = await writeGoogleSheetSyncState(lockClient, {
+        ...previousSyncState,
+        lastAttemptAt: attemptAt,
+        lastStatus: "unchanged",
+        lastError: "",
+        lastSummary: {
+          spreadsheetId: source.spreadsheetId,
+          spreadsheetTitle: source.spreadsheetTitle,
+          imported: summarizeImportState(source.importState, GOOGLE_SHEET_SOURCE_COLLECTIONS),
+          changed: false
+        }
+      });
+      return {
+        skipped: true,
+        reason: "source-unchanged",
+        sourceHash: source.sourceHash,
+        syncState: unchangedState
+      };
+    }
+
+    await lockClient.query("begin isolation level repeatable read");
+    transactionOpen = true;
+    const existingState = await readState(lockClient);
+    const candidate = buildGoogleSheetSyncCandidate(source, existingState, previousSyncState);
+    if (!candidate.ok) {
+      const reasons = [
+        ...candidate.safetyAudit.errors,
+        ...candidate.goldenAudit.mismatches.slice(0, 8).map((item) => `${item.cell}: ${item.actual} != ${item.expected}`),
+        ...candidate.preservationAudit.mismatches
+      ];
+      throw httpError(422, `Google Sheet chưa vượt qua kiểm tra an toàn: ${reasons.join("; ") || "không xác định"}`);
+    }
+
+    const snapshot = await createImportSnapshot(lockClient, {
+      sourceName: `google-sheet-${source.spreadsheetTitle}.xlsx`,
+      sourceSha256: source.sourceHash,
+      actorId: options.actorId || null
+    });
+    const persistence = await persistMergedWorkbookState(
+      lockClient,
+      existingState,
+      candidate.mergedState,
+      options.actorId || null
+    );
+    const updatedAt = await touchMeta(lockClient);
+    const persistedState = await readState(lockClient);
+    const persistenceAudit = auditPersistedMergeState(candidate.mergedState, persistedState);
+    if (!persistenceAudit.ok) {
+      throw httpError(500, `Xác minh sau đồng bộ thất bại: ${persistenceAudit.mismatches.slice(0, 8).join("; ")}`);
+    }
+    await lockClient.query("commit");
+    transactionOpen = false;
+
+    const summary = {
+      spreadsheetId: source.spreadsheetId,
+      spreadsheetTitle: source.spreadsheetTitle,
+      imported: candidate.imported,
+      output: candidate.output,
+      merge: candidate.merge,
+      persistence,
+      goldenCheckedCells: candidate.goldenAudit.checkedCells,
+      preservedManual: candidate.preservationAudit.preservedManual,
+      changed: true,
+      updatedAt
+    };
+    const syncState = await writeGoogleSheetSyncState(lockClient, {
+      ...previousSyncState,
+      lastAttemptAt: attemptAt,
+      lastSuccessAt: new Date().toISOString(),
+      lastSourceHash: source.sourceHash,
+      lastStatus: "success",
+      lastError: "",
+      lastSnapshotId: snapshot.id,
+      lastSummary: summary
+    });
+    return {
+      skipped: false,
+      ok: true,
+      sourceHash: source.sourceHash,
+      snapshotId: snapshot.id,
+      snapshotRecords: snapshot.recordCount,
+      persistence,
+      persistenceAudit,
+      preview: publicGoogleSheetSyncCandidate(candidate),
+      syncState
+    };
+  } catch (error) {
+    if (transactionOpen) {
+      await lockClient.query("rollback").catch(() => {});
+      transactionOpen = false;
+    }
+    await writeGoogleSheetSyncState(lockClient, {
+      ...previousSyncState,
+      lastAttemptAt: attemptAt,
+      lastStatus: "failed",
+      lastError: publicError(error),
+      lastSummary: previousSyncState.lastSummary
+    }).catch(() => {});
+    throw error;
+  } finally {
+    if (transactionOpen) await lockClient.query("rollback").catch(() => {});
+    if (locked) await lockClient.query("select pg_advisory_unlock(hashtext($1))", [lockName]).catch(() => {});
+    lockClient.release();
+  }
+}
+
 async function runDeadlineNotificationJob(options = {}) {
   await ensureSchema();
   return deadlineNotificationService.run(getPool(), options);
@@ -6574,6 +6967,42 @@ function startDeadlineNotificationScheduler() {
   scheduleNext();
 }
 
+function startGoogleSheetSyncScheduler() {
+  scheduleNextGoogleSheetSync({ startup: true }).catch((error) => {
+    console.error("Google Sheet sync scheduler failed to start:", error);
+  });
+}
+
+async function scheduleNextGoogleSheetSync(options = {}) {
+  if (options.reset && googleSheetSyncTimer) {
+    clearTimeout(googleSheetSyncTimer);
+    googleSheetSyncTimer = null;
+  }
+  if (!googleSheetSyncSchedulerEnabled || googleSheetSyncTimer) return;
+  await ensureSchema();
+  const settings = await readGoogleSheetSyncSettings(getPool());
+  if (!settings.enabled) return;
+  const startupDelayMs = Math.max(1000, Number(process.env.GOOGLE_SHEET_SYNC_STARTUP_DELAY_MS || 15000));
+  const intervalMs = settings.intervalMinutes * 60 * 1000;
+  const delay = options.startup ? startupDelayMs : intervalMs;
+  const nextRun = new Date(Date.now() + delay);
+  console.log(`Google Sheet sync scheduler: next run ${nextRun.toISOString()}`);
+  googleSheetSyncTimer = setTimeout(async () => {
+    googleSheetSyncTimer = null;
+    try {
+      const result = await runGoogleSheetSync();
+      console.log("Google Sheet sync scheduler completed:", JSON.stringify(result));
+    } catch (error) {
+      console.error("Google Sheet sync scheduler failed:", error);
+    } finally {
+      scheduleNextGoogleSheetSync().catch((error) => {
+        console.error("Google Sheet sync scheduler failed to reschedule:", error);
+      });
+    }
+  }, delay);
+  googleSheetSyncTimer.unref?.();
+}
+
 async function closeDatabase() {
   if (!pool) return;
   const activePool = pool;
@@ -6585,6 +7014,8 @@ async function closeDatabase() {
 async function shutdown() {
   if (deadlineSchedulerTimer) clearTimeout(deadlineSchedulerTimer);
   deadlineSchedulerTimer = null;
+  if (googleSheetSyncTimer) clearTimeout(googleSheetSyncTimer);
+  googleSheetSyncTimer = null;
   server.close(async () => {
     await closeDatabase();
     process.exit(0);

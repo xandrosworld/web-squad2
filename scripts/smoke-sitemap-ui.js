@@ -265,8 +265,12 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     }
     await page.locator('[data-action="close-modal"]').first().click();
     await assertRoute(page, "work/inputs", ".input-catalog-grid");
-    if (!await page.locator(".deadline-email-panel").isVisible()) {
+    if (!await page.locator(".deadline-email-panel:not(.google-sheet-sync-panel)").isVisible()) {
       throw new Error("Thông tin đầu vào thiếu khu quản trị nhắc deadline qua Gmail.");
+    }
+    if (!await page.locator(".google-sheet-sync-panel").isVisible()
+      || !await page.locator('.google-sheet-sync-panel a[target="_blank"]').isVisible()) {
+      throw new Error("Thông tin đầu vào thiếu khu quản trị và link mở Google Sheet.");
     }
     if (await page.locator(".email-rule-strip > span").count() !== 3
       || await page.locator('#deadlineEmailSettingsForm input[readonly]').inputValue() !== "maitanthanh1998@gmail.com") {
@@ -699,6 +703,38 @@ async function mockApi(context, state) {
         assigneeTaskCount: 3,
         managerOverdueTaskCount: 1,
         missingAssigneeEmailCount: 0
+      }
+    })
+  }));
+  await context.route("**/api/google-sheet-sync/status", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      settings: {
+        enabled: true,
+        spreadsheetId: "1DLdeQEDo9FqGAFJIb35-sazm6xhf6laTISuCDPSwuH8",
+        spreadsheetUrl: "https://docs.google.com/spreadsheets/d/1DLdeQEDo9FqGAFJIb35-sazm6xhf6laTISuCDPSwuH8/edit",
+        intervalMinutes: 5,
+        minimumRowRatio: 0.5
+      },
+      syncState: {
+        lastAttemptAt: "2026-07-26T15:00:00.000Z",
+        lastSuccessAt: "2026-07-26T15:00:00.000Z",
+        lastStatus: "success",
+        lastError: "",
+        lastSnapshotId: "snapshot-smoke"
+      },
+      oauth: {
+        configured: true,
+        connected: true,
+        accountEmail: "maitanthanh1998@gmail.com",
+        sheetAccessConnected: true,
+        missingSheetScope: false
+      },
+      scheduler: {
+        processEnabled: true,
+        running: true,
+        intervalMinutes: 5
       }
     })
   }));

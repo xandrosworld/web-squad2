@@ -6506,6 +6506,7 @@ body.is-column-resizing * {
 }
 
 .email-setting-field input,
+.email-setting-field select,
 .email-test-form input {
     width: 100%;
     min-height: 38px;
@@ -6517,9 +6518,205 @@ body.is-column-resizing * {
     font: inherit;
 }
 
+.email-setting-field select {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, #657282 50%), linear-gradient(135deg, #657282 50%, transparent 50%);
+    background-position: calc(100% - 15px) 16px, calc(100% - 10px) 16px;
+    background-repeat: no-repeat;
+    background-size: 5px 5px, 5px 5px;
+}
+
 .email-setting-field input[readonly] {
     background: #f5f7f9;
     color: #536071;
+}
+
+.google-sheet-sync-panel .panel-title > i {
+    color: #087f45;
+    background: #eaf8f0;
+}
+
+.google-sheet-rule-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border: 1px solid #dbe4e8;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.google-sheet-rule-strip > span {
+    min-height: 58px;
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    align-content: center;
+    column-gap: 7px;
+    padding: 8px 10px;
+    border-right: 1px solid #dbe4e8;
+    background: #f8fafb;
+}
+
+.google-sheet-rule-strip > span:last-child {
+    border-right: 0;
+}
+
+.google-sheet-rule-strip i {
+    grid-row: 1 / 3;
+    align-self: center;
+    color: #087f78;
+    font-size: 14px;
+    text-align: center;
+}
+
+.google-sheet-rule-strip b {
+    color: #263347;
+    font-size: 11px;
+}
+
+.google-sheet-rule-strip small {
+    overflow-wrap: anywhere;
+    color: var(--muted);
+    font-size: 9px;
+    line-height: 1.35;
+}
+
+.google-sheet-last-run {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border: 1px solid #dce4e8;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.google-sheet-last-run > span {
+    min-width: 0;
+    padding: 10px;
+    border-right: 1px solid #dce4e8;
+    background: #f8fafb;
+}
+
+.google-sheet-last-run > span:last-child {
+    border-right: 0;
+}
+
+.google-sheet-last-run b,
+.google-sheet-last-run strong {
+    display: block;
+}
+
+.google-sheet-last-run b {
+    color: var(--muted);
+    font-size: 9px;
+    font-weight: 800;
+}
+
+.google-sheet-last-run strong {
+    margin-top: 4px;
+    overflow: hidden;
+    color: #263347;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.google-sheet-preview {
+    border: 1px solid #dce4e8;
+    border-left-width: 4px;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.google-sheet-preview.safe {
+    border-left-color: #15945a;
+}
+
+.google-sheet-preview.blocked {
+    border-left-color: #c93642;
+}
+
+.google-sheet-preview-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #f8fafb;
+}
+
+.google-sheet-preview-head > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: #263347;
+    font-size: 11px;
+}
+
+.google-sheet-preview.safe .google-sheet-preview-head i {
+    color: #15945a;
+}
+
+.google-sheet-preview.blocked .google-sheet-preview-head i {
+    color: #c93642;
+}
+
+.google-sheet-preview-head small {
+    color: var(--muted);
+    font-size: 9px;
+}
+
+.google-sheet-counts {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    border-top: 1px solid #e3e9ed;
+}
+
+.google-sheet-counts > span {
+    min-width: 0;
+    padding: 9px 6px;
+    border-right: 1px solid #e3e9ed;
+    text-align: center;
+}
+
+.google-sheet-counts > span:last-child {
+    border-right: 0;
+}
+
+.google-sheet-counts b,
+.google-sheet-counts small {
+    display: block;
+}
+
+.google-sheet-counts b {
+    color: #087f78;
+    font-size: 15px;
+}
+
+.google-sheet-counts small {
+    margin-top: 2px;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.google-sheet-audit-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    border-top: 1px solid #e3e9ed;
+    color: #536071;
+    font-size: 9px;
+}
+
+.google-sheet-preview ul {
+    margin: 0;
+    padding: 8px 12px 8px 28px;
+    border-top: 1px solid #f0c7cb;
+    background: #fff5f6;
+    color: #9f2632;
+    font-size: 9px;
+    line-height: 1.45;
 }
 
 .email-rule-strip {
@@ -6881,6 +7078,34 @@ body.is-column-resizing * {
     .email-rule-strip,
     .email-preview-summary {
         grid-template-columns: 1fr 1fr;
+    }
+
+    .google-sheet-rule-strip,
+    .google-sheet-last-run {
+        grid-template-columns: 1fr;
+    }
+
+    .google-sheet-rule-strip > span,
+    .google-sheet-last-run > span {
+        border-right: 0;
+        border-bottom: 1px solid #dbe4e8;
+    }
+
+    .google-sheet-rule-strip > span:last-child,
+    .google-sheet-last-run > span:last-child {
+        border-bottom: 0;
+    }
+
+    .google-sheet-counts {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .google-sheet-counts > span {
+        border-bottom: 1px solid #e3e9ed;
+    }
+
+    .google-sheet-audit-line {
+        flex-direction: column;
     }
 
     .email-rule-strip > span:nth-child(2),

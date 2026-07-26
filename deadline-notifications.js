@@ -7,10 +7,12 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 const GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
-const GMAIL_SCOPES = [
+const GOOGLE_SHEETS_READONLY_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";
+const GOOGLE_SCOPES = [
   "openid",
   "email",
-  GMAIL_SEND_SCOPE
+  GMAIL_SEND_SCOPE,
+  GOOGLE_SHEETS_READONLY_SCOPE
 ];
 const DEFAULT_TIME_ZONE = "Asia/Ho_Chi_Minh";
 
@@ -39,6 +41,8 @@ function createDeadlineNotificationService(options = {}) {
       configured: Boolean(oauthClientId && oauthClientSecret),
       connected: Boolean(connection?.refreshToken && hasGmailSendScope(connection.scope)),
       missingSendScope: Boolean(connection?.refreshToken && !hasGmailSendScope(connection.scope)),
+      sheetAccessConnected: Boolean(connection?.refreshToken && hasGoogleScope(connection.scope, GOOGLE_SHEETS_READONLY_SCOPE)),
+      missingSheetScope: Boolean(connection?.refreshToken && !hasGoogleScope(connection.scope, GOOGLE_SHEETS_READONLY_SCOPE)),
       accountEmail: connection?.accountEmail || "",
       expectedSenderEmail,
       callbackUrl: String(context.callbackUrl || ""),
@@ -76,7 +80,7 @@ function createDeadlineNotificationService(options = {}) {
       client_id: oauthClientId,
       redirect_uri: String(redirectUri || ""),
       response_type: "code",
-      scope: GMAIL_SCOPES.join(" "),
+      scope: GOOGLE_SCOPES.join(" "),
       access_type: "offline",
       prompt: "consent",
       include_granted_scopes: "true",
@@ -115,7 +119,7 @@ function createDeadlineNotificationService(options = {}) {
       version: 1,
       accountEmail,
       refreshToken,
-      scope: String(token.scope || GMAIL_SCOPES.join(" ")),
+      scope: String(token.scope || existing?.scope || ""),
       connectedAt: new Date().toISOString()
     };
     await writeEncryptedConnection(pool, connection);
@@ -367,6 +371,20 @@ function createDeadlineNotificationService(options = {}) {
     return connection;
   }
 
+  async function getGoogleAccessToken(pool, requiredScopes = []) {
+    assertOAuthConfigured();
+    const connection = await readConnection(pool);
+    if (!connection?.refreshToken) {
+      throw createPublicError(409, "Chưa kết nối tài khoản Google. Hãy kết nối Gmail/Google Sheet trước.");
+    }
+    const missingScopes = [...new Set(requiredScopes.map((scope) => String(scope || "").trim()).filter(Boolean))]
+      .filter((scope) => !hasGoogleScope(connection.scope, scope));
+    if (missingScopes.length) {
+      throw createPublicError(409, "Tài khoản Google chưa có quyền đọc Google Sheet. Hãy bấm Kết nối lại và cấp quyền xem bảng tính.");
+    }
+    return refreshAccessToken(connection.refreshToken);
+  }
+
   async function writeEncryptedConnection(pool, connection) {
     if (!encryptionSecret) throw createPublicError(500, "Chưa cấu hình khóa mã hóa token Gmail.");
     const stored = {
@@ -408,7 +426,8 @@ function createDeadlineNotificationService(options = {}) {
     preview,
     sendTest,
     sendManagerStatus,
-    run
+    run,
+    getGoogleAccessToken
   };
 }
 
@@ -975,7 +994,11 @@ function normalizeEmailList(value) {
 }
 
 function hasGmailSendScope(value) {
-  return String(value || "").split(/\s+/).includes(GMAIL_SEND_SCOPE);
+  return hasGoogleScope(value, GMAIL_SEND_SCOPE);
+}
+
+function hasGoogleScope(value, scope) {
+  return String(value || "").split(/\s+/).includes(String(scope || ""));
 }
 
 function normalizeBaseUrl(value) {
@@ -1058,6 +1081,8 @@ module.exports = {
   normalizeDateKey,
   normalizeEmailList,
   hasGmailSendScope,
+  hasGoogleScope,
+  GOOGLE_SHEETS_READONLY_SCOPE,
   buildAssigneeSubject,
   renderAssigneeDigest,
   renderManagerDigest,

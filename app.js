@@ -1049,6 +1049,13 @@ let deadlineEmailState = {
     busyAction: "",
     error: null
 };
+let googleSheetSyncUiState = {
+    status: "idle",
+    data: null,
+    preview: null,
+    busyAction: "",
+    error: null
+};
 let lastRenderedTab = null;
 let pendingActiveTabScroll = null;
 let responsiveTableResizeFrame = 0;
@@ -2442,13 +2449,103 @@ function renderWorkInputsPage() {
                 ${renderReferenceList("Trạng thái công việc", "fa-circle-half-stroke", workStatusOptions, renderWorkStatus)}
                 ${renderReferenceList("Mức ưu tiên", "fa-flag", workPriorityOptions, renderWorkPriority)}
             </aside>
-            ${authState.user?.role === "admin" ? renderDeadlineEmailPanel() : ""}
+            ${authState.user?.role === "admin" ? `${renderGoogleSheetSyncPanel()}${renderDeadlineEmailPanel()}` : ""}
         </div>
     `;
 }
 
 function renderReferenceList(title, icon, values, renderer) {
     return `<section class="panel reference-panel"><div class="panel-head"><div class="panel-title"><i class="fa-solid ${e(icon)}"></i><div><h2>${e(title)}</h2><span>Danh mục cố định</span></div></div></div><div class="panel-body reference-list">${values.map((value) => `<div>${renderer(value)}<span>${e(value)}</span></div>`).join("")}</div></section>`;
+}
+
+function renderGoogleSheetSyncPanel() {
+    const state = googleSheetSyncUiState;
+    if (state.status === "loading" || state.status === "idle") {
+        return `<section class="panel deadline-email-panel google-sheet-sync-panel"><div class="panel-head"><div class="panel-title"><i class="fa-solid fa-table-cells"></i><div><h2>Nguồn dữ liệu Google Sheet</h2><span>Đang đọc trạng thái đồng bộ</span></div></div></div><div class="panel-body email-settings-loading"><i class="fa-solid fa-circle-notch fa-spin"></i><span>Đang tải...</span></div></section>`;
+    }
+    if (state.status === "error" || !state.data) {
+        return `<section class="panel deadline-email-panel google-sheet-sync-panel"><div class="panel-head"><div class="panel-title"><i class="fa-solid fa-table-cells"></i><div><h2>Nguồn dữ liệu Google Sheet</h2><span>Không đọc được trạng thái đồng bộ</span></div></div><button class="ghost-btn" type="button" data-action="refresh-google-sheet-sync"><i class="fa-solid fa-rotate"></i><span>Thử lại</span></button></div><div class="panel-body"><div class="email-config-alert danger"><i class="fa-solid fa-triangle-exclamation"></i><span>${e(state.error || "Không kết nối được dịch vụ Google Sheet.")}</span></div></div></section>`;
+    }
+
+    const data = state.data;
+    const settings = data.settings || {};
+    const syncState = data.syncState || {};
+    const oauth = data.oauth || {};
+    const connected = Boolean(oauth.sheetAccessConnected);
+    const busy = Boolean(state.busyAction);
+    const preview = state.preview;
+    const statusLabels = {
+        success: "Đồng bộ thành công",
+        unchanged: "Dữ liệu không đổi",
+        checking: "Đang kiểm tra",
+        failed: "Cần kiểm tra",
+        never: "Chưa đồng bộ"
+    };
+    const statusClass = ["success", "unchanged"].includes(syncState.lastStatus) ? "connected" : "";
+    return `
+        <section class="panel deadline-email-panel google-sheet-sync-panel">
+            <div class="panel-head">
+                <div class="panel-title"><i class="fa-solid fa-table-cells"></i><div><h2>Nguồn dữ liệu Google Sheet</h2><span>Tự kiểm tra 6 tab nguồn và cập nhật web mỗi ${e(settings.intervalMinutes || 5)} phút</span></div></div>
+                <div class="email-connection-status ${statusClass}"><span></span>${e(statusLabels[syncState.lastStatus] || "Chưa đồng bộ")}</div>
+            </div>
+            <div class="panel-body deadline-email-body">
+                ${oauth.missingSheetScope || !connected ? `<div class="email-config-alert warning"><i class="fa-brands fa-google"></i><div><strong>Cần cấp quyền xem Google Sheet</strong><span>Bấm “Kết nối lại Google” và chấp nhận quyền xem bảng tính. Hệ thống chỉ đọc dữ liệu, không tự sửa nội dung trên Sheet.</span></div></div>` : ""}
+                ${syncState.lastError ? `<div class="email-config-alert danger"><i class="fa-solid fa-triangle-exclamation"></i><div><strong>Lần kiểm tra gần nhất chưa thành công</strong><span>${e(syncState.lastError)}</span></div></div>` : ""}
+                <div class="deadline-email-grid google-sheet-sync-grid">
+                    <form id="googleSheetSyncSettingsForm" class="email-settings-form">
+                        <div class="email-settings-section-head"><div><strong>Cấu hình nguồn dữ liệu</strong><span>Người dùng cập nhật trực tiếp trên bảng tính chung</span></div><label class="switch-field"><input name="enabled" type="checkbox" ${settings.enabled !== false ? "checked" : ""}><span></span><b>${settings.enabled !== false ? "Đang bật" : "Đang tắt"}</b></label></div>
+                        <label class="email-setting-field"><span>Link Google Sheet</span><input name="spreadsheetUrl" type="url" value="${e(settings.spreadsheetUrl || "")}" placeholder="https://docs.google.com/spreadsheets/d/..." required></label>
+                        <label class="email-setting-field compact-setting"><span>Kiểm tra tự động</span><select name="intervalMinutes">${[1, 5, 10, 15, 30, 60].map((minute) => `<option value="${minute}" ${Number(settings.intervalMinutes) === minute ? "selected" : ""}>Mỗi ${minute} phút</option>`).join("")}</select></label>
+                        <div class="google-sheet-rule-strip">
+                            <span><i class="fa-solid fa-eye"></i><b>Chỉ đọc</b><small>Không ghi ngược lên Sheet</small></span>
+                            <span><i class="fa-solid fa-shield-halved"></i><b>Kiểm tra trước</b><small>Chặn thiếu dòng và trùng mã</small></span>
+                            <span><i class="fa-solid fa-clock-rotate-left"></i><b>Có bản lưu</b><small>Snapshot trước mỗi lần cập nhật</small></span>
+                        </div>
+                        <div class="email-action-row">
+                            <button class="primary-btn" type="submit" ${busy ? "disabled" : ""}><i class="fa-solid fa-floppy-disk"></i><span>Lưu cấu hình</span></button>
+                            <a class="ghost-btn" href="${e(settings.spreadsheetUrl || "#")}" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square"></i><span>Mở Google Sheet</span></a>
+                            <button class="ghost-btn" type="button" data-action="connect-deadline-gmail" ${busy ? "disabled" : ""}><i class="fa-brands fa-google"></i><span>Kết nối lại Google</span></button>
+                        </div>
+                    </form>
+                    <div class="email-operations google-sheet-operations">
+                        <div class="email-settings-section-head"><div><strong>Kiểm tra vận hành</strong><span>${connected ? `Đang đọc bằng ${e(oauth.accountEmail || "tài khoản Google đã kết nối")}` : "Chưa có quyền đọc bảng tính"}</span></div></div>
+                        <div class="google-sheet-last-run">
+                            <span><b>Lần thành công gần nhất</b><strong>${e(syncState.lastSuccessAt ? formatShortDateTime(syncState.lastSuccessAt) : "Chưa có")}</strong></span>
+                            <span><b>Lần kiểm tra gần nhất</b><strong>${e(syncState.lastAttemptAt ? formatShortDateTime(syncState.lastAttemptAt) : "Chưa có")}</strong></span>
+                            <span><b>Bản khôi phục gần nhất</b><strong>${e(syncState.lastSnapshotId ? syncState.lastSnapshotId.slice(0, 8) : "Chưa có")}</strong></span>
+                        </div>
+                        <div class="email-action-row">
+                            <button class="ghost-btn" type="button" data-action="preview-google-sheet-sync" ${!connected || busy ? "disabled" : ""}><i class="fa-solid fa-magnifying-glass"></i><span>Kiểm tra dữ liệu</span></button>
+                            <button class="primary-btn" type="button" data-action="run-google-sheet-sync" ${!connected || busy || settings.enabled === false ? "disabled" : ""}><i class="fa-solid fa-arrows-rotate"></i><span>Đồng bộ ngay</span></button>
+                            <button class="icon-btn" type="button" data-action="refresh-google-sheet-sync" title="Làm mới trạng thái" aria-label="Làm mới trạng thái" ${busy ? "disabled" : ""}><i class="fa-solid fa-rotate"></i></button>
+                        </div>
+                        ${preview ? renderGoogleSheetSyncPreview(preview) : ""}
+                    </div>
+                </div>
+            </div>
+        </section>
+    `;
+}
+
+function renderGoogleSheetSyncPreview(preview) {
+    const imported = preview.imported || {};
+    const safety = preview.safetyAudit || {};
+    const golden = preview.goldenAudit || {};
+    const preservation = preview.preservationAudit || {};
+    const safe = Boolean(preview.ok);
+    const rows = [
+        ["Điều hành ngày", imported.daily],
+        ["Defect Log", imported.defects],
+        ["Danh sách US", imported.userStories],
+        ["Danh sách lỗi", imported.bugSources],
+        ["Tổng hợp lỗi", imported.defectSummary]
+    ];
+    const details = [
+        ...(safety.errors || []),
+        ...(golden.mismatches || []).slice(0, 3).map((item) => `${item.cell}: Sheet ${item.actual}, web ${item.expected}`),
+        ...(preservation.mismatches || [])
+    ];
+    return `<div class="google-sheet-preview ${safe ? "safe" : "blocked"}"><div class="google-sheet-preview-head"><span><i class="fa-solid ${safe ? "fa-circle-check" : "fa-circle-xmark"}"></i><strong>${safe ? "Dữ liệu đạt kiểm tra an toàn" : "Đã chặn đồng bộ"}</strong></span><small>${preview.unchanged ? "Không có thay đổi mới" : "Có dữ liệu mới cần đồng bộ"}</small></div><div class="google-sheet-counts">${rows.map(([label, count]) => `<span><b>${e(count || 0)}</b><small>${e(label)}</small></span>`).join("")}</div><div class="google-sheet-audit-line"><span>${e(golden.checkedCells || 0)} ô tổng hợp đã đối chiếu</span><span>${preservation.ok ? "Dữ liệu web riêng được giữ nguyên" : "Có nguy cơ thay đổi dữ liệu web"}</span></div>${details.length ? `<ul>${details.map((detail) => `<li>${e(detail)}</li>`).join("")}</ul>` : ""}</div>`;
 }
 
 function renderDeadlineEmailPanel() {
@@ -5568,6 +5665,8 @@ function bindEvents() {
     if (deadlineEmailSettingsForm) deadlineEmailSettingsForm.addEventListener("submit", handleDeadlineEmailSettingsSubmit);
     const deadlineEmailTestForm = document.getElementById("deadlineEmailTestForm");
     if (deadlineEmailTestForm) deadlineEmailTestForm.addEventListener("submit", handleDeadlineEmailTestSubmit);
+    const googleSheetSyncSettingsForm = document.getElementById("googleSheetSyncSettingsForm");
+    if (googleSheetSyncSettingsForm) googleSheetSyncSettingsForm.addEventListener("submit", handleGoogleSheetSyncSettingsSubmit);
 
     document.querySelectorAll("[data-chat-action]").forEach((button) => {
         button.addEventListener("click", handleChatAction);
@@ -6167,12 +6266,104 @@ async function hydrateDeadlineEmailSettings({ silent = false } = {}) {
     }
 }
 
+async function hydrateGoogleSheetSyncStatus({ silent = false } = {}) {
+    if (authState.user?.role !== "admin") {
+        googleSheetSyncUiState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
+        return;
+    }
+    if (!silent) googleSheetSyncUiState = { ...googleSheetSyncUiState, status: "loading", error: null };
+    try {
+        const data = await requestJson("/google-sheet-sync/status");
+        googleSheetSyncUiState = { ...googleSheetSyncUiState, status: "ready", data, busyAction: "", error: null };
+    } catch (error) {
+        googleSheetSyncUiState = { ...googleSheetSyncUiState, status: "error", busyAction: "", error: error.message || "Không đọc được trạng thái Google Sheet." };
+    }
+}
+
+async function runGoogleSheetSyncUiAction(action, operation) {
+    if (googleSheetSyncUiState.busyAction) return;
+    googleSheetSyncUiState = { ...googleSheetSyncUiState, busyAction: action, error: null };
+    render();
+    try {
+        const result = await operation();
+        await hydrateGoogleSheetSyncStatus({ silent: true });
+        return result;
+    } catch (error) {
+        googleSheetSyncUiState = { ...googleSheetSyncUiState, busyAction: "", error: error.message || "Thao tác Google Sheet không thành công." };
+        showToast(error.message || "Thao tác Google Sheet không thành công.");
+        throw error;
+    } finally {
+        googleSheetSyncUiState = { ...googleSheetSyncUiState, busyAction: "" };
+        render();
+    }
+}
+
+async function handleGoogleSheetSyncSettingsSubmit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    try {
+        await runGoogleSheetSyncUiAction("save", async () => {
+            const data = await requestJson("/google-sheet-sync/settings", {
+                method: "POST",
+                body: JSON.stringify({
+                    enabled: form.elements.enabled.checked,
+                    spreadsheetUrl: form.elements.spreadsheetUrl.value.trim(),
+                    intervalMinutes: Number(form.elements.intervalMinutes.value)
+                })
+            });
+            googleSheetSyncUiState = {
+                ...googleSheetSyncUiState,
+                data: { ...(googleSheetSyncUiState.data || {}), settings: data.settings }
+            };
+            showToast("Đã lưu nguồn Google Sheet và lịch kiểm tra.");
+        });
+    } catch {
+        // The shared action handler already displays the API error.
+    }
+}
+
+async function previewGoogleSheetSyncNow() {
+    try {
+        await runGoogleSheetSyncUiAction("preview", async () => {
+            const data = await requestJson("/google-sheet-sync/preview", {
+                method: "POST",
+                body: "{}"
+            });
+            googleSheetSyncUiState = { ...googleSheetSyncUiState, preview: data.preview };
+            showToast(data.preview?.ok
+                ? "Dữ liệu Google Sheet đã vượt qua kiểm tra an toàn."
+                : "Dữ liệu chưa đạt kiểm tra, hệ thống sẽ không ghi vào DB.");
+        });
+    } catch {
+        // The shared action handler already displays the API error.
+    }
+}
+
+async function runGoogleSheetSyncNow() {
+    if (!confirm("Đồng bộ dữ liệu mới từ Google Sheet vào web ngay bây giờ? Hệ thống sẽ kiểm tra toàn bộ, tạo bản khôi phục rồi mới cập nhật.")) return;
+    try {
+        await runGoogleSheetSyncUiAction("run", async () => {
+            const data = await requestJson("/google-sheet-sync/run", {
+                method: "POST",
+                body: "{}"
+            });
+            googleSheetSyncUiState = { ...googleSheetSyncUiState, preview: data.result?.preview || null };
+            await hydrateState(true);
+            showToast(data.result?.skipped
+                ? "Google Sheet chưa có thay đổi mới."
+                : "Đã đồng bộ Google Sheet và xác minh dữ liệu thành công.");
+        });
+    } catch {
+        // The shared action handler already displays the API error.
+    }
+}
+
 function consumeGmailCallbackNotice() {
     const url = new URL(window.location.href);
     const status = url.searchParams.get("gmail");
     if (!status) return;
     const message = url.searchParams.get("message");
-    if (status === "connected") showToast("Đã kết nối Gmail gửi thông báo.");
+    if (status === "connected") showToast("Đã kết nối Google cho Gmail và Google Sheet.");
     else showToast(message || "Không kết nối được Gmail.");
     url.searchParams.delete("gmail");
     url.searchParams.delete("message");
@@ -6292,7 +6483,7 @@ async function initAuth() {
         const data = await requestJson("/auth/me", { skipAuthRedirect: true });
         authState = { status: "authenticated", user: data.user, error: null };
         render();
-        await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings()]);
+        await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings(), hydrateGoogleSheetSyncStatus()]);
         consumeGmailCallbackNotice();
         render();
     } catch {
@@ -6300,6 +6491,7 @@ async function initAuth() {
         appState = emptyState();
         accountDirectory = [];
         deadlineEmailState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
+        googleSheetSyncUiState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
         ui.aiChatOpen = false;
         ui.aiChatDraft = "";
         ui.groupChatOpen = false;
@@ -6331,7 +6523,7 @@ async function handleLogin(event) {
         });
         authState = { status: "authenticated", user: data.user, error: null };
         render();
-        await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings()]);
+        await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings(), hydrateGoogleSheetSyncStatus()]);
         consumeGmailCallbackNotice();
         render();
     } catch (error) {
@@ -6339,6 +6531,7 @@ async function handleLogin(event) {
         appState = emptyState();
         accountDirectory = [];
         deadlineEmailState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
+        googleSheetSyncUiState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
         ui.aiChatOpen = false;
         ui.aiChatDraft = "";
         ui.groupChatOpen = false;
@@ -6380,6 +6573,7 @@ async function handleAuthAction(event) {
     appState = emptyState();
     accountDirectory = [];
     deadlineEmailState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
+    googleSheetSyncUiState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
     localStorage.removeItem(STORAGE_KEY);
     ui.modal = null;
     ui.profileOpen = false;
@@ -6765,6 +6959,9 @@ function handleAction(event) {
     if (action === "disconnect-deadline-gmail") return disconnectDeadlineGmail();
     if (action === "preview-deadline-email") return previewDeadlineEmail();
     if (action === "run-deadline-email") return runDeadlineEmailNow();
+    if (action === "refresh-google-sheet-sync") return hydrateGoogleSheetSyncStatus().then(render);
+    if (action === "preview-google-sheet-sync") return previewGoogleSheetSyncNow();
+    if (action === "run-google-sheet-sync") return runGoogleSheetSyncNow();
     if (action === "close-modal") return closeModal();
     if (action === "reset-filters") return resetFilters();
     if (action === "toggle-column-filter") return toggleColumnFilter(event.currentTarget.dataset.columnKey);

@@ -8,6 +8,8 @@ const {
   isFridayDateKey,
   nextDailyRunAt,
   hasGmailSendScope,
+  hasGoogleScope,
+  GOOGLE_SHEETS_READONLY_SCOPE,
   buildAssigneeSubject,
   renderAssigneeDigest,
   renderManagerDigest,
@@ -37,6 +39,8 @@ assert.strictEqual(isFridayDateKey("2026-07-17"), true);
 assert.strictEqual(isFridayDateKey("2026-07-18"), false);
 assert.strictEqual(hasGmailSendScope("openid email https://www.googleapis.com/auth/gmail.send"), true);
 assert.strictEqual(hasGmailSendScope("openid email"), false);
+assert.strictEqual(hasGoogleScope(`openid ${GOOGLE_SHEETS_READONLY_SCOPE}`, GOOGLE_SHEETS_READONLY_SCOPE), true);
+assert.strictEqual(hasGoogleScope("openid email", GOOGLE_SHEETS_READONLY_SCOPE), false);
 assert.strictEqual(
   nextDailyRunAt(new Date("2026-07-18T00:30:00.000Z"), 1).toISOString(),
   "2026-07-18T01:00:00.000Z",
