@@ -22,12 +22,14 @@
     "check:work-item-export": "node scripts/check-work-item-export.js",
     "check:deadline-notifications": "node scripts/check-deadline-notifications.js",
     "check:google-sheet-sync": "node scripts/check-google-sheet-sync.js",
+    "check:drive-attachments": "node scripts/check-drive-attachments.js",
     "check:final-workbook-merge": "node scripts/check-final-workbook-merge.js",
     "import:workbook:db": "node scripts/import-workbook-to-db.js",
     "sync:handoff-sections": "node scripts/sync-handoff-sections.js",
     "smoke:dashboard": "node scripts/smoke-dashboard.js",
     "smoke:ui": "node scripts/smoke-ui.js",
     "smoke:sitemap-ui": "node scripts/smoke-sitemap-ui.js",
+    "smoke:drive-attachments": "node scripts/smoke-drive-attachments.js",
     "smoke:rbac": "node scripts/smoke-rbac.js",
     "smoke:workplan": "node scripts/smoke-workplan.js",
     "migrate:work-order": "node scripts/migrate-work-item-order.js",
@@ -40,12 +42,16 @@
     "dotenv": "^16.4.7",
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
-    "pg": "^8.13.1"
+    "mammoth": "^1.11.0",
+    "pg": "^8.13.1",
+    "sanitize-html": "^2.17.0"
   },
   "devDependencies": {
+    "jszip": "^3.10.1",
     "playwright-core": "^1.60.0"
   },
   "overrides": {
-    "uuid": "11.1.1"
+    "uuid": "11.1.1",
+    "brace-expansion": "5.0.8"
   }
 }

@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const path = require("path");
+const { Readable } = require("stream");
 
 require("dotenv").config();
 
@@ -26,6 +27,12 @@ const {
   normalizeGoogleSheetSyncState,
   extractSpreadsheetId
 } = require("./google-sheet-sync");
+const {
+  createDriveAttachmentService,
+  normalizeFileName,
+  normalizeMimeType,
+  DEFAULT_MAX_FILE_SIZE_BYTES
+} = require("./drive-attachments");
 
 const app = express();
 let server = null;
@@ -61,6 +68,10 @@ const googleSheetSyncDefaultIntervalMinutes = Math.max(1, Math.min(60, Number(pr
 const googleSheetSyncSettingsMetaKey = "google_sheet_sync_settings";
 const googleSheetSyncStateMetaKey = "google_sheet_sync_state";
 let googleSheetSyncTimer = null;
+const attachmentMaxFileSizeBytes = Math.max(
+  1024,
+  Number(process.env.WORK_ATTACHMENT_MAX_FILE_SIZE_MB || 50) * 1024 * 1024
+);
 const deadlineNotificationService = createDeadlineNotificationService({
   oauthClientId: process.env.GMAIL_OAUTH_CLIENT_ID,
   oauthClientSecret: process.env.GMAIL_OAUTH_CLIENT_SECRET,
@@ -68,6 +79,12 @@ const deadlineNotificationService = createDeadlineNotificationService({
   defaultManagerEmails: deadlineManagerEmails,
   appBaseUrl,
   encryptionSecret: process.env.GMAIL_TOKEN_ENCRYPTION_KEY || sessionSecret
+});
+const driveAttachmentService = createDriveAttachmentService({
+  getAccessToken: (db, scopes) => deadlineNotificationService.getGoogleAccessToken(db, scopes),
+  requiredScope: GOOGLE_DRIVE_FILE_SCOPE,
+  rootFolderName: process.env.GOOGLE_DRIVE_ATTACHMENT_ROOT_NAME || "Squad 2 UAT - Tep cong viec",
+  maxFileSizeBytes: attachmentMaxFileSizeBytes || DEFAULT_MAX_FILE_SIZE_BYTES
 });
 const defaultUsers = [
   { username: "yenuth@bidv.com.vn", email: "yenuth@bidv.com.vn", name: "Uông Thị Hải Yến", password: "123456" },
@@ -775,7 +792,16 @@ let schemaPromise;
 
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
-app.use(express.json({ limit: requestBodyLimit }));
+const jsonBodyParser = express.json({ limit: requestBodyLimit });
+app.use((req, res, next) => {
+  const rawAttachmentUpload = req.method === "POST"
+    && /^\/api\/work-items\/[^/]+\/attachments$/.test(req.path);
+  if (rawAttachmentUpload) {
+    next();
+    return;
+  }
+  jsonBodyParser(req, res, next);
+});
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "same-origin");
@@ -1079,6 +1105,181 @@ app.post("/api/google-sheet-sync/run", requireAdmin, asyncHandler(async (req, re
     spreadsheetId: req.body.spreadsheetId || req.body.spreadsheetUrl
   });
   res.json({ result });
+}));
+
+app.get("/api/attachments/storage-status", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const status = await driveAttachmentService.getStorageStatus(getPool());
+  res.json(status);
+}));
+
+app.get("/api/work-items/:id/attachments", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const workItem = await getWorkItemRecordForAttachment(getPool(), req.params.id);
+  const attachments = await listWorkItemAttachments(getPool(), req.params.id, req.user, workItem);
+  res.json({
+    attachments,
+    maxFileSizeBytes: driveAttachmentService.maxFileSizeBytes
+  });
+}));
+
+app.post("/api/work-items/:id/attachments", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const workItem = await getWorkItemRecordForAttachment(getPool(), req.params.id);
+  if (!canEditRecord(req.user, workItem)) {
+    throw httpError(403, "Bạn không có quyền đính kèm file vào công việc này.");
+  }
+
+  const fileName = decodeUploadFileName(req.get("x-file-name"));
+  const mimeType = normalizeMimeType(req.get("x-file-type") || req.get("content-type"), fileName);
+  const declaredSize = parseAttachmentSize(req.get("x-file-size") || req.get("content-length"));
+  const contentLength = req.get("content-length") ? parseAttachmentSize(req.get("content-length")) : declaredSize;
+  const uploadKey = normalizeUploadKey(req.get("x-upload-key"));
+  if (contentLength !== declaredSize) throw httpError(400, "Dung lượng file gửi lên không khớp với file đã chọn.");
+
+  const existing = await getAttachmentByUploadKey(getPool(), uploadKey);
+  if (existing && (existing.work_item_id !== workItem.data.id || existing.created_by !== req.user.id)) {
+    throw httpError(409, "Mã upload đã được sử dụng. Hãy chọn tải lại file.");
+  }
+  if (existing?.status === "completed" && !existing.deleted_at) {
+    res.json({ attachment: mapAttachmentRow(existing, req.user, workItem), duplicate: true });
+    return;
+  }
+  if (existing?.deleted_at) {
+    throw httpError(409, "Mã upload cũ đã hết hiệu lực. Hãy chọn tải lại file.");
+  }
+  if (existing?.status === "uploading") {
+    throw httpError(409, "File này đang được tải lên. Vui lòng chờ hoàn tất.");
+  }
+
+  const attachmentId = existing?.id || crypto.randomUUID();
+  await getPool().query(`
+    insert into work_item_attachments (
+      id, work_item_id, task_id, upload_key, original_name, mime_type,
+      size_bytes, status, created_by, created_at, updated_at
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, 'uploading', $8, now(), now())
+    on conflict (upload_key) do update
+      set status = 'uploading',
+          error_message = null,
+          updated_at = now()
+  `, [
+    attachmentId,
+    workItem.data.id,
+    workItem.data.taskId || "",
+    uploadKey,
+    fileName,
+    mimeType,
+    declaredSize,
+    req.user.id
+  ]);
+
+  const abortController = new AbortController();
+  req.once("aborted", () => abortController.abort());
+  let driveResult;
+  try {
+    driveResult = await driveAttachmentService.upload(getPool(), {
+      stream: req,
+      contentLength: declaredSize,
+      fileName,
+      mimeType,
+      workItem: workItem.data,
+      uploader: req.user,
+      signal: abortController.signal
+    });
+    const updated = await getPool().query(`
+      update work_item_attachments
+      set drive_file_id = $1,
+          drive_folder_id = $2,
+          drive_web_view_link = $3,
+          sha256 = $4,
+          status = 'completed',
+          error_message = null,
+          updated_at = now()
+      where upload_key = $5
+      returning *
+    `, [
+      driveResult.driveFile.id,
+      driveResult.taskFolder.id,
+      driveResult.driveFile.webViewLink || "",
+      driveResult.sha256,
+      uploadKey
+    ]);
+    if (!updated.rows[0]) {
+      await driveAttachmentService.trash(getPool(), driveResult.driveFile.id).catch(() => {});
+      throw httpError(500, "Không lưu được thông tin file sau khi upload.");
+    }
+    res.status(201).json({ attachment: mapAttachmentRow(updated.rows[0], req.user, workItem) });
+  } catch (error) {
+    if (driveResult?.driveFile?.id) {
+      await driveAttachmentService.trash(getPool(), driveResult.driveFile.id).catch(() => {});
+    }
+    await getPool().query(`
+      update work_item_attachments
+      set status = 'failed',
+          error_message = $1,
+          updated_at = now()
+      where upload_key = $2
+    `, [publicError(error).slice(0, 500), uploadKey]).catch(() => {});
+    throw error;
+  }
+}));
+
+app.get("/api/attachments/:id/preview", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const row = await getAttachmentRecord(getPool(), req.params.id);
+  const workItem = await getWorkItemRecordForAttachment(getPool(), row.work_item_id);
+  const preview = await driveAttachmentService.getPreview(getPool(), attachmentServiceInput(row));
+  res.json({
+    attachment: mapAttachmentRow(row, req.user, workItem),
+    preview,
+    contentUrl: preview.kind === "inline" ? `/api/attachments/${encodeURIComponent(row.id)}/content?inline=1` : ""
+  });
+}));
+
+app.get("/api/attachments/:id/content", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const row = await getAttachmentRecord(getPool(), req.params.id);
+  await getWorkItemRecordForAttachment(getPool(), row.work_item_id);
+  const upstream = await driveAttachmentService.getContent(getPool(), row.drive_file_id, {
+    range: req.get("range") || ""
+  });
+  const inline = req.query.inline === "1";
+  res.status(upstream.status);
+  res.setHeader("Content-Type", safeAttachmentResponseMime(row.mime_type, inline));
+  res.setHeader("Content-Disposition", attachmentContentDisposition(row.original_name, inline));
+  res.setHeader("Accept-Ranges", upstream.headers.get("accept-ranges") || "bytes");
+  for (const header of ["content-length", "content-range", "etag", "last-modified"]) {
+    const value = upstream.headers.get(header);
+    if (value) res.setHeader(header, value);
+  }
+  if (!upstream.body) {
+    res.end();
+    return;
+  }
+  Readable.fromWeb(upstream.body).on("error", (error) => {
+    if (!res.headersSent) res.status(502);
+    res.destroy(error);
+  }).pipe(res);
+}));
+
+app.delete("/api/attachments/:id", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const row = await getAttachmentRecord(getPool(), req.params.id);
+  const workItem = await getWorkItemRecordForAttachment(getPool(), row.work_item_id);
+  if (!canDeleteAttachment(req.user, row, workItem)) {
+    throw httpError(403, "Bạn không có quyền xóa file này.");
+  }
+  await driveAttachmentService.trash(getPool(), row.drive_file_id);
+  await getPool().query(`
+    update work_item_attachments
+    set status = 'deleted',
+        deleted_by = $1,
+        deleted_at = now(),
+        updated_at = now()
+    where id = $2
+  `, [req.user.id, row.id]);
+  res.json({ ok: true });
 }));
 
 app.get("/api/state", asyncHandler(async (req, res) => {
@@ -1558,6 +1759,9 @@ app.delete("/api/records/:collection/:id", asyncHandler(async (req, res) => {
         throw httpError(409, "Nhóm đang có đầu việc. Hãy chuyển hoặc xóa đầu việc trước.");
       }
     }
+    if (collection === "workItems") {
+      await deleteWorkItemAttachments(client, req.params.id, req.user);
+    }
     await client.query("delete from uat_records where collection = $1 and id = $2", [collection, req.params.id]);
     const { state, updatedAt } = await recomputeAndPersistWorkbookRules(client, req.user.id, req.user);
     await client.query("commit");
@@ -1780,6 +1984,34 @@ function ensureSchema() {
 
       create index if not exists idx_uat_import_snapshots_created
         on uat_import_snapshots (created_at desc);
+
+      create table if not exists work_item_attachments (
+        id text primary key,
+        work_item_id text not null,
+        task_id text,
+        upload_key text not null unique,
+        original_name text not null,
+        mime_type text not null,
+        size_bytes bigint not null,
+        sha256 text,
+        drive_file_id text unique,
+        drive_folder_id text,
+        drive_web_view_link text,
+        status text not null default 'uploading',
+        error_message text,
+        created_by text not null,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        deleted_by text,
+        deleted_at timestamptz
+      );
+
+      create index if not exists idx_work_item_attachments_item
+        on work_item_attachments (work_item_id, created_at desc)
+        where deleted_at is null;
+
+      create index if not exists idx_work_item_attachments_uploader
+        on work_item_attachments (created_by, created_at desc);
     `);
       await ensureSeedAdmin();
       await ensureDefaultUsers();
@@ -4685,6 +4917,203 @@ async function recomputeAndPersistWorkbookRules(client, actorId, viewer = null) 
     state: applyWorkbookRulesForResponse(await readState(client, viewer)),
     updatedAt: metaUpdatedAt
   };
+}
+
+async function getWorkItemRecordForAttachment(db, id) {
+  const result = await db.query(`
+    select records.data,
+           records.created_by,
+           records.updated_by,
+           records.created_at,
+           records.updated_at,
+           creator.name as creator_name,
+           creator.email as creator_email,
+           creator.username as creator_username
+    from uat_records records
+    left join app_users creator on creator.id = records.created_by
+    where records.collection = 'workItems' and records.id = $1
+    limit 1
+  `, [String(id || "")]);
+  if (!result.rows[0]) throw httpError(404, "Không tìm thấy công việc.");
+  return result.rows[0];
+}
+
+async function listWorkItemAttachments(db, workItemId, viewer, workItem) {
+  const result = await db.query(`
+    select attachments.*,
+           uploader.name as uploader_name,
+           uploader.email as uploader_email,
+           uploader.username as uploader_username
+    from work_item_attachments attachments
+    left join app_users uploader on uploader.id = attachments.created_by
+    where attachments.work_item_id = $1
+      and attachments.status = 'completed'
+      and attachments.deleted_at is null
+    order by attachments.created_at desc, attachments.original_name
+  `, [String(workItemId || "")]);
+  return result.rows.map((row) => mapAttachmentRow(row, viewer, workItem));
+}
+
+async function getAttachmentByUploadKey(db, uploadKey) {
+  const result = await db.query(`
+    select attachments.*,
+           uploader.name as uploader_name,
+           uploader.email as uploader_email,
+           uploader.username as uploader_username
+    from work_item_attachments attachments
+    left join app_users uploader on uploader.id = attachments.created_by
+    where attachments.upload_key = $1
+    limit 1
+  `, [uploadKey]);
+  return result.rows[0] || null;
+}
+
+async function getAttachmentRecord(db, id) {
+  const result = await db.query(`
+    select attachments.*,
+           uploader.name as uploader_name,
+           uploader.email as uploader_email,
+           uploader.username as uploader_username
+    from work_item_attachments attachments
+    left join app_users uploader on uploader.id = attachments.created_by
+    where attachments.id = $1
+      and attachments.status = 'completed'
+      and attachments.deleted_at is null
+    limit 1
+  `, [String(id || "")]);
+  if (!result.rows[0]) throw httpError(404, "Không tìm thấy file đính kèm.");
+  return result.rows[0];
+}
+
+function mapAttachmentRow(row, viewer, workItem = null) {
+  const uploaderName = row.uploader_name
+    || (row.created_by === viewer?.id ? viewer.name : "")
+    || row.uploader_username
+    || "Không xác định";
+  const uploaderEmail = row.uploader_email
+    || (row.created_by === viewer?.id ? viewer.email || viewer.username : "")
+    || row.uploader_username
+    || "";
+  return {
+    id: row.id,
+    workItemId: row.work_item_id,
+    taskId: row.task_id || "",
+    name: row.original_name,
+    mimeType: row.mime_type,
+    sizeBytes: Number(row.size_bytes || 0),
+    sha256: row.sha256 || "",
+    uploadedAt: row.created_at?.toISOString?.() || String(row.created_at || ""),
+    uploadedBy: {
+      id: row.created_by,
+      name: uploaderName,
+      email: uploaderEmail
+    },
+    canDelete: workItem
+      ? canDeleteAttachment(viewer, row, workItem)
+      : viewer?.role === "admin" || row.created_by === viewer?.id,
+    driveUrl: viewer?.role === "admin" ? row.drive_web_view_link || "" : ""
+  };
+}
+
+function canDeleteAttachment(user, attachment, workItem) {
+  return Boolean(
+    user
+    && (
+      user.role === "admin"
+      || attachment.created_by === user.id
+      || canFullyManageWorkItem(user, workItem)
+    )
+  );
+}
+
+function decodeUploadFileName(value) {
+  const encoded = String(value || "").trim();
+  if (!encoded) throw httpError(400, "Thiếu tên file.");
+  let decoded;
+  try {
+    decoded = decodeURIComponent(encoded);
+  } catch {
+    throw httpError(400, "Tên file không hợp lệ.");
+  }
+  const fileName = normalizeFileName(decoded);
+  if (!fileName) throw httpError(400, "Tên file không hợp lệ.");
+  return fileName;
+}
+
+function parseAttachmentSize(value) {
+  const size = Number(value);
+  if (!Number.isSafeInteger(size) || size <= 0) {
+    throw httpError(400, "File rỗng hoặc thiếu thông tin dung lượng.");
+  }
+  if (size > driveAttachmentService.maxFileSizeBytes) {
+    const maxMb = Math.round(driveAttachmentService.maxFileSizeBytes / (1024 * 1024));
+    throw httpError(413, `Mỗi file chỉ được tối đa ${maxMb} MB.`);
+  }
+  return size;
+}
+
+function normalizeUploadKey(value) {
+  const key = String(value || "").trim();
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{7,119}$/.test(key)) {
+    throw httpError(400, "Mã upload không hợp lệ.");
+  }
+  return key;
+}
+
+function attachmentServiceInput(row) {
+  return {
+    driveFileId: row.drive_file_id,
+    originalName: row.original_name,
+    mimeType: row.mime_type,
+    sizeBytes: Number(row.size_bytes || 0)
+  };
+}
+
+function safeAttachmentResponseMime(value, inline) {
+  const mimeType = normalizeMimeType(value);
+  if (!inline) return mimeType;
+  if (mimeType === "application/pdf") return mimeType;
+  if (["image/avif", "image/bmp", "image/gif", "image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+    return mimeType;
+  }
+  return "application/octet-stream";
+}
+
+function attachmentContentDisposition(fileName, inline) {
+  const normalized = normalizeFileName(fileName) || "download";
+  const ascii = normalized
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7e]/g, "_")
+    .replace(/["\\]/g, "_");
+  const encoded = encodeURIComponent(normalized).replace(/['()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `${inline ? "inline" : "attachment"}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+async function deleteWorkItemAttachments(db, workItemId, actor) {
+  const result = await db.query(`
+    select *
+    from work_item_attachments
+    where work_item_id = $1
+      and status = 'completed'
+      and deleted_at is null
+    for update
+  `, [String(workItemId || "")]);
+  for (const attachment of result.rows) {
+    if (attachment.drive_file_id) {
+      await driveAttachmentService.trash(db, attachment.drive_file_id);
+    }
+  }
+  if (!result.rows.length) return;
+  await db.query(`
+    update work_item_attachments
+    set status = 'deleted',
+        deleted_by = $1,
+        deleted_at = now(),
+        updated_at = now()
+    where work_item_id = $2
+      and deleted_at is null
+  `, [actor.id, String(workItemId || "")]);
 }
 
 async function persistMergedWorkbookState(client, currentState, mergedState, actorId, now = new Date()) {

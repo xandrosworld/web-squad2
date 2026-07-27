@@ -1056,6 +1056,17 @@ let googleSheetSyncUiState = {
     busyAction: "",
     error: null
 };
+let attachmentUiState = {
+    workItemId: null,
+    status: "idle",
+    items: [],
+    maxFileSizeBytes: 50 * 1024 * 1024,
+    uploads: [],
+    error: null,
+    preview: null,
+    previewSheet: 0
+};
+let activeAttachmentUploads = 0;
 let lastRenderedTab = null;
 let pendingActiveTabScroll = null;
 let responsiveTableResizeFrame = 0;
@@ -1484,6 +1495,7 @@ function render() {
             </main>
         </div>
         ${renderModal()}
+        ${renderAttachmentPreviewModal()}
         ${renderProfileModal()}
         ${renderFloatingGroupChat()}
         <div class="toast ${ui.toast ? "show" : ""}">${e(ui.toast || "")}</div>
@@ -4904,6 +4916,7 @@ function renderModal() {
                         <div class="form-grid">
                             ${editableFields.map((field) => renderField(field, row)).join("")}
                             ${mod.collection === "workItems" ? renderWorkStatusProgressWarning() : ""}
+                            ${mod.collection === "workItems" ? renderWorkAttachments(row) : ""}
                         </div>
                         <aside class="record-rail">
                             <div class="rail-card">
@@ -5053,6 +5066,7 @@ function renderWorkProgressModal() {
                                 <textarea class="field-textarea" name="note" placeholder="Ghi vướng mắc, kết quả xử lý hoặc nội dung cần sếp hỗ trợ">${e(row.note || "")}</textarea>
                             </div>
                             ${renderWorkStatusProgressWarning()}
+                            ${renderWorkAttachments(row)}
                         </div>
                         <aside class="record-rail">
                             <div class="rail-card">
@@ -5091,6 +5105,217 @@ function renderWorkStatusProgressWarning() {
             <span></span>
         </div>
     `;
+}
+
+function renderWorkAttachments(row) {
+    if (!row?.id) {
+        return `
+            <section class="work-attachments field full is-empty">
+                <div class="work-attachments-head">
+                    <div>
+                        <strong><i class="fa-solid fa-paperclip"></i> File đính kèm</strong>
+                        <span>Lưu công việc trước, sau đó có thể tải nhiều file lên.</span>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    const current = attachmentUiState.workItemId === row.id;
+    const loading = !current || attachmentUiState.status === "loading";
+    const items = current ? attachmentUiState.items : [];
+    const uploads = current ? attachmentUiState.uploads : [];
+    const error = current ? attachmentUiState.error : "";
+    const maxSize = formatAttachmentSize(attachmentUiState.maxFileSizeBytes);
+    return `
+        <section class="work-attachments field full" data-attachment-work-item="${e(row.id)}">
+            <div class="work-attachments-head">
+                <div>
+                    <strong><i class="fa-solid fa-paperclip"></i> File đính kèm <b>${e(items.length)}</b></strong>
+                    <span>Tệp được lưu trên Google Drive theo người tải lên và Task ID.</span>
+                </div>
+                <button class="ghost-btn attachment-choose-btn" type="button" data-attachment-action="choose" ${loading ? "disabled" : ""}>
+                    <i class="fa-solid fa-cloud-arrow-up"></i><span>Chọn file</span>
+                </button>
+            </div>
+            <input class="hidden-input" type="file" multiple data-attachment-input>
+            <div class="attachment-dropzone ${loading ? "is-loading" : ""}" data-attachment-dropzone tabindex="${loading ? "-1" : "0"}">
+                <i class="fa-solid ${loading ? "fa-spinner fa-spin" : "fa-file-arrow-up"}"></i>
+                <div>
+                    <strong>${loading ? "Đang đọc danh sách file..." : "Kéo thả nhiều file vào đây"}</strong>
+                    <span>Tối đa ${e(maxSize)} mỗi file. Hỗ trợ Word, Excel, PDF, ảnh, PowerPoint và các tệp thông dụng.</span>
+                </div>
+            </div>
+            ${error ? `<div class="attachment-error"><i class="fa-solid fa-triangle-exclamation"></i><span>${e(error)}</span><button type="button" data-attachment-action="reload">Thử lại</button></div>` : ""}
+            ${uploads.length ? `<div class="attachment-upload-list">${uploads.map(renderAttachmentUpload).join("")}</div>` : ""}
+            <div class="attachment-list">
+                ${items.map(renderAttachmentItem).join("")}
+                ${!loading && !items.length && !uploads.length && !error ? `
+                    <div class="attachment-empty">
+                        <i class="fa-regular fa-folder-open"></i>
+                        <span>Chưa có file nào trong công việc này.</span>
+                    </div>
+                ` : ""}
+            </div>
+        </section>
+    `;
+}
+
+function renderAttachmentUpload(upload) {
+    const statusLabel = upload.status === "queued"
+        ? "Đang chờ"
+        : upload.status === "uploading"
+            ? `Đang tải ${Math.round(upload.progress || 0)}%`
+            : upload.status === "failed"
+                ? upload.error || "Tải lên thất bại"
+                : "Đã tải xong";
+    return `
+        <div class="attachment-row is-uploading ${upload.status === "failed" ? "has-error" : ""}" data-upload-id="${e(upload.id)}">
+            <span class="attachment-icon"><i class="fa-solid ${attachmentFileIcon(upload.file?.name, upload.file?.type)}"></i></span>
+            <div class="attachment-meta">
+                <strong title="${e(upload.file?.name || "")}">${e(upload.file?.name || "File")}</strong>
+                <span data-upload-status>${e(statusLabel)}</span>
+                <div class="attachment-progress"><i data-upload-progress style="width:${e(upload.progress || 0)}%"></i></div>
+            </div>
+            <span class="attachment-size">${e(formatAttachmentSize(upload.file?.size || 0))}</span>
+            ${upload.status === "failed" ? `<button class="icon-btn" type="button" data-attachment-action="retry" data-upload-id="${e(upload.id)}" title="Tải lại" aria-label="Tải lại"><i class="fa-solid fa-rotate-right"></i></button>` : ""}
+        </div>
+    `;
+}
+
+function renderAttachmentItem(item) {
+    return `
+        <article class="attachment-row" data-attachment-id="${e(item.id)}">
+            <span class="attachment-icon"><i class="fa-solid ${attachmentFileIcon(item.name, item.mimeType)}"></i></span>
+            <div class="attachment-meta">
+                <strong title="${e(item.name || "")}">${e(item.name || "File")}</strong>
+                <span>${e(formatAttachmentSize(item.sizeBytes))} · ${e(item.uploadedBy?.name || "Không xác định")} · ${e(formatShortDateTime(item.uploadedAt))}</span>
+            </div>
+            <div class="attachment-actions">
+                <button class="icon-btn" type="button" data-attachment-action="preview" data-id="${e(item.id)}" title="Xem trước" aria-label="Xem trước">
+                    <i class="fa-solid fa-eye"></i>
+                </button>
+                <button class="icon-btn" type="button" data-attachment-action="download" data-id="${e(item.id)}" title="Tải xuống" aria-label="Tải xuống">
+                    <i class="fa-solid fa-download"></i>
+                </button>
+                ${item.canDelete ? `
+                    <button class="icon-btn danger" type="button" data-attachment-action="delete" data-id="${e(item.id)}" title="Xóa file" aria-label="Xóa file">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                ` : ""}
+            </div>
+        </article>
+    `;
+}
+
+function renderAttachmentPreviewModal() {
+    const state = attachmentUiState.preview;
+    if (!state) return `<div class="modal-backdrop attachment-preview-backdrop" id="attachmentPreviewModal"></div>`;
+    const item = state.attachment || {};
+    return `
+        <div class="modal-backdrop open attachment-preview-backdrop" id="attachmentPreviewModal" role="dialog" aria-modal="true" aria-label="Xem trước file">
+            <section class="modal attachment-preview-modal">
+                <div class="modal-head">
+                    <div class="modal-title">
+                        <span><i class="fa-solid ${attachmentFileIcon(item.name, item.mimeType)}"></i></span>
+                        <div>
+                            <h2>${e(item.name || "Xem trước file")}</h2>
+                            <p>${e(formatAttachmentSize(item.sizeBytes))}${item.uploadedBy?.name ? ` · ${e(item.uploadedBy.name)}` : ""}</p>
+                        </div>
+                    </div>
+                    <div class="attachment-preview-head-actions">
+                        ${item.id ? `<button class="ghost-btn" type="button" data-attachment-action="download" data-id="${e(item.id)}"><i class="fa-solid fa-download"></i><span>Tải xuống</span></button>` : ""}
+                        <button class="icon-btn" type="button" data-attachment-action="close-preview" title="Đóng" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                </div>
+                <div class="modal-body attachment-preview-body">
+                    ${renderAttachmentPreviewBody(state)}
+                </div>
+            </section>
+        </div>
+    `;
+}
+
+function renderAttachmentPreviewBody(state) {
+    if (state.status === "loading") {
+        return `<div class="attachment-preview-state"><i class="fa-solid fa-spinner fa-spin"></i><strong>Đang chuẩn bị bản xem trước...</strong></div>`;
+    }
+    if (state.error) {
+        return `<div class="attachment-preview-state is-error"><i class="fa-solid fa-triangle-exclamation"></i><strong>Không xem trước được file</strong><span>${e(state.error)}</span></div>`;
+    }
+    const preview = state.data?.preview || {};
+    const contentUrl = state.data?.contentUrl || "";
+    if (preview.kind === "inline" && /^image\//i.test(preview.contentType || state.attachment?.mimeType || "")) {
+        return `<div class="attachment-image-preview"><img src="${e(contentUrl)}" alt="${e(state.attachment?.name || "Ảnh đính kèm")}"></div>`;
+    }
+    if (preview.kind === "inline") {
+        return `<iframe class="attachment-pdf-preview" src="${e(contentUrl)}" title="${e(state.attachment?.name || "File PDF")}"></iframe>`;
+    }
+    if (preview.kind === "text") {
+        return `<pre class="attachment-text-preview">${e(preview.text || "")}</pre>`;
+    }
+    if (preview.kind === "document") {
+        return `<article class="attachment-document-preview">${preview.html || "<p>Không có nội dung để hiển thị.</p>"}</article>`;
+    }
+    if (preview.kind === "workbook") {
+        const sheets = Array.isArray(preview.sheets) ? preview.sheets : [];
+        const activeIndex = Math.max(0, Math.min(attachmentUiState.previewSheet || 0, sheets.length - 1));
+        const sheet = sheets[activeIndex];
+        return `
+            <div class="attachment-workbook-preview">
+                <div class="attachment-sheet-tabs">
+                    ${sheets.map((entry, index) => `<button type="button" class="${index === activeIndex ? "active" : ""}" data-attachment-action="select-sheet" data-sheet-index="${e(index)}">${e(entry.name || `Sheet ${index + 1}`)}</button>`).join("")}
+                </div>
+                ${sheet ? renderAttachmentSheet(sheet) : `<div class="attachment-preview-state"><strong>Workbook không có dữ liệu hiển thị.</strong></div>`}
+            </div>
+        `;
+    }
+    return `
+        <div class="attachment-preview-state">
+            <i class="fa-regular fa-file"></i>
+            <strong>File đã được lưu an toàn</strong>
+            <span>${e(preview.message || "Định dạng này chưa hỗ trợ xem trực tiếp trên web.")}</span>
+            ${state.attachment?.id ? `<button class="primary-btn" type="button" data-attachment-action="download" data-id="${e(state.attachment.id)}"><i class="fa-solid fa-download"></i><span>Tải file xuống</span></button>` : ""}
+        </div>
+    `;
+}
+
+function renderAttachmentSheet(sheet) {
+    const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+    const width = Math.max(1, ...rows.map((row) => Array.isArray(row) ? row.length : 0));
+    return `
+        <div class="attachment-sheet-scroll">
+            <table>
+                <tbody>
+                    ${rows.map((row, rowIndex) => `
+                        <tr>
+                            ${Array.from({ length: width }, (_, columnIndex) => `<td data-row="${e(rowIndex + 1)}" data-column="${e(columnIndex + 1)}">${e(row?.[columnIndex] || "")}</td>`).join("")}
+                        </tr>
+                    `).join("")}
+                </tbody>
+            </table>
+        </div>
+        ${sheet.truncatedRows || sheet.truncatedColumns ? `<p class="attachment-preview-note">Bản xem trước đã được rút gọn. Tải file xuống để xem toàn bộ.</p>` : ""}
+    `;
+}
+
+function attachmentFileIcon(fileName, mimeType = "") {
+    const extension = String(fileName || "").toLowerCase().match(/\.[^.]+$/)?.[0] || "";
+    if (mimeType === "application/pdf" || extension === ".pdf") return "fa-file-pdf";
+    if (/^image\//i.test(mimeType) || [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif"].includes(extension)) return "fa-file-image";
+    if ([".doc", ".docx"].includes(extension)) return "fa-file-word";
+    if ([".xls", ".xlsx", ".xlsm", ".csv"].includes(extension)) return "fa-file-excel";
+    if ([".ppt", ".pptx"].includes(extension)) return "fa-file-powerpoint";
+    if ([".zip", ".rar", ".7z"].includes(extension)) return "fa-file-zipper";
+    if (/^text\//i.test(mimeType) || [".txt", ".md", ".log", ".json", ".xml"].includes(extension)) return "fa-file-lines";
+    return "fa-file";
+}
+
+function formatAttachmentSize(value) {
+    const bytes = Number(value || 0);
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+    if (bytes >= 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    return `${bytes} B`;
 }
 
 function renderProfileModal() {
@@ -5785,6 +6010,8 @@ function bindEvents() {
         });
     }
 
+    bindAttachmentEvents();
+
     const importInput = document.getElementById("importDataInput");
     if (importInput) importInput.addEventListener("change", handleImport);
 }
@@ -6266,6 +6493,309 @@ async function hydrateDeadlineEmailSettings({ silent = false } = {}) {
     }
 }
 
+function bindAttachmentEvents() {
+    document.querySelectorAll("[data-attachment-action]").forEach((button) => {
+        button.addEventListener("click", handleAttachmentAction);
+    });
+
+    const input = document.querySelector("[data-attachment-input]");
+    if (input) {
+        input.addEventListener("change", () => queueAttachmentFiles(input.files));
+    }
+
+    const dropzone = document.querySelector("[data-attachment-dropzone]");
+    if (dropzone && !dropzone.classList.contains("is-loading")) {
+        const setDragging = (active) => dropzone.classList.toggle("is-dragging", active);
+        dropzone.addEventListener("click", () => input?.click());
+        dropzone.addEventListener("keydown", (event) => {
+            if (!["Enter", " "].includes(event.key)) return;
+            event.preventDefault();
+            input?.click();
+        });
+        dropzone.addEventListener("dragenter", (event) => {
+            event.preventDefault();
+            setDragging(true);
+        });
+        dropzone.addEventListener("dragover", (event) => {
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+            setDragging(true);
+        });
+        dropzone.addEventListener("dragleave", (event) => {
+            if (!dropzone.contains(event.relatedTarget)) setDragging(false);
+        });
+        dropzone.addEventListener("drop", (event) => {
+            event.preventDefault();
+            setDragging(false);
+            queueAttachmentFiles(event.dataTransfer?.files);
+        });
+    }
+
+    const previewModal = document.getElementById("attachmentPreviewModal");
+    if (previewModal) {
+        previewModal.addEventListener("click", (event) => {
+            if (event.target === previewModal) closeAttachmentPreview();
+        });
+    }
+}
+
+async function hydrateWorkAttachments(workItemId, options = {}) {
+    if (!workItemId) return;
+    if (!options.force && attachmentUiState.workItemId === workItemId && attachmentUiState.status === "ready") return;
+    attachmentUiState = {
+        ...attachmentUiState,
+        workItemId,
+        status: "loading",
+        items: attachmentUiState.workItemId === workItemId ? attachmentUiState.items : [],
+        uploads: attachmentUiState.workItemId === workItemId ? attachmentUiState.uploads : [],
+        error: null
+    };
+    render();
+    try {
+        const data = await requestJson(`/work-items/${encodeURIComponent(workItemId)}/attachments`);
+        if (attachmentUiState.workItemId !== workItemId) return;
+        attachmentUiState.status = "ready";
+        attachmentUiState.items = Array.isArray(data.attachments) ? data.attachments : [];
+        attachmentUiState.maxFileSizeBytes = Number(data.maxFileSizeBytes || attachmentUiState.maxFileSizeBytes);
+        attachmentUiState.error = null;
+    } catch (error) {
+        if (attachmentUiState.workItemId !== workItemId) return;
+        attachmentUiState.status = "error";
+        attachmentUiState.error = error.message || "Không đọc được danh sách file.";
+    }
+    render();
+}
+
+function queueAttachmentFiles(fileList) {
+    const workItemId = ui.modal?.id;
+    if (!workItemId || attachmentUiState.workItemId !== workItemId) {
+        showToast("Hãy lưu và mở lại công việc trước khi tải file.");
+        return;
+    }
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    const blockedExtensions = new Set([
+        ".app", ".bat", ".cmd", ".com", ".cpl", ".dll", ".exe", ".gadget", ".hta",
+        ".inf", ".ins", ".jar", ".js", ".jse", ".lnk", ".msi", ".msp", ".pif",
+        ".ps1", ".reg", ".scr", ".sct", ".sh", ".sys", ".vb", ".vbe", ".vbs", ".wsf"
+    ]);
+    let accepted = 0;
+    for (const file of files) {
+        const extension = String(file.name || "").toLowerCase().match(/\.[^.]+$/)?.[0] || "";
+        if (!file.size) {
+            showToast(`File ${file.name || ""} đang rỗng nên không thể tải lên.`);
+            continue;
+        }
+        if (file.size > attachmentUiState.maxFileSizeBytes) {
+            showToast(`${file.name} vượt quá ${formatAttachmentSize(attachmentUiState.maxFileSizeBytes)}.`);
+            continue;
+        }
+        if (blockedExtensions.has(extension)) {
+            showToast(`Không cho phép tải file ${extension} vì lý do an toàn.`);
+            continue;
+        }
+        attachmentUiState.uploads.push({
+            id: createId(),
+            uploadKey: typeof window.crypto?.randomUUID === "function" ? window.crypto.randomUUID() : createId(),
+            file,
+            progress: 0,
+            status: "queued",
+            error: ""
+        });
+        accepted += 1;
+    }
+    if (!accepted) return;
+    render();
+    processAttachmentQueue();
+}
+
+function processAttachmentQueue() {
+    while (activeAttachmentUploads < 3) {
+        const upload = attachmentUiState.uploads.find((item) => item.status === "queued");
+        if (!upload) return;
+        activeAttachmentUploads += 1;
+        upload.status = "uploading";
+        uploadAttachmentFile(upload)
+            .catch(() => {})
+            .finally(() => {
+                activeAttachmentUploads = Math.max(0, activeAttachmentUploads - 1);
+                processAttachmentQueue();
+            });
+    }
+}
+
+function uploadAttachmentFile(upload) {
+    const workItemId = attachmentUiState.workItemId;
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${API_BASE}/work-items/${encodeURIComponent(workItemId)}/attachments`);
+        xhr.withCredentials = true;
+        xhr.setRequestHeader("Content-Type", upload.file.type || "application/octet-stream");
+        xhr.setRequestHeader("X-File-Name", encodeURIComponent(upload.file.name));
+        xhr.setRequestHeader("X-File-Type", upload.file.type || "application/octet-stream");
+        xhr.setRequestHeader("X-File-Size", String(upload.file.size));
+        xhr.setRequestHeader("X-Upload-Key", upload.uploadKey);
+        xhr.upload.addEventListener("progress", (event) => {
+            if (!event.lengthComputable) return;
+            upload.progress = Math.max(0, Math.min(100, event.loaded / event.total * 100));
+            updateAttachmentUploadProgress(upload);
+        });
+        xhr.addEventListener("load", () => {
+            let data = {};
+            try {
+                data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+            } catch {
+                data = {};
+            }
+            if (xhr.status < 200 || xhr.status >= 300) {
+                upload.status = "failed";
+                upload.error = data.error || `Không tải được file (${xhr.status}).`;
+                upload.progress = 0;
+                render();
+                reject(new Error(upload.error));
+                return;
+            }
+            upload.status = "completed";
+            upload.progress = 100;
+            if (data.attachment) {
+                attachmentUiState.items = [
+                    data.attachment,
+                    ...attachmentUiState.items.filter((item) => item.id !== data.attachment.id)
+                ];
+            }
+            attachmentUiState.uploads = attachmentUiState.uploads.filter((item) => item.id !== upload.id);
+            showToast(`Đã tải lên ${upload.file.name}.`);
+            render();
+            resolve(data.attachment);
+        });
+        xhr.addEventListener("error", () => {
+            upload.status = "failed";
+            upload.error = "Mất kết nối khi đang tải file.";
+            upload.progress = 0;
+            render();
+            reject(new Error(upload.error));
+        });
+        xhr.addEventListener("abort", () => {
+            upload.status = "failed";
+            upload.error = "Đã hủy tải file.";
+            render();
+            reject(new Error(upload.error));
+        });
+        xhr.send(upload.file);
+    });
+}
+
+function updateAttachmentUploadProgress(upload) {
+    const row = document.querySelector(`[data-upload-id="${CSS.escape(upload.id)}"]`);
+    if (!row) return;
+    const status = row.querySelector("[data-upload-status]");
+    const bar = row.querySelector("[data-upload-progress]");
+    if (status) status.textContent = `Đang tải ${Math.round(upload.progress || 0)}%`;
+    if (bar) bar.style.width = `${upload.progress || 0}%`;
+}
+
+async function handleAttachmentAction(event) {
+    event.preventDefault();
+    const action = event.currentTarget.dataset.attachmentAction;
+    const id = event.currentTarget.dataset.id;
+    if (action === "choose") {
+        document.querySelector("[data-attachment-input]")?.click();
+        return;
+    }
+    if (action === "reload") {
+        await hydrateWorkAttachments(attachmentUiState.workItemId, { force: true });
+        return;
+    }
+    if (action === "retry") {
+        const upload = attachmentUiState.uploads.find((item) => item.id === event.currentTarget.dataset.uploadId);
+        if (!upload) return;
+        upload.status = "queued";
+        upload.error = "";
+        upload.progress = 0;
+        render();
+        processAttachmentQueue();
+        return;
+    }
+    if (action === "preview") {
+        await openAttachmentPreview(id);
+        return;
+    }
+    if (action === "download") {
+        downloadAttachment(id);
+        return;
+    }
+    if (action === "delete") {
+        await deleteAttachment(id);
+        return;
+    }
+    if (action === "close-preview") {
+        closeAttachmentPreview();
+        return;
+    }
+    if (action === "select-sheet") {
+        attachmentUiState.previewSheet = Number(event.currentTarget.dataset.sheetIndex || 0);
+        render();
+    }
+}
+
+async function openAttachmentPreview(id) {
+    const attachment = attachmentUiState.items.find((item) => item.id === id);
+    if (!attachment) return;
+    attachmentUiState.previewSheet = 0;
+    attachmentUiState.preview = { status: "loading", attachment, data: null, error: null };
+    render();
+    try {
+        const data = await requestJson(`/attachments/${encodeURIComponent(id)}/preview`);
+        if (attachmentUiState.preview?.attachment?.id !== id) return;
+        attachmentUiState.preview = {
+            status: "ready",
+            attachment: data.attachment || attachment,
+            data,
+            error: null
+        };
+    } catch (error) {
+        if (attachmentUiState.preview?.attachment?.id !== id) return;
+        attachmentUiState.preview = {
+            status: "error",
+            attachment,
+            data: null,
+            error: error.message || "Không xem trước được file."
+        };
+    }
+    render();
+}
+
+function closeAttachmentPreview() {
+    attachmentUiState.preview = null;
+    attachmentUiState.previewSheet = 0;
+    render();
+}
+
+function downloadAttachment(id) {
+    if (!id) return;
+    const link = document.createElement("a");
+    link.href = `${API_BASE}/attachments/${encodeURIComponent(id)}/content`;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+async function deleteAttachment(id) {
+    const attachment = attachmentUiState.items.find((item) => item.id === id);
+    if (!attachment) return;
+    if (!window.confirm(`Xóa file "${attachment.name}" khỏi công việc và Google Drive?`)) return;
+    try {
+        await requestJson(`/attachments/${encodeURIComponent(id)}`, { method: "DELETE" });
+        attachmentUiState.items = attachmentUiState.items.filter((item) => item.id !== id);
+        if (attachmentUiState.preview?.attachment?.id === id) attachmentUiState.preview = null;
+        showToast("Đã xóa file đính kèm.");
+        render();
+    } catch (error) {
+        showToast(error.message || "Không xóa được file đính kèm.");
+    }
+}
+
 async function hydrateGoogleSheetSyncStatus({ silent = false } = {}) {
     if (authState.user?.role !== "admin") {
         googleSheetSyncUiState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
@@ -6574,6 +7104,17 @@ async function handleAuthAction(event) {
     accountDirectory = [];
     deadlineEmailState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
     googleSheetSyncUiState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
+    attachmentUiState = {
+        workItemId: null,
+        status: "idle",
+        items: [],
+        maxFileSizeBytes: 50 * 1024 * 1024,
+        uploads: [],
+        error: null,
+        preview: null,
+        previewSheet: 0
+    };
+    activeAttachmentUploads = 0;
     localStorage.removeItem(STORAGE_KEY);
     ui.modal = null;
     ui.profileOpen = false;
@@ -7033,6 +7574,7 @@ function openEdit(id) {
     }
     ui.modal = { tab: ui.activeTab, id };
     render();
+    if (mod.collection === "workItems") hydrateWorkAttachments(id);
 }
 
 function openWorkCategoryCreate() {
@@ -7129,10 +7671,13 @@ function openWorkProgress(id) {
     }
     ui.modal = { tab: "workItems", id, mode: "work-progress" };
     render();
+    hydrateWorkAttachments(id);
 }
 
 function closeModal() {
     ui.modal = null;
+    attachmentUiState.preview = null;
+    attachmentUiState.previewSheet = 0;
     render();
 }
 

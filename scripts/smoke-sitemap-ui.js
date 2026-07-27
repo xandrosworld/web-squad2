@@ -29,6 +29,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
   const dashboardShot = path.join(os.tmpdir(), "squad2-work-dashboard.png");
   const taskMasterShot = path.join(os.tmpdir(), "squad2-task-master.png");
   const multiSelectShot = path.join(os.tmpdir(), "squad2-work-people-multiselect.png");
+  const attachmentShot = path.join(os.tmpdir(), "squad2-work-attachments.png");
   const inputsShot = path.join(os.tmpdir(), "squad2-work-inputs.png");
   const personnelMapShot = path.join(os.tmpdir(), "squad2-personnel-map.png");
   const memberKpiShot = path.join(os.tmpdir(), "squad2-member-kpi.png");
@@ -247,6 +248,24 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       || !await page.locator(".field-lock-note").isVisible()) {
       throw new Error("Form sửa chưa khóa và giải thích trường Ngày giao việc.");
     }
+    await page.waitForSelector(".attachment-dropzone:not(.is-loading)");
+    await page.locator("[data-attachment-input]").setInputFiles({
+      name: "smoke-attachment.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("Nội dung file smoke", "utf8")
+    });
+    await page.waitForSelector('.attachment-row[data-attachment-id] strong:text-is("smoke-attachment.txt")');
+    await page.locator(".work-attachments").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: attachmentShot, fullPage: false });
+    await page.locator('[data-attachment-action="preview"]').click();
+    await page.waitForSelector(".attachment-preview-modal");
+    if (!await page.locator(".attachment-text-preview").getByText("Nội dung xem trước từ Google Drive").isVisible()) {
+      throw new Error("Popup xem trước file text chưa hiển thị nội dung.");
+    }
+    await page.locator('[data-attachment-action="close-preview"]').click();
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.locator('[data-attachment-action="delete"]').click();
+    await page.waitForSelector('.attachment-row[data-attachment-id]', { state: "detached" });
     await page.locator('[data-action="close-modal"]').first().click();
     const progressAction = page.locator('[data-action="open-work-progress"]').first();
     if (!await progressAction.count()) throw new Error("Task_Master thiếu form cập nhật tiến độ.");
@@ -586,6 +605,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       dashboardScreenshot: dashboardShot,
       taskMasterScreenshot: taskMasterShot,
       multiSelectScreenshot: multiSelectShot,
+      attachmentScreenshot: attachmentShot,
       inputsScreenshot: inputsShot,
       personnelMapScreenshot: personnelMapShot,
       memberKpiScreenshot: memberKpiShot,
@@ -661,6 +681,68 @@ async function buildFixtureState() {
 }
 
 async function mockApi(context, state) {
+  const attachments = [];
+  await context.route("**/api/work-items/*/attachments", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ attachments, maxFileSizeBytes: 50 * 1024 * 1024 })
+      });
+    }
+    const fileName = decodeURIComponent(request.headers()["x-file-name"] || "smoke.txt");
+    const attachment = {
+      id: `attachment-${attachments.length + 1}`,
+      workItemId: state.workItems[0]?.id || "work-1",
+      taskId: state.workItems[0]?.taskId || "SQ2-T01-001",
+      name: fileName,
+      mimeType: request.headers()["x-file-type"] || "text/plain",
+      sizeBytes: Number(request.headers()["x-file-size"] || request.postDataBuffer()?.length || 0),
+      uploadedAt: new Date().toISOString(),
+      uploadedBy: { id: "smoke-admin", name: "Mai Tấn Thành", email: "thanhmt@bidv.com.vn" },
+      canDelete: true,
+      driveUrl: "https://drive.google.com/file/d/smoke/view"
+    };
+    attachments.unshift(attachment);
+    return route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ attachment })
+    });
+  });
+  await context.route("**/api/attachments/*/preview", (route) => {
+    const id = route.request().url().split("/").at(-2);
+    const attachment = attachments.find((item) => item.id === id) || attachments[0];
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        attachment,
+        preview: { kind: "text", text: "Nội dung xem trước từ Google Drive" },
+        contentUrl: ""
+      })
+    });
+  });
+  await context.route("**/api/attachments/*", (route) => {
+    const url = new URL(route.request().url());
+    const id = url.pathname.split("/").at(-1);
+    if (route.request().method() === "DELETE") {
+      const index = attachments.findIndex((item) => item.id === id);
+      if (index >= 0) attachments.splice(index, 1);
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true })
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "text/plain",
+      headers: { "Content-Disposition": 'attachment; filename="smoke.txt"' },
+      body: "Nội dung smoke"
+    });
+  });
   await context.route("**/api/export/work-items?**", (route) => {
     state.__lastWorkExportUrl = route.request().url();
     return route.fulfill({
