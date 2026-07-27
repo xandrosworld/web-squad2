@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const fs = require("fs");
 
 const ExcelJS = require("exceljs");
 const JSZip = require("jszip");
@@ -205,6 +206,8 @@ function expectStatus(label, result, expected) {
 
 async function buildFixtures() {
   const workbook = new ExcelJS.Workbook();
+  const realDocx = String(process.env.SMOKE_DOCX_PATH || "").trim();
+  const realPptx = String(process.env.SMOKE_PPTX_PATH || "").trim();
   const sheet = workbook.addWorksheet("Theo dõi");
   sheet.addRow(["Task ID", "Trạng thái"]);
   sheet.addRow(["SQ2-SMOKE-001", "Đang thực hiện"]);
@@ -232,7 +235,7 @@ async function buildFixtures() {
       name: "smoke-huong-dan.docx",
       mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       previewKind: "document",
-      buffer: await minimalDocx()
+      buffer: realDocx ? fs.readFileSync(realDocx) : await minimalDocx()
     },
     {
       name: "smoke-ke-hoach.xlsx",
@@ -244,7 +247,7 @@ async function buildFixtures() {
       name: "smoke-trinh-bay.pptx",
       mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       previewKind: "presentation",
-      buffer: await minimalPptx()
+      buffer: realPptx ? fs.readFileSync(realPptx) : await minimalPptx()
     }
   ];
 }

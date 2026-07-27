@@ -191,11 +191,15 @@ if (!password) {
     const adminUpdate = await expectStatus("admin can fully update work item", request(`/api/records/workItems/${itemId}`, {
       method: "PUT",
       cookie: admin.cookie,
-      body: { record: { ...item, title: `Smoke đầu việc admin sửa ${stamp}`, status: "Hoàn thành", progress: 100, completedDate: "2026-07-05" } }
+      body: { record: { ...item, title: `Smoke đầu việc admin sửa ${stamp}`, status: "Chưa bắt đầu", progress: 0, completedDate: "2026-07-05" } }
     }), 200);
     const updatedForAdmin = findRecord(adminUpdate.data.state || {}, "workItems", itemId);
-    if (!updatedForAdmin || updatedForAdmin.title !== `Smoke đầu việc admin sửa ${stamp}` || updatedForAdmin.progress !== 100) {
-      throw new Error("Admin full update did not persist expected fields.");
+    if (!updatedForAdmin
+      || updatedForAdmin.title !== `Smoke đầu việc admin sửa ${stamp}`
+      || updatedForAdmin.status !== "Hoàn thành"
+      || updatedForAdmin.progress !== 100
+      || updatedForAdmin.completedDate !== "2026-07-05") {
+      throw new Error("Backend did not normalize a completion date to Hoàn thành · 100%.");
     }
     if (Number(updatedForAdmin.sortOrder) !== 1) {
       throw new Error(`Backend không bảo vệ STT theo nhóm; nhận ${updatedForAdmin.sortOrder}.`);

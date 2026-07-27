@@ -5612,7 +5612,6 @@ async function applyRecordDefaults(client, collection, record) {
     normalizeWorkItemCompletion(record);
     if (record.status === "Hoàn thành") {
       if (isBlank(record.completedDate)) record.completedDate = localDateString(new Date());
-      record.progress = 100;
     }
   }
   if (collection === "kpiConfig") {
