@@ -10,6 +10,7 @@ const {
   hasGmailSendScope,
   hasGoogleScope,
   GOOGLE_SHEETS_READONLY_SCOPE,
+  GOOGLE_DRIVE_FILE_SCOPE,
   buildAssigneeSubject,
   renderAssigneeDigest,
   renderManagerDigest,
@@ -41,6 +42,8 @@ assert.strictEqual(hasGmailSendScope("openid email https://www.googleapis.com/au
 assert.strictEqual(hasGmailSendScope("openid email"), false);
 assert.strictEqual(hasGoogleScope(`openid ${GOOGLE_SHEETS_READONLY_SCOPE}`, GOOGLE_SHEETS_READONLY_SCOPE), true);
 assert.strictEqual(hasGoogleScope("openid email", GOOGLE_SHEETS_READONLY_SCOPE), false);
+assert.strictEqual(hasGoogleScope(`openid ${GOOGLE_DRIVE_FILE_SCOPE}`, GOOGLE_DRIVE_FILE_SCOPE), true);
+assert.strictEqual(hasGoogleScope("openid email", GOOGLE_DRIVE_FILE_SCOPE), false);
 assert.strictEqual(
   nextDailyRunAt(new Date("2026-07-18T00:30:00.000Z"), 1).toISOString(),
   "2026-07-18T01:00:00.000Z",
@@ -208,10 +211,19 @@ assert.match(mime, /Content-Type: text\/html; charset=UTF-8/);
 
 async function checkFreshDatabaseDefaults() {
   const service = createDeadlineNotificationService({
+    oauthClientId: "client-id",
+    oauthClientSecret: "client-secret",
     expectedSenderEmail: "maitanthanh1998@gmail.com",
     defaultManagerEmails: "yenuth@bidv.com.vn",
     encryptionSecret: secret
   });
+  const authorizationUrl = new URL(service.buildAuthorizationUrl({
+    redirectUri: "https://example.test/oauth/callback",
+    state: "signed-state"
+  }));
+  const requestedScopes = authorizationUrl.searchParams.get("scope").split(/\s+/);
+  assert(requestedScopes.includes(GOOGLE_SHEETS_READONLY_SCOPE));
+  assert(requestedScopes.includes(GOOGLE_DRIVE_FILE_SCOPE));
   const settings = await service.readSettings({
     query: async () => ({ rows: [] })
   });

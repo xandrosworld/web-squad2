@@ -11,7 +11,8 @@ const {
   createDeadlineNotificationService,
   nextDailyRunAt,
   signOAuthState,
-  verifyOAuthState
+  verifyOAuthState,
+  GOOGLE_DRIVE_FILE_SCOPE
 } = require("./deadline-notifications");
 const {
   GOOGLE_SHEETS_READONLY_SCOPE,
@@ -855,12 +856,12 @@ app.get("/api/email-notifications/oauth/callback", async (req, res) => {
   try {
     await ensureSchema();
     if (req.query.error) {
-      redirectWithStatus("error", "Google chưa cấp quyền gửi Gmail.");
+      redirectWithStatus("error", "Google chưa cấp đủ quyền cho hệ thống.");
       return;
     }
     const state = verifyOAuthState(req.query.state, sessionSecret);
     if (!state?.userId || !state?.redirectUri) {
-      redirectWithStatus("error", "Phiên kết nối Gmail đã hết hạn. Hãy thực hiện lại.");
+      redirectWithStatus("error", "Phiên kết nối Google đã hết hạn. Hãy thực hiện lại.");
       return;
     }
     const userResult = await getPool().query(`
@@ -871,7 +872,7 @@ app.get("/api/email-notifications/oauth/callback", async (req, res) => {
     `, [state.userId]);
     const user = userResult.rows[0];
     if (!user?.active || user.role !== "admin") {
-      redirectWithStatus("error", "Tài khoản không còn quyền kết nối Gmail.");
+      redirectWithStatus("error", "Tài khoản không còn quyền kết nối Google.");
       return;
     }
     await deadlineNotificationService.connectFromAuthorizationCode(getPool(), {
@@ -6718,7 +6719,9 @@ async function getGoogleSheetSyncStatus(db, req = null) {
       connected: googleStatus.connected,
       accountEmail: googleStatus.accountEmail,
       sheetAccessConnected: googleStatus.sheetAccessConnected,
-      missingSheetScope: googleStatus.missingSheetScope
+      missingSheetScope: googleStatus.missingSheetScope,
+      driveAccessConnected: googleStatus.driveAccessConnected,
+      missingDriveScope: googleStatus.missingDriveScope
     },
     scheduler: {
       processEnabled: googleSheetSyncSchedulerEnabled,

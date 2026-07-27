@@ -8,11 +8,13 @@ const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 const GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 const GOOGLE_SHEETS_READONLY_SCOPE = "https://www.googleapis.com/auth/spreadsheets.readonly";
+const GOOGLE_DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const GOOGLE_SCOPES = [
   "openid",
   "email",
   GMAIL_SEND_SCOPE,
-  GOOGLE_SHEETS_READONLY_SCOPE
+  GOOGLE_SHEETS_READONLY_SCOPE,
+  GOOGLE_DRIVE_FILE_SCOPE
 ];
 const DEFAULT_TIME_ZONE = "Asia/Ho_Chi_Minh";
 
@@ -43,6 +45,8 @@ function createDeadlineNotificationService(options = {}) {
       missingSendScope: Boolean(connection?.refreshToken && !hasGmailSendScope(connection.scope)),
       sheetAccessConnected: Boolean(connection?.refreshToken && hasGoogleScope(connection.scope, GOOGLE_SHEETS_READONLY_SCOPE)),
       missingSheetScope: Boolean(connection?.refreshToken && !hasGoogleScope(connection.scope, GOOGLE_SHEETS_READONLY_SCOPE)),
+      driveAccessConnected: Boolean(connection?.refreshToken && hasGoogleScope(connection.scope, GOOGLE_DRIVE_FILE_SCOPE)),
+      missingDriveScope: Boolean(connection?.refreshToken && !hasGoogleScope(connection.scope, GOOGLE_DRIVE_FILE_SCOPE)),
       accountEmail: connection?.accountEmail || "",
       expectedSenderEmail,
       callbackUrl: String(context.callbackUrl || ""),
@@ -380,7 +384,14 @@ function createDeadlineNotificationService(options = {}) {
     const missingScopes = [...new Set(requiredScopes.map((scope) => String(scope || "").trim()).filter(Boolean))]
       .filter((scope) => !hasGoogleScope(connection.scope, scope));
     if (missingScopes.length) {
-      throw createPublicError(409, "Tài khoản Google chưa có quyền đọc Google Sheet. Hãy bấm Kết nối lại và cấp quyền xem bảng tính.");
+      const missingDrive = missingScopes.includes(GOOGLE_DRIVE_FILE_SCOPE);
+      const missingSheet = missingScopes.includes(GOOGLE_SHEETS_READONLY_SCOPE);
+      const permissionLabel = missingDrive && missingSheet
+        ? "Google Drive và Google Sheet"
+        : missingDrive
+          ? "Google Drive"
+          : "Google Sheet";
+      throw createPublicError(409, `Tài khoản Google chưa có quyền ${permissionLabel}. Hãy bấm Kết nối lại Google và chấp nhận quyền mới.`);
     }
     return refreshAccessToken(connection.refreshToken);
   }
@@ -1083,6 +1094,7 @@ module.exports = {
   hasGmailSendScope,
   hasGoogleScope,
   GOOGLE_SHEETS_READONLY_SCOPE,
+  GOOGLE_DRIVE_FILE_SCOPE,
   buildAssigneeSubject,
   renderAssigneeDigest,
   renderManagerDigest,
