@@ -19,6 +19,7 @@ if (!password) {
 
   const fixtures = await buildFixtures();
   const uploaded = [];
+  let summary = null;
   try {
     for (const fixture of fixtures) {
       const result = await upload(workItem.id, fixture, session.cookie);
@@ -52,7 +53,7 @@ if (!password) {
       }
     }
 
-    console.log(JSON.stringify({
+    summary = {
       ok: true,
       workItem: workItem.taskId,
       uploader: session.user.email || session.user.username,
@@ -62,15 +63,34 @@ if (!password) {
         size: entry.buffer.length,
         sha256: entry.attachment.sha256
       }))
-    }, null, 2));
+    };
   } finally {
+    const cleanupErrors = [];
     for (const entry of uploaded.reverse()) {
-      await jsonRequest(`/api/attachments/${encodeURIComponent(entry.attachment.id)}`, {
+      const result = await jsonRequest(`/api/attachments/${encodeURIComponent(entry.attachment.id)}`, {
         method: "DELETE",
         cookie: session.cookie
-      }).catch(() => {});
+      }).catch((error) => ({ status: 0, data: { error: error.message } }));
+      if (![200, 404].includes(result.status)) {
+        cleanupErrors.push(`${entry.name}: ${result.status} ${result.data?.error || ""}`);
+      }
+    }
+    const remainingResult = await jsonRequest(`/api/work-items/${encodeURIComponent(workItem.id)}/attachments`, {
+      cookie: session.cookie
+    }).catch((error) => ({ status: 0, data: { error: error.message } }));
+    const uploadedIds = new Set(uploaded.map((entry) => entry.attachment.id));
+    const remaining = (remainingResult.data?.attachments || []).filter((item) => uploadedIds.has(item.id));
+    if (remainingResult.status !== 200) {
+      cleanupErrors.push(`verify list: ${remainingResult.status} ${remainingResult.data?.error || ""}`);
+    }
+    if (remaining.length) {
+      cleanupErrors.push(`còn ${remaining.length} file smoke trong danh sách công việc`);
+    }
+    if (cleanupErrors.length) {
+      throw new Error(`Không dọn sạch được dữ liệu smoke: ${cleanupErrors.join("; ")}`);
     }
   }
+  console.log(JSON.stringify(summary, null, 2));
 })().catch((error) => {
   console.error(error);
   process.exit(1);
