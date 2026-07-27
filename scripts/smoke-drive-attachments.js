@@ -207,12 +207,13 @@ function expectStatus(label, result, expected) {
 async function buildFixtures() {
   const workbook = new ExcelJS.Workbook();
   const realDocx = String(process.env.SMOKE_DOCX_PATH || "").trim();
+  const realXlsm = String(process.env.SMOKE_XLSM_PATH || "").trim();
   const realPptx = String(process.env.SMOKE_PPTX_PATH || "").trim();
   const sheet = workbook.addWorksheet("Theo dõi");
   sheet.addRow(["Task ID", "Trạng thái"]);
   sheet.addRow(["SQ2-SMOKE-001", "Đang thực hiện"]);
 
-  return [
+  const fixtures = [
     {
       name: "smoke-ghi-chu.txt",
       mimeType: "text/plain",
@@ -250,6 +251,17 @@ async function buildFixtures() {
       buffer: realPptx ? fs.readFileSync(realPptx) : await minimalPptx()
     }
   ];
+
+  if (realXlsm) {
+    fixtures.splice(-1, 0, {
+      name: "smoke-du-lieu.xlsm",
+      mimeType: "application/vnd.ms-excel.sheet.macroEnabled.12",
+      previewKind: "workbook",
+      buffer: fs.readFileSync(realXlsm)
+    });
+  }
+
+  return fixtures;
 }
 
 function minimalPdf() {
