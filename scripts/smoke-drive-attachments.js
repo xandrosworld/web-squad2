@@ -15,6 +15,7 @@ if (!password) {
   const session = await login();
   const state = await jsonRequest("/api/state", { cookie: session.cookie });
   const workItem = (state.data.state?.workItems || []).find((item) => item?.id && item?.taskId);
+  const baselineAttachmentCount = Number(workItem?.attachmentCount || 0);
   if (!workItem) throw new Error("Không tìm thấy công việc để kiểm tra file đính kèm.");
 
   const fixtures = await buildFixtures();
@@ -36,6 +37,16 @@ if (!password) {
       }
     }
 
+    const stateAfterUpload = await jsonRequest("/api/state", { cookie: session.cookie });
+    expectStatus("state after attachment upload", stateAfterUpload, 200);
+    const workItemAfterUpload = (stateAfterUpload.data.state?.workItems || []).find((item) => item.id === workItem.id);
+    if (Number(workItemAfterUpload?.attachmentCount || 0) !== baselineAttachmentCount + uploaded.length) {
+      throw new Error(
+        `${workItem.taskId}: attachmentCount expected ${baselineAttachmentCount + uploaded.length}, `
+        + `got ${workItemAfterUpload?.attachmentCount ?? "missing"}.`
+      );
+    }
+
     for (const entry of uploaded) {
       const preview = await jsonRequest(`/api/attachments/${encodeURIComponent(entry.attachment.id)}/preview`, {
         cookie: session.cookie
@@ -43,6 +54,9 @@ if (!password) {
       expectStatus(`preview ${entry.name}`, preview, 200);
       if (preview.data.preview?.kind !== entry.previewKind) {
         throw new Error(`${entry.name}: expected preview ${entry.previewKind}, got ${preview.data.preview?.kind || "empty"}.`);
+      }
+      if (entry.previewKind === "presentation" && !preview.data.contentUrl) {
+        throw new Error(`${entry.name}: presentation preview is missing its authenticated content URL.`);
       }
 
       const downloaded = await binaryRequest(`/api/attachments/${encodeURIComponent(entry.attachment.id)}/content`, {
@@ -85,6 +99,18 @@ if (!password) {
     }
     if (remaining.length) {
       cleanupErrors.push(`còn ${remaining.length} file smoke trong danh sách công việc`);
+    }
+    const stateAfterCleanup = await jsonRequest("/api/state", {
+      cookie: session.cookie
+    }).catch((error) => ({ status: 0, data: { error: error.message } }));
+    const cleanedWorkItem = (stateAfterCleanup.data?.state?.workItems || []).find((item) => item.id === workItem.id);
+    if (stateAfterCleanup.status !== 200) {
+      cleanupErrors.push(`verify state: ${stateAfterCleanup.status} ${stateAfterCleanup.data?.error || ""}`);
+    } else if (Number(cleanedWorkItem?.attachmentCount || 0) !== baselineAttachmentCount) {
+      cleanupErrors.push(
+        `attachmentCount after cleanup is ${cleanedWorkItem?.attachmentCount ?? "missing"}, `
+        + `expected ${baselineAttachmentCount}`
+      );
     }
     if (cleanupErrors.length) {
       throw new Error(`Không dọn sạch được dữ liệu smoke: ${cleanupErrors.join("; ")}`);
@@ -217,7 +243,7 @@ async function buildFixtures() {
     {
       name: "smoke-trinh-bay.pptx",
       mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-      previewKind: "unavailable",
+      previewKind: "presentation",
       buffer: await minimalPptx()
     }
   ];

@@ -206,6 +206,8 @@ const pilotWorkPlanSeedKey = "pilot_workplan_seed_v1";
 const deliveryWorkCategoriesMigrationKey = "delivery_work_categories_v1";
 const workItemInvariantMigrationKey = "work_item_status_progress_v1";
 const workItemInvariantBackupKey = "backup_work_item_status_progress_v1";
+const workItemCompletionMigrationKey = "work_item_completion_date_v1";
+const workItemCompletionBackupKey = "backup_work_item_completion_date_v1";
 const workItemPeopleMigrationKey = "work_item_people_v1";
 const workItemPeopleBackupKey = "backup_work_item_people_v1";
 const workItemPeopleIdentityMigrationKey = "work_item_people_identity_v1";
@@ -1233,7 +1235,9 @@ app.get("/api/attachments/:id/preview", asyncHandler(async (req, res) => {
   res.json({
     attachment: mapAttachmentRow(row, req.user, workItem),
     preview,
-    contentUrl: preview.kind === "inline" ? `/api/attachments/${encodeURIComponent(row.id)}/content?inline=1` : ""
+    contentUrl: ["inline", "presentation"].includes(preview.kind)
+      ? `/api/attachments/${encodeURIComponent(row.id)}/content?inline=1`
+      : ""
   });
 }));
 
@@ -1778,6 +1782,19 @@ app.use("/api", (req, res) => {
   res.status(404).json({ error: "API endpoint không tồn tại.", status: 404 });
 });
 
+app.get("/vendor/pptx-renderer/aiden0z-pptx-renderer.browser.es.js", (req, res) => {
+  res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  res.type("application/javascript");
+  res.sendFile(path.join(
+    publicDir,
+    "node_modules",
+    "@aiden0z",
+    "pptx-renderer",
+    "dist",
+    "aiden0z-pptx-renderer.browser.es.js"
+  ));
+});
+
 app.use("/assets", express.static(path.join(publicDir, "assets")));
 app.get(["/", "/index.html"], (req, res) => {
   setNoStore(res);
@@ -1856,6 +1873,7 @@ module.exports = {
   __testDefaultWorkKpiConfig: defaultWorkKpiConfig,
   __testValidateRecordForCollection: validateRecordForCollection,
   __testExpectedWorkStatusForProgress: expectedWorkStatusForProgress,
+  __testNormalizeWorkItemCompletion: normalizeWorkItemCompletion,
   __testAssertAndPreserveWorkItemStartDate: assertAndPreserveWorkItemStartDate,
   __testLegacyStartDateBackfillField: legacyStartDateBackfillField,
   __testBuildPilotWorkPlanSeedRecords: buildPilotWorkPlanSeedRecords,
@@ -2019,6 +2037,7 @@ function ensureSchema() {
       await ensurePilotWorkPlanSeed();
       await ensureDeliveryWorkCategories();
       await ensureWorkItemInvariantMigration();
+      await ensureWorkItemCompletionMigration();
       await ensureWorkItemPeopleMigration();
       await ensureWorkItemPeopleIdentityMigration();
       await ensureWorkKpiConfig();
@@ -4602,7 +4621,7 @@ function getLatestRecord(rows) {
 
 async function readState(db, viewer = null) {
   const state = emptyState();
-  const [recordResult, metaResult] = await Promise.all([
+  const [recordResult, metaResult, attachmentCountResult] = await Promise.all([
     db.query(`
       select records.collection,
              records.data,
@@ -4617,12 +4636,31 @@ async function readState(db, viewer = null) {
       left join app_users creator on creator.id = records.created_by
       order by records.collection asc, records.updated_at desc
     `),
-    db.query("select value from app_meta where key = 'state'")
+    db.query("select value from app_meta where key = 'state'"),
+    viewer
+      ? db.query(`
+          select work_item_id, count(*)::int as attachment_count
+          from work_item_attachments
+          where status = 'completed'
+            and deleted_at is null
+          group by work_item_id
+        `)
+      : Promise.resolve({ rows: [] })
   ]);
 
+  const attachmentCounts = new Map(
+    attachmentCountResult.rows.map((row) => [
+      String(row.work_item_id),
+      Number(row.attachment_count || 0)
+    ])
+  );
   for (const row of recordResult.rows) {
     if (collectionSet.has(row.collection)) {
-      state[row.collection].push(viewer ? decorateRecord(row, viewer) : row.data);
+      const record = viewer ? decorateRecord(row, viewer) : row.data;
+      if (viewer && row.collection === "workItems") {
+        record.attachmentCount = attachmentCounts.get(String(record.id)) || 0;
+      }
+      state[row.collection].push(record);
     }
   }
   sortStateCollections(state);
@@ -5011,7 +5049,7 @@ function mapAttachmentRow(row, viewer, workItem = null) {
     canDelete: workItem
       ? canDeleteAttachment(viewer, row, workItem)
       : viewer?.role === "admin" || row.created_by === viewer?.id,
-    driveUrl: viewer?.role === "admin" ? row.drive_web_view_link || "" : ""
+    driveUrl: viewer ? row.drive_web_view_link || "" : ""
   };
 }
 
@@ -5544,6 +5582,7 @@ function isComputedRecordField(collection, field) {
 }
 
 function stripComputedFields(collection, record) {
+  if (collection === "workItems") delete record.attachmentCount;
   const fields = computedFieldsByCollection[collection] || [];
   if (!fields.length || fields.includes("*")) return record;
   for (const field of fields) {
@@ -5570,8 +5609,10 @@ async function applyRecordDefaults(client, collection, record) {
     if (isBlank(record.assigneeEmail)) record.assigneeEmail = emailForWorkAssignee(record.assignee);
     normalizeWorkItemPeople(record);
     if (isBlank(record.progress)) record.progress = 0;
+    normalizeWorkItemCompletion(record);
     if (record.status === "Hoàn thành") {
       if (isBlank(record.completedDate)) record.completedDate = localDateString(new Date());
+      record.progress = 100;
     }
   }
   if (collection === "kpiConfig") {
@@ -5611,8 +5652,16 @@ function normalizeWorkItemsForValidation(items) {
     normalizeWorkItemPeople(record);
     record.status = normalizeWorkStatus(record.status);
     if (record.progress == null || String(record.progress).trim() === "") record.progress = 0;
+    normalizeWorkItemCompletion(record);
   }
   return items;
+}
+
+function normalizeWorkItemCompletion(record) {
+  if (!String(record?.completedDate || "").trim()) return record;
+  record.status = "Hoàn thành";
+  record.progress = 100;
+  return record;
 }
 
 function assertAndPreserveWorkItemStartDate(currentRecord, incomingRecord) {
@@ -5879,6 +5928,83 @@ async function ensureWorkItemInvariantMigration() {
       insert into app_meta (key, value, updated_at)
       values ($1, $2::jsonb, now())
     `, [workItemInvariantMigrationKey, JSON.stringify(summary)]);
+    if (changedRecords) await touchMeta(client);
+    await client.query("commit");
+    return summary;
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function ensureWorkItemCompletionMigration() {
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [workItemCompletionMigrationKey]);
+    const existing = await client.query(
+      "select value from app_meta where key = $1 for update",
+      [workItemCompletionMigrationKey]
+    );
+    if (existing.rows[0]) {
+      await client.query("commit");
+      return existing.rows[0].value;
+    }
+
+    const result = await client.query(`
+      select id, data, created_by, updated_by, created_at, updated_at
+      from uat_records
+      where collection = 'workItems'
+      order by id
+      for update
+    `);
+    const backup = result.rows.map((row) => ({
+      id: row.id,
+      data: row.data,
+      createdBy: row.created_by,
+      updatedBy: row.updated_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+    await client.query(`
+      insert into app_meta (key, value, updated_at)
+      values ($1, $2::jsonb, now())
+      on conflict (key) do nothing
+    `, [workItemCompletionBackupKey, JSON.stringify({
+      createdAt: new Date().toISOString(),
+      records: backup
+    })]);
+
+    let changedRecords = 0;
+    for (const row of result.rows) {
+      const data = { ...(row.data || {}) };
+      if (!String(data.completedDate || "").trim()) continue;
+      const previousStatus = normalizeWorkStatus(data.status);
+      const previousProgress = Number(data.progress);
+      normalizeWorkItemCompletion(data);
+      validateWorkItemStatusProgress(data);
+      if (previousStatus === data.status && previousProgress === data.progress) continue;
+      await client.query(`
+        update uat_records
+        set data = $1::jsonb,
+            updated_at = now()
+        where collection = 'workItems' and id = $2
+      `, [JSON.stringify(data), row.id]);
+      changedRecords += 1;
+    }
+
+    const summary = {
+      appliedAt: new Date().toISOString(),
+      totalRecords: result.rows.length,
+      changedRecords,
+      backupKey: workItemCompletionBackupKey
+    };
+    await client.query(`
+      insert into app_meta (key, value, updated_at)
+      values ($1, $2::jsonb, now())
+    `, [workItemCompletionMigrationKey, JSON.stringify(summary)]);
     if (changedRecords) await touchMeta(client);
     await client.query("commit");
     return summary;

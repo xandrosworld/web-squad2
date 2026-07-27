@@ -236,6 +236,21 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       || validSaveStates.some(Boolean)) {
       throw new Error("Form đầy đủ chưa mở lại nút Lưu sau khi trạng thái và tiến độ hợp lệ.");
     }
+    await page.locator('[name="completedDate"]').fill("2026-07-27");
+    if (await page.locator('[name="status"]').inputValue() !== "Hoàn thành"
+      || await page.locator('[name="progress"]').inputValue() !== "100"
+      || await page.locator('[name="progress"]').getAttribute("readonly") === null
+      || !await page.locator("[data-completion-progress-note]").isVisible()) {
+      throw new Error("Form đầy đủ chưa tự chuyển ngày hoàn thành thành Hoàn thành · 100%.");
+    }
+    await page.locator('[name="completedDate"]').fill("");
+    if (await page.locator('[name="progress"]').getAttribute("readonly") !== null
+      || await page.locator('[name="status"]').inputValue() !== "Hoàn thành"
+      || await page.locator('[name="progress"]').inputValue() !== "100") {
+      throw new Error("Khi xóa ngày hoàn thành, form phải mở khóa nhưng không tự đoán lại tiến độ.");
+    }
+    await page.locator('[name="status"]').selectOption("Đang thực hiện");
+    await page.locator('[name="progress"]').fill("50");
     if (await page.locator('[name="assigneeEmail"], [name="collaborators"]').count()) {
       throw new Error("Email người thực hiện là field kỹ thuật và không được hiện trong form người dùng.");
     }
@@ -245,7 +260,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await editWorkItem.click();
     await page.waitForSelector('#recordForm [name="startDate"]');
     if (await page.locator('#recordForm [name="startDate"]').getAttribute("readonly") === null
-      || !await page.locator(".field-lock-note").isVisible()) {
+      || !await page.locator(".field-lock-note:not(.completion-progress-note)").isVisible()) {
       throw new Error("Form sửa chưa khóa và giải thích trường Ngày giao việc.");
     }
     await page.waitForSelector(".attachment-dropzone:not(.is-loading)");
@@ -256,17 +271,29 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     });
     await page.waitForSelector('.attachment-row[data-attachment-id] strong:text-is("smoke-attachment.txt")');
     await page.locator(".work-attachments").scrollIntoViewIfNeeded();
+    await page.locator('[data-action="close-modal"]').first().click();
+    const attachmentPill = page.locator(".work-attachment-pill").first();
+    await attachmentPill.waitFor({ state: "visible" });
+    if (!(await attachmentPill.textContent() || "").includes("1")) {
+      throw new Error("Danh sách công việc chưa hiện đúng badge 1 tệp sau khi tải lên.");
+    }
+    await attachmentPill.click();
+    await page.waitForSelector(".attachment-browser-modal");
+    if (!await page.locator('.attachment-browser-modal strong:text-is("smoke-attachment.txt")').isVisible()) {
+      throw new Error("Popup tệp đính kèm chưa hiển thị file cho người xem danh sách.");
+    }
     await page.screenshot({ path: attachmentShot, fullPage: false });
-    await page.locator('[data-attachment-action="preview"]').click();
+    await page.locator('.attachment-browser-modal [data-attachment-action="preview"]').click();
     await page.waitForSelector(".attachment-preview-modal");
     if (!await page.locator(".attachment-text-preview").getByText("Nội dung xem trước từ Google Drive").isVisible()) {
       throw new Error("Popup xem trước file text chưa hiển thị nội dung.");
     }
     await page.locator('[data-attachment-action="close-preview"]').click();
     page.once("dialog", (dialog) => dialog.accept());
-    await page.locator('[data-attachment-action="delete"]').click();
-    await page.waitForSelector('.attachment-row[data-attachment-id]', { state: "detached" });
-    await page.locator('[data-action="close-modal"]').first().click();
+    await page.locator('.attachment-browser-modal [data-attachment-action="delete"]').click();
+    await page.waitForSelector('.attachment-browser-modal .attachment-row[data-attachment-id]', { state: "detached" });
+    await page.locator('[data-attachment-action="close-browser"]').click();
+    await page.locator(".work-attachment-pill").waitFor({ state: "detached" });
     const progressAction = page.locator('[data-action="open-work-progress"]').first();
     if (!await progressAction.count()) throw new Error("Task_Master thiếu form cập nhật tiến độ.");
     await progressAction.click();
@@ -281,6 +308,12 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     if (await page.locator("[data-work-status-warning]").isVisible()
       || await page.locator('.work-progress-modal button[type="submit"]').isDisabled()) {
       throw new Error("Form cập nhật tiến độ chưa mở lại Lưu sau khi dữ liệu hợp lệ.");
+    }
+    await page.locator('.work-progress-modal [name="completedDate"]').fill("2026-07-27");
+    if (await page.locator('.work-progress-modal [name="status"]').inputValue() !== "Hoàn thành"
+      || await page.locator('.work-progress-modal [name="progress"]').inputValue() !== "100"
+      || await page.locator('.work-progress-modal [name="progress"]').getAttribute("readonly") === null) {
+      throw new Error("Popup cập nhật tiến độ chưa tự chuyển ngày hoàn thành thành Hoàn thành · 100%.");
     }
     await page.locator('[data-action="close-modal"]').first().click();
     await assertRoute(page, "work/inputs", ".input-catalog-grid");

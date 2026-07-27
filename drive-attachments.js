@@ -198,8 +198,17 @@ function createDriveAttachmentService(options = {}) {
         sheets: await renderWorkbookPreview(buffer)
       };
     }
-    if (extension === ".pptx" || extension === ".ppt") {
-      return previewUnavailable("PowerPoint được lưu an toàn nhưng chưa hỗ trợ hiển thị đầy đủ trong web.");
+    if (extension === ".pptx") {
+      if (size > OFFICE_PREVIEW_LIMIT_BYTES) {
+        return previewUnavailable("File PowerPoint lớn hơn 20 MB. Hãy tải xuống hoặc mở trên Google Drive.");
+      }
+      return {
+        kind: "presentation",
+        contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      };
+    }
+    if (extension === ".ppt") {
+      return previewUnavailable("PowerPoint định dạng cũ (.ppt) chưa hỗ trợ xem trực tiếp. Hãy tải xuống hoặc mở trên Google Drive.");
     }
     if (extension === ".zip" || extension === ".rar" || extension === ".7z") {
       return previewUnavailable("File nén không được mở nội dung trực tiếp để đảm bảo an toàn.");
@@ -407,15 +416,23 @@ function sanitizeDocumentHtml(value) {
   return sanitizeHtml(String(value || ""), {
     allowedTags: [
       "a", "b", "blockquote", "br", "code", "del", "div", "em", "h1", "h2", "h3",
-      "h4", "h5", "h6", "hr", "i", "li", "ol", "p", "pre", "s", "span", "strong",
+      "h4", "h5", "h6", "hr", "i", "img", "li", "ol", "p", "pre", "s", "span", "strong",
       "sub", "sup", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "u", "ul"
     ],
     allowedAttributes: {
       a: ["href", "title"],
+      img: ["src", "alt", "title", "width", "height"],
       td: ["colspan", "rowspan"],
       th: ["colspan", "rowspan"]
     },
     allowedSchemes: ["http", "https", "mailto"],
+    allowedSchemesByTag: {
+      img: ["data"]
+    },
+    exclusiveFilter(frame) {
+      return frame.tag === "img"
+        && !/^data:image\/(?:avif|bmp|gif|jpe?g|png|webp);base64,/i.test(String(frame.attribs?.src || ""));
+    },
     allowProtocolRelative: false
   });
 }

@@ -4,7 +4,8 @@ const {
   __testValidateRecordForCollection: validateRecord,
   __testExpectedWorkStatusForProgress: expectedStatus,
   __testAssertAndPreserveWorkItemStartDate: assertStartDate,
-  __testLegacyStartDateBackfillField: backfillField
+  __testLegacyStartDateBackfillField: backfillField,
+  __testNormalizeWorkItemCompletion: normalizeCompletion
 } = require("../server");
 
 const validCases = [
@@ -62,11 +63,32 @@ assert.throws(
   (error) => error?.status === 409
 );
 
+const completedFromDate = record({
+  completedDate: "2026-07-27",
+  status: "Chưa bắt đầu",
+  progress: 0
+});
+normalizeCompletion(completedFromDate);
+assert.equal(completedFromDate.completedDate, "2026-07-27");
+assert.equal(completedFromDate.status, "Hoàn thành");
+assert.equal(completedFromDate.progress, 100);
+assert.doesNotThrow(() => validateRecord("workItems", completedFromDate));
+
+const openWithoutDate = record({
+  completedDate: "",
+  status: "Đang thực hiện",
+  progress: 25
+});
+normalizeCompletion(openWithoutDate);
+assert.equal(openWithoutDate.status, "Đang thực hiện");
+assert.equal(openWithoutDate.progress, 25);
+
 console.log(JSON.stringify({
   ok: true,
   validStatusProgressCases: validCases.length,
   invalidStatusProgressCases: invalidCases.length,
-  startDateLockCases: 6
+  startDateLockCases: 6,
+  completionAutomationCases: 2
 }, null, 2));
 
 function record(values) {

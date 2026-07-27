@@ -1063,10 +1063,16 @@ let attachmentUiState = {
     maxFileSizeBytes: 50 * 1024 * 1024,
     uploads: [],
     error: null,
+    browser: null,
     preview: null,
-    previewSheet: 0
+    previewSheet: 0,
+    previewSlide: 0,
+    previewZoom: 100
 };
 let activeAttachmentUploads = 0;
+let attachmentPresentationViewer = null;
+let attachmentPresentationModulePromise = null;
+let attachmentPresentationAbortController = null;
 let lastRenderedTab = null;
 let pendingActiveTabScroll = null;
 let responsiveTableResizeFrame = 0;
@@ -1495,6 +1501,7 @@ function render() {
             </main>
         </div>
         ${renderModal()}
+        ${renderAttachmentBrowserModal()}
         ${renderAttachmentPreviewModal()}
         ${renderProfileModal()}
         ${renderFloatingGroupChat()}
@@ -5052,6 +5059,9 @@ function renderWorkProgressModal() {
                             <div class="field">
                                 <label>% hoàn thành</label>
                                 <input class="field-input" name="progress" type="number" min="0" max="100" step="1" value="${e(progress)}">
+                                <small class="field-lock-note completion-progress-note" data-completion-progress-note ${row.completedDate ? "" : "hidden"}>
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i> Tự cập nhật theo ngày hoàn thành.
+                                </small>
                             </div>
                             <div class="field">
                                 <label>Ngày hoàn thành thực tế</label>
@@ -5198,6 +5208,11 @@ function renderAttachmentItem(item) {
                 <button class="icon-btn" type="button" data-attachment-action="download" data-id="${e(item.id)}" title="Tải xuống" aria-label="Tải xuống">
                     <i class="fa-solid fa-download"></i>
                 </button>
+                ${item.driveUrl ? `
+                    <button class="icon-btn" type="button" data-attachment-action="open-drive" data-id="${e(item.id)}" title="Mở trên Google Drive" aria-label="Mở trên Google Drive">
+                        <i class="fa-brands fa-google-drive"></i>
+                    </button>
+                ` : ""}
                 ${item.canDelete ? `
                     <button class="icon-btn danger" type="button" data-attachment-action="delete" data-id="${e(item.id)}" title="Xóa file" aria-label="Xóa file">
                         <i class="fa-solid fa-trash"></i>
@@ -5205,6 +5220,59 @@ function renderAttachmentItem(item) {
                 ` : ""}
             </div>
         </article>
+    `;
+}
+
+function renderAttachmentBrowserModal() {
+    const browser = attachmentUiState.browser;
+    if (!browser) return `<div class="modal-backdrop attachment-browser-backdrop" id="attachmentBrowserModal"></div>`;
+    const current = attachmentUiState.workItemId === browser.workItemId;
+    const loading = !current || attachmentUiState.status === "loading";
+    const items = current ? attachmentUiState.items : [];
+    const error = current ? attachmentUiState.error : "";
+    return `
+        <div class="modal-backdrop open attachment-browser-backdrop" id="attachmentBrowserModal" role="dialog" aria-modal="true" aria-label="Tệp đính kèm của công việc">
+            <section class="modal attachment-browser-modal">
+                <div class="modal-head">
+                    <div class="modal-title">
+                        <span><i class="fa-solid fa-paperclip"></i></span>
+                        <div>
+                            <h2>Tệp đính kèm</h2>
+                            <p>${e(browser.taskId || "Công việc")} · ${e(browser.title || "")}</p>
+                        </div>
+                    </div>
+                    <button class="icon-btn" type="button" data-attachment-action="close-browser" title="Đóng" aria-label="Đóng">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="modal-body attachment-browser-body">
+                    ${loading ? `
+                        <div class="attachment-preview-state is-compact">
+                            <i class="fa-solid fa-spinner fa-spin"></i>
+                            <strong>Đang đọc danh sách tệp...</strong>
+                        </div>
+                    ` : error ? `
+                        <div class="attachment-preview-state is-error is-compact">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <strong>Không đọc được tệp đính kèm</strong>
+                            <span>${e(error)}</span>
+                            <button class="ghost-btn" type="button" data-attachment-action="reload">Thử lại</button>
+                        </div>
+                    ` : items.length ? `
+                        <div class="attachment-browser-summary">
+                            <span><i class="fa-solid fa-folder-open"></i> ${e(items.length)} tệp</span>
+                            <small>Mọi thành viên có thể xem trước, tải xuống hoặc mở trên Google Drive.</small>
+                        </div>
+                        <div class="attachment-list">${items.map(renderAttachmentItem).join("")}</div>
+                    ` : `
+                        <div class="attachment-preview-state is-compact">
+                            <i class="fa-regular fa-folder-open"></i>
+                            <strong>Chưa có tệp đính kèm</strong>
+                        </div>
+                    `}
+                </div>
+            </section>
+        </div>
     `;
 }
 
@@ -5224,6 +5292,7 @@ function renderAttachmentPreviewModal() {
                         </div>
                     </div>
                     <div class="attachment-preview-head-actions">
+                        ${item.driveUrl ? `<button class="ghost-btn" type="button" data-attachment-action="open-drive" data-id="${e(item.id)}"><i class="fa-brands fa-google-drive"></i><span>Mở trên Drive</span></button>` : ""}
                         ${item.id ? `<button class="ghost-btn" type="button" data-attachment-action="download" data-id="${e(item.id)}"><i class="fa-solid fa-download"></i><span>Tải xuống</span></button>` : ""}
                         <button class="icon-btn" type="button" data-attachment-action="close-preview" title="Đóng" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button>
                     </div>
@@ -5270,12 +5339,51 @@ function renderAttachmentPreviewBody(state) {
             </div>
         `;
     }
+    if (preview.kind === "presentation") {
+        return `
+            <div class="attachment-presentation-preview">
+                <div class="attachment-presentation-toolbar">
+                    <div class="attachment-presentation-navigation">
+                        <button class="icon-btn" type="button" data-attachment-action="previous-slide" title="Trang trước" aria-label="Trang trước">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+                        <strong><span data-presentation-current>1</span> / <span data-presentation-total>...</span></strong>
+                        <button class="icon-btn" type="button" data-attachment-action="next-slide" title="Trang sau" aria-label="Trang sau">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="attachment-presentation-zoom">
+                        <button class="icon-btn" type="button" data-attachment-action="zoom-out" title="Thu nhỏ" aria-label="Thu nhỏ">
+                            <i class="fa-solid fa-magnifying-glass-minus"></i>
+                        </button>
+                        <strong data-presentation-zoom>${e(attachmentUiState.previewZoom || 100)}%</strong>
+                        <button class="icon-btn" type="button" data-attachment-action="zoom-in" title="Phóng to" aria-label="Phóng to">
+                            <i class="fa-solid fa-magnifying-glass-plus"></i>
+                        </button>
+                        <button class="ghost-btn" type="button" data-attachment-action="fit-slide">
+                            <i class="fa-solid fa-expand"></i><span>Vừa màn hình</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="attachment-presentation-stage">
+                    <div class="attachment-presentation-loading" data-presentation-loading>
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                        <span>Đang dựng nội dung PowerPoint...</span>
+                    </div>
+                    <div class="attachment-presentation-canvas" data-presentation-container></div>
+                </div>
+            </div>
+        `;
+    }
     return `
         <div class="attachment-preview-state">
             <i class="fa-regular fa-file"></i>
             <strong>File đã được lưu an toàn</strong>
             <span>${e(preview.message || "Định dạng này chưa hỗ trợ xem trực tiếp trên web.")}</span>
-            ${state.attachment?.id ? `<button class="primary-btn" type="button" data-attachment-action="download" data-id="${e(state.attachment.id)}"><i class="fa-solid fa-download"></i><span>Tải file xuống</span></button>` : ""}
+            <div class="attachment-preview-fallback-actions">
+                ${state.attachment?.id ? `<button class="primary-btn" type="button" data-attachment-action="download" data-id="${e(state.attachment.id)}"><i class="fa-solid fa-download"></i><span>Tải file xuống</span></button>` : ""}
+                ${state.attachment?.driveUrl ? `<button class="ghost-btn" type="button" data-attachment-action="open-drive" data-id="${e(state.attachment.id)}"><i class="fa-brands fa-google-drive"></i><span>Mở trên Google Drive</span></button>` : ""}
+            </div>
         </div>
     `;
 }
@@ -5768,6 +5876,11 @@ function renderField(field, row) {
         <div class="${wrapper}">
             <label>${label}${field.required ? `<span class="required-chip">Bắt buộc</span>` : ""}</label>
             ${control}
+            ${ui.modal?.tab === "workItems" && field.key === "progress" ? `
+                <small class="field-lock-note completion-progress-note" data-completion-progress-note ${row?.completedDate ? "" : "hidden"}>
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Tự cập nhật theo ngày hoàn thành.
+                </small>
+            ` : ""}
             ${selfAssignmentField ? `<small class="field-lock-note"><i class="fa-solid fa-lock"></i> Tài khoản thường chỉ được tự nhận công việc; admin hoặc người quản lý nhóm có thể phân công nhiều người.</small>` : ""}
             ${lockedWorkStartDate ? `<small class="field-lock-note"><i class="fa-solid fa-lock"></i> Đã khóa sau khi tạo công việc.</small>` : ""}
         </div>
@@ -5821,9 +5934,11 @@ function getWorkStatusProgressIssue(status, progress) {
 function bindWorkStatusProgressValidation(form) {
     const statusInput = form.elements.status;
     const progressInput = form.elements.progress;
+    const completedDateInput = form.elements.completedDate;
     const warning = form.querySelector("[data-work-status-warning]");
     if (!statusInput || !progressInput || !warning) return;
     const warningText = warning.querySelector("span");
+    const completionNote = form.querySelector("[data-completion-progress-note]");
     const submitButtons = [...form.querySelectorAll('button[type="submit"]')];
     const updateValidation = () => {
         const issue = getWorkStatusProgressIssue(statusInput.value, progressInput.value);
@@ -5839,10 +5954,23 @@ function bindWorkStatusProgressValidation(form) {
             button.setAttribute("aria-disabled", invalid ? "true" : "false");
         });
     };
+    const syncCompletedDate = () => {
+        const completed = Boolean(String(completedDateInput?.value || "").trim());
+        if (completed) {
+            statusInput.value = "Hoàn thành";
+            progressInput.value = "100";
+        }
+        progressInput.readOnly = completed;
+        progressInput.classList.toggle("is-locked", completed);
+        if (completionNote) completionNote.hidden = !completed;
+        updateValidation();
+    };
     statusInput.addEventListener("change", updateValidation);
     progressInput.addEventListener("input", updateValidation);
     progressInput.addEventListener("change", updateValidation);
-    updateValidation();
+    completedDateInput?.addEventListener("input", syncCompletedDate);
+    completedDateInput?.addEventListener("change", syncCompletedDate);
+    syncCompletedDate();
 }
 
 function renderEmpty(icon, title, text, compact = false, mod = null) {
@@ -6537,6 +6665,15 @@ function bindAttachmentEvents() {
             if (event.target === previewModal) closeAttachmentPreview();
         });
     }
+
+    const browserModal = document.getElementById("attachmentBrowserModal");
+    if (browserModal) {
+        browserModal.addEventListener("click", (event) => {
+            if (event.target === browserModal) closeAttachmentBrowser();
+        });
+    }
+
+    initializeAttachmentPresentationPreview();
 }
 
 async function hydrateWorkAttachments(workItemId, options = {}) {
@@ -6558,6 +6695,7 @@ async function hydrateWorkAttachments(workItemId, options = {}) {
         attachmentUiState.items = Array.isArray(data.attachments) ? data.attachments : [];
         attachmentUiState.maxFileSizeBytes = Number(data.maxFileSizeBytes || attachmentUiState.maxFileSizeBytes);
         attachmentUiState.error = null;
+        setWorkItemAttachmentCount(workItemId, attachmentUiState.items.length);
     } catch (error) {
         if (attachmentUiState.workItemId !== workItemId) return;
         attachmentUiState.status = "error";
@@ -6662,6 +6800,7 @@ function uploadAttachmentFile(upload) {
                     data.attachment,
                     ...attachmentUiState.items.filter((item) => item.id !== data.attachment.id)
                 ];
+                setWorkItemAttachmentCount(workItemId, attachmentUiState.items.length);
             }
             attachmentUiState.uploads = attachmentUiState.uploads.filter((item) => item.id !== upload.id);
             showToast(`Đã tải lên ${upload.file.name}.`);
@@ -6698,6 +6837,22 @@ async function handleAttachmentAction(event) {
     event.preventDefault();
     const action = event.currentTarget.dataset.attachmentAction;
     const id = event.currentTarget.dataset.id;
+    if (action === "open-browser") {
+        const workItemId = event.currentTarget.dataset.workItemId;
+        const row = appState.workItems.find((item) => String(item.id) === String(workItemId));
+        if (!row) return;
+        attachmentUiState.browser = {
+            workItemId: row.id,
+            taskId: row.taskId || "",
+            title: row.title || "Công việc"
+        };
+        await hydrateWorkAttachments(row.id, { force: true });
+        return;
+    }
+    if (action === "close-browser") {
+        closeAttachmentBrowser();
+        return;
+    }
     if (action === "choose") {
         document.querySelector("[data-attachment-input]")?.click();
         return;
@@ -6724,6 +6879,10 @@ async function handleAttachmentAction(event) {
         downloadAttachment(id);
         return;
     }
+    if (action === "open-drive") {
+        openAttachmentDrive(id);
+        return;
+    }
     if (action === "delete") {
         await deleteAttachment(id);
         return;
@@ -6735,13 +6894,20 @@ async function handleAttachmentAction(event) {
     if (action === "select-sheet") {
         attachmentUiState.previewSheet = Number(event.currentTarget.dataset.sheetIndex || 0);
         render();
+        return;
+    }
+    if (["previous-slide", "next-slide", "zoom-in", "zoom-out", "fit-slide"].includes(action)) {
+        await handleAttachmentPresentationAction(action);
     }
 }
 
 async function openAttachmentPreview(id) {
     const attachment = attachmentUiState.items.find((item) => item.id === id);
     if (!attachment) return;
+    destroyAttachmentPresentationViewer();
     attachmentUiState.previewSheet = 0;
+    attachmentUiState.previewSlide = 0;
+    attachmentUiState.previewZoom = 100;
     attachmentUiState.preview = { status: "loading", attachment, data: null, error: null };
     render();
     try {
@@ -6766,8 +6932,16 @@ async function openAttachmentPreview(id) {
 }
 
 function closeAttachmentPreview() {
+    destroyAttachmentPresentationViewer();
     attachmentUiState.preview = null;
     attachmentUiState.previewSheet = 0;
+    attachmentUiState.previewSlide = 0;
+    attachmentUiState.previewZoom = 100;
+    render();
+}
+
+function closeAttachmentBrowser() {
+    attachmentUiState.browser = null;
     render();
 }
 
@@ -6781,6 +6955,16 @@ function downloadAttachment(id) {
     link.remove();
 }
 
+function openAttachmentDrive(id) {
+    const attachment = attachmentUiState.items.find((item) => item.id === id)
+        || attachmentUiState.preview?.attachment;
+    if (!attachment?.driveUrl) {
+        showToast("Tệp này chưa có liên kết Google Drive.");
+        return;
+    }
+    window.open(attachment.driveUrl, "_blank", "noopener,noreferrer");
+}
+
 async function deleteAttachment(id) {
     const attachment = attachmentUiState.items.find((item) => item.id === id);
     if (!attachment) return;
@@ -6789,11 +6973,137 @@ async function deleteAttachment(id) {
         await requestJson(`/attachments/${encodeURIComponent(id)}`, { method: "DELETE" });
         attachmentUiState.items = attachmentUiState.items.filter((item) => item.id !== id);
         if (attachmentUiState.preview?.attachment?.id === id) attachmentUiState.preview = null;
+        setWorkItemAttachmentCount(attachment.workItemId, attachmentUiState.items.length);
         showToast("Đã xóa file đính kèm.");
         render();
     } catch (error) {
         showToast(error.message || "Không xóa được file đính kèm.");
     }
+}
+
+function setWorkItemAttachmentCount(workItemId, count) {
+    const row = appState.workItems.find((item) => String(item.id) === String(workItemId));
+    if (row) row.attachmentCount = Math.max(0, Number(count || 0));
+}
+
+async function initializeAttachmentPresentationPreview() {
+    const previewState = attachmentUiState.preview;
+    if (previewState?.status !== "ready" || previewState.data?.preview?.kind !== "presentation") {
+        if (attachmentPresentationViewer) destroyAttachmentPresentationViewer();
+        return;
+    }
+    const container = document.querySelector("[data-presentation-container]");
+    if (!container) return;
+    const attachmentId = previewState.attachment?.id;
+    if (
+        attachmentPresentationViewer?.attachmentId === attachmentId
+        && attachmentPresentationViewer.container === container
+    ) {
+        return;
+    }
+    destroyAttachmentPresentationViewer();
+    const loading = document.querySelector("[data-presentation-loading]");
+    const abortController = new AbortController();
+    attachmentPresentationAbortController = abortController;
+    try {
+        attachmentPresentationModulePromise ||= import(
+            "/vendor/pptx-renderer/aiden0z-pptx-renderer.browser.es.js"
+        );
+        const [pptxModule, response] = await Promise.all([
+            attachmentPresentationModulePromise,
+            fetch(previewState.data.contentUrl, {
+                credentials: "same-origin",
+                signal: abortController.signal
+            })
+        ]);
+        if (!response.ok) throw new Error(`Không đọc được nội dung PowerPoint (${response.status}).`);
+        const buffer = await response.arrayBuffer();
+        if (abortController.signal.aborted) return;
+        const viewer = await pptxModule.PptxViewer.open(buffer, container, {
+            renderMode: "slide",
+            fitMode: "contain",
+            zoomPercent: attachmentUiState.previewZoom || 100,
+            zipLimits: pptxModule.RECOMMENDED_ZIP_LIMITS,
+            lazyMedia: true,
+            lazySlides: true,
+            pdfjs: false
+        });
+        if (abortController.signal.aborted) {
+            viewer.destroy();
+            return;
+        }
+        attachmentPresentationViewer = {
+            viewer,
+            container,
+            attachmentId
+        };
+        viewer.addEventListener("slidechange", (event) => {
+            attachmentUiState.previewSlide = Number(event.detail?.index || 0);
+            updateAttachmentPresentationToolbar();
+        });
+        if (loading) loading.hidden = true;
+        updateAttachmentPresentationToolbar();
+    } catch (error) {
+        if (error?.name === "AbortError") return;
+        if (loading) {
+            loading.classList.add("is-error");
+            loading.innerHTML = `
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>${e(error.message || "Không dựng được nội dung PowerPoint.")}</span>
+            `;
+        }
+    } finally {
+        if (attachmentPresentationAbortController === abortController) {
+            attachmentPresentationAbortController = null;
+        }
+    }
+}
+
+async function handleAttachmentPresentationAction(action) {
+    const viewer = attachmentPresentationViewer?.viewer;
+    if (!viewer) return;
+    if (action === "previous-slide" || action === "next-slide") {
+        const offset = action === "next-slide" ? 1 : -1;
+        const target = Math.max(0, Math.min(viewer.slideCount - 1, viewer.currentSlideIndex + offset));
+        await viewer.goToSlide(target, { behavior: "instant" });
+    } else if (action === "zoom-in" || action === "zoom-out") {
+        const offset = action === "zoom-in" ? 10 : -10;
+        const zoom = Math.max(50, Math.min(200, Number(viewer.zoomPercent || 100) + offset));
+        attachmentUiState.previewZoom = zoom;
+        await viewer.setZoom(zoom);
+    } else if (action === "fit-slide") {
+        attachmentUiState.previewZoom = 100;
+        await viewer.setFitMode("contain");
+        await viewer.setZoom(100);
+    }
+    attachmentUiState.previewSlide = viewer.currentSlideIndex;
+    updateAttachmentPresentationToolbar();
+}
+
+function updateAttachmentPresentationToolbar() {
+    const viewer = attachmentPresentationViewer?.viewer;
+    if (!viewer) return;
+    const current = document.querySelector("[data-presentation-current]");
+    const total = document.querySelector("[data-presentation-total]");
+    const zoom = document.querySelector("[data-presentation-zoom]");
+    if (current) current.textContent = String((viewer.currentSlideIndex || 0) + 1);
+    if (total) total.textContent = String(viewer.slideCount || 0);
+    if (zoom) zoom.textContent = `${Math.round(viewer.zoomPercent || 100)}%`;
+    document.querySelector('[data-attachment-action="previous-slide"]')?.toggleAttribute(
+        "disabled",
+        viewer.currentSlideIndex <= 0
+    );
+    document.querySelector('[data-attachment-action="next-slide"]')?.toggleAttribute(
+        "disabled",
+        viewer.currentSlideIndex >= viewer.slideCount - 1
+    );
+}
+
+function destroyAttachmentPresentationViewer() {
+    attachmentPresentationAbortController?.abort();
+    attachmentPresentationAbortController = null;
+    attachmentPresentationViewer?.viewer?.destroy();
+    attachmentPresentationViewer = null;
 }
 
 async function hydrateGoogleSheetSyncStatus({ silent = false } = {}) {
@@ -7111,9 +7421,13 @@ async function handleAuthAction(event) {
         maxFileSizeBytes: 50 * 1024 * 1024,
         uploads: [],
         error: null,
+        browser: null,
         preview: null,
-        previewSheet: 0
+        previewSheet: 0,
+        previewSlide: 0,
+        previewZoom: 100
     };
+    destroyAttachmentPresentationViewer();
     activeAttachmentUploads = 0;
     localStorage.removeItem(STORAGE_KEY);
     ui.modal = null;
@@ -7728,6 +8042,10 @@ async function handleSubmit(event) {
         Object.assign(payload, normalizeWorkItemPeople(payload));
         if (!payload.taskId && payload.categoryId) payload.taskId = getNextWorkItemTaskIdForCategory(payload.categoryId);
         if (payload.progress === "") payload.progress = 0;
+        if (String(payload.completedDate || "").trim()) {
+            payload.status = "Hoàn thành";
+            payload.progress = 100;
+        }
     }
 
     const validationErrors = validateRecord(mod, payload);
@@ -7808,8 +8126,12 @@ async function handleWorkProgressSubmit(event) {
         return;
     }
     const now = new Date().toISOString();
-    const status = String(form.elements.status?.value || "").trim();
+    let status = String(form.elements.status?.value || "").trim();
     const completedDate = String(form.elements.completedDate?.value || "").trim();
+    if (completedDate) {
+        status = "Hoàn thành";
+        progress = 100;
+    }
     const record = {
         ...current,
         status,
@@ -8826,6 +9148,7 @@ function extractWorkTaskPrefix(taskId) {
 
 function renderWorkTitleCell(row) {
     const title = row.title || "-";
+    const attachmentCount = Math.max(0, Number(row.attachmentCount || 0));
     const titleMarkup = canFullyManageWorkItem(row)
         ? `<button class="work-title-link" type="button" data-action="open-edit" data-id="${e(row.id)}" title="Mở Sửa Kế hoạch">${e(title)}</button>`
         : `<strong>${e(title)}</strong>`;
@@ -8834,6 +9157,11 @@ function renderWorkTitleCell(row) {
             ${titleMarkup}
             ${row.description ? `<span>${e(row.description)}</span>` : ""}
             ${getWorkItemBusinessContacts(row).length ? `<small>Đầu mối nghiệp vụ: ${e(formatWorkPeopleNames(getWorkItemBusinessContacts(row)))}</small>` : ""}
+            ${attachmentCount ? `
+                <button class="work-attachment-pill" type="button" data-attachment-action="open-browser" data-work-item-id="${e(row.id)}" title="Xem ${e(attachmentCount)} tệp đính kèm">
+                    <i class="fa-solid fa-paperclip"></i><span>${e(attachmentCount)} tệp</span>
+                </button>
+            ` : ""}
         </div>
     `;
 }

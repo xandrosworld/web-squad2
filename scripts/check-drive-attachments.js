@@ -9,7 +9,8 @@ const {
   normalizeMimeType,
   sanitizeDocumentHtml,
   renderWorkbookPreview,
-  DEFAULT_MAX_FILE_SIZE_BYTES
+  DEFAULT_MAX_FILE_SIZE_BYTES,
+  OFFICE_PREVIEW_LIMIT_BYTES
 } = require("../drive-attachments");
 
 async function main() {
@@ -18,6 +19,7 @@ async function main() {
   await testWorkbookPreview();
   await testDriveFolderHierarchyAndUpload();
   await testTextPreview();
+  await testPresentationPreviewClassification();
   console.log("Drive attachment checks passed.");
 }
 
@@ -56,6 +58,14 @@ function testNormalizationAndSanitizing() {
   assert(!html.includes("<script"));
   assert(!html.includes("javascript:"));
   assert(html.includes("https://example.com"));
+  const imageHtml = sanitizeDocumentHtml(`
+    <img src="data:image/png;base64,iVBORw0KGgo=" alt="Ảnh an toàn">
+    <img src="data:image/svg+xml;base64,PHN2Zy8+" alt="Ảnh không an toàn">
+    <img src="https://example.com/tracking.png" alt="Ảnh ngoài">
+  `);
+  assert(imageHtml.includes("data:image/png;base64,"));
+  assert(!imageHtml.includes("image/svg+xml"));
+  assert(!imageHtml.includes("tracking.png"));
 }
 
 async function testWorkbookPreview() {
@@ -180,6 +190,42 @@ async function testTextPreview() {
   });
   assert.strictEqual(preview.kind, "text");
   assert.strictEqual(preview.text, "Dòng 1\nDòng 2");
+}
+
+async function testPresentationPreviewClassification() {
+  const service = createDriveAttachmentService({
+    getAccessToken: async () => "token",
+    fetchImpl: async () => {
+      throw new Error("PPTX classification must not download the file during preview metadata lookup.");
+    }
+  });
+  const presentation = await service.getPreview({}, {
+    driveFileId: "pptx-file",
+    originalName: "bao-cao-tuan.pptx",
+    mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    sizeBytes: 1024
+  });
+  assert.strictEqual(presentation.kind, "presentation");
+  assert.strictEqual(
+    presentation.contentType,
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+  );
+
+  const oversized = await service.getPreview({}, {
+    driveFileId: "large-pptx-file",
+    originalName: "bao-cao-lon.pptx",
+    mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    sizeBytes: OFFICE_PREVIEW_LIMIT_BYTES + 1
+  });
+  assert.strictEqual(oversized.kind, "unavailable");
+
+  const legacy = await service.getPreview({}, {
+    driveFileId: "legacy-ppt-file",
+    originalName: "bao-cao-cu.ppt",
+    mimeType: "application/vnd.ms-powerpoint",
+    sizeBytes: 1024
+  });
+  assert.strictEqual(legacy.kind, "unavailable");
 }
 
 function jsonResponse(value, options = {}) {
