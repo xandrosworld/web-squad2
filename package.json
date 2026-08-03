@@ -34,6 +34,7 @@
     "smoke:rbac": "node scripts/smoke-rbac.js",
     "smoke:workplan": "node scripts/smoke-workplan.js",
     "smoke:personal-workspace": "node scripts/smoke-personal-workspace.js",
+    "smoke:personal-workspace-ui": "node scripts/smoke-personal-workspace-ui.js",
     "migrate:work-order": "node scripts/migrate-work-item-order.js",
     "notify:deadlines": "node scripts/send-deadline-notifications.js"
   },
