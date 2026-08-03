@@ -8154,3 +8154,326 @@ body.is-column-resizing * {
         justify-content: space-between;
     }
 }
+
+/* Private cross-squad workspace */
+.personal-workspace-panel {
+    overflow: hidden;
+}
+
+.personal-workspace-head {
+    min-height: 66px;
+}
+
+.personal-squad-tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 16px 0;
+    border-top: 1px solid var(--line);
+    background: #f8fafc;
+}
+
+.personal-squad-tab {
+    min-width: 118px;
+    height: 40px;
+    padding: 0 13px;
+    border: 1px solid #d6e0e8;
+    border-bottom-color: #bccbd5;
+    border-radius: 7px 7px 0 0;
+    background: #ffffff;
+    color: #526173;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.personal-squad-tab b {
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: #eef2f6;
+    color: #64748b;
+    display: grid;
+    place-items: center;
+    font-size: 10px;
+}
+
+.personal-squad-tab.active {
+    border-color: #008c86;
+    background: #007b76;
+    color: #ffffff;
+}
+
+.personal-squad-tab.active b {
+    background: rgba(255, 255, 255, 0.18);
+    color: #ffffff;
+}
+
+.personal-workspace-tools {
+    padding: 14px 16px;
+    border-top: 1px solid #d8e1e8;
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) 220px;
+    gap: 10px;
+    background: #ffffff;
+}
+
+.personal-search {
+    height: 40px;
+    padding: 0 12px;
+    border: 1px solid #cfd9e2;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: #94a3b8;
+}
+
+.personal-search:focus-within {
+    border-color: var(--bidv-teal);
+    box-shadow: 0 0 0 3px rgba(0, 123, 118, 0.1);
+}
+
+.personal-search input {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: #1f2937;
+    font: inherit;
+    font-size: 13px;
+}
+
+.personal-workspace-body {
+    min-height: 330px;
+    background: #ffffff;
+}
+
+.personal-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.personal-task-table {
+    width: 100%;
+    min-width: 850px;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.personal-task-table th {
+    height: 42px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--line);
+    background: #f8fafc;
+    color: #455468;
+    font-size: 11px;
+    font-weight: 850;
+    text-align: left;
+    text-transform: uppercase;
+}
+
+.personal-task-table th:nth-child(1) { width: 38%; }
+.personal-task-table th:nth-child(2) { width: 19%; }
+.personal-task-table th:nth-child(3) { width: 18%; }
+.personal-task-table th:nth-child(4) { width: 17%; }
+.personal-task-table th:nth-child(5) { width: 8%; text-align: right; }
+
+.personal-task-table td {
+    padding: 13px 14px;
+    border-bottom: 1px solid #e7edf2;
+    color: #273449;
+    font-size: 12px;
+    line-height: 18px;
+    vertical-align: top;
+}
+
+.personal-task-table tbody tr:hover {
+    background: #f9fcfc;
+}
+
+.personal-task-table td > strong,
+.personal-task-table td > small {
+    display: block;
+    overflow-wrap: anywhere;
+}
+
+.personal-task-table td > strong {
+    color: #172033;
+    font-size: 13px;
+}
+
+.personal-task-table td > small {
+    margin-top: 3px;
+    color: #718096;
+}
+
+.personal-assigner {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 750;
+}
+
+.personal-assigner i {
+    color: #7c8da1;
+}
+
+.personal-date-line {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 6px;
+}
+
+.personal-date-line + .personal-date-line {
+    margin-top: 3px;
+}
+
+.personal-date-line b {
+    color: #718096;
+    font-size: 10px;
+    text-transform: uppercase;
+}
+
+.personal-status {
+    min-height: 26px;
+    width: fit-content;
+    padding: 4px 9px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 850;
+    white-space: nowrap;
+}
+
+.personal-status i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.personal-status.is-todo { background: #f1f5f9; color: #536174; }
+.personal-status.is-progress { background: #eaf3ff; color: #1d62b4; }
+.personal-status.is-overdue { background: #fff0f1; color: #c52d3a; }
+.personal-status.is-done { background: #e9f8f0; color: #12804a; }
+
+.personal-row-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.personal-row-actions .danger {
+    color: #b42318;
+}
+
+.personal-empty {
+    min-height: 330px;
+    padding: 40px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    color: #718096;
+    text-align: center;
+}
+
+.personal-empty > i {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    background: #edf7f6;
+    color: #007b76;
+    display: grid;
+    place-items: center;
+    font-size: 18px;
+}
+
+.personal-empty strong {
+    color: #253247;
+    font-size: 14px;
+}
+
+.personal-empty.is-error > i {
+    background: #fff0f1;
+    color: #c52d3a;
+}
+
+.personal-task-modal {
+    width: min(720px, 100%);
+}
+
+@media (max-width: 760px) {
+    .personal-workspace-head .panel-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .personal-workspace-head .panel-actions button {
+        width: 100%;
+    }
+
+    .personal-squad-tabs {
+        overflow-x: auto;
+    }
+
+    .personal-squad-tab {
+        min-width: 106px;
+    }
+
+    .personal-workspace-tools {
+        grid-template-columns: 1fr;
+        padding: 12px;
+    }
+
+    .personal-task-table {
+        min-width: 0;
+    }
+
+    .personal-task-table thead {
+        display: none;
+    }
+
+    .personal-task-table tbody,
+    .personal-task-table tr,
+    .personal-task-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .personal-task-table tr {
+        padding: 14px 12px;
+        border-bottom: 1px solid var(--line);
+    }
+
+    .personal-task-table td {
+        padding: 4px 0;
+        border: 0;
+    }
+
+    .personal-task-table td:not(:first-child)::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 2px;
+        color: #8190a3;
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+    }
+
+    .personal-row-actions {
+        justify-content: flex-start;
+    }
+}

@@ -977,6 +977,9 @@ function getInitialRoute(pathOverride) {
     if (path === "common/guide") {
         return { path, view: "guide", activeTab: "guide", categoryId: "", t01Tab: "dashboard" };
     }
+    if (path === "personal/cross-squad") {
+        return { path, view: "personal-cross-squad", activeTab: "workItems", categoryId: "", t01Tab: "dashboard" };
+    }
     if (path === "work/task-master") {
         return { path, view: "task-master", activeTab: "workItems", categoryId: "", t01Tab: "dashboard" };
     }
@@ -1068,6 +1071,14 @@ let attachmentUiState = {
     previewSheet: 0,
     previewSlide: 0,
     previewZoom: 100
+};
+let personalWorkspaceState = {
+    status: "idle",
+    tasks: [],
+    activeSquad: "1",
+    query: "",
+    statusFilter: "",
+    error: null
 };
 let activeAttachmentUploads = 0;
 let attachmentPresentationViewer = null;
@@ -1377,6 +1388,7 @@ async function requestJson(path, options = {}) {
             authState = { status: "guest", user: null, error: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." };
             appState = emptyState();
             accountDirectory = [];
+            personalWorkspaceState = { status: "idle", tasks: [], activeSquad: "1", query: "", statusFilter: "", error: null };
             ui.aiChatOpen = false;
             ui.aiChatDraft = "";
             ui.groupChatOpen = false;
@@ -1451,6 +1463,31 @@ function navigateToRoute(path, options = {}) {
     else history.replaceState(null, "", hash);
     requestActiveTabScroll();
     render();
+    if (route.view === "personal-cross-squad") hydratePersonalWorkspace();
+}
+
+function isPersonalWorkspaceOwner(user = authState.user) {
+    const identities = [user?.email, user?.username]
+        .map((value) => String(value || "").trim().toLowerCase())
+        .filter(Boolean);
+    return identities.includes("thanhmt@bidv.com.vn");
+}
+
+async function hydratePersonalWorkspace(force = false) {
+    if (!isPersonalWorkspaceOwner()) return;
+    if (!force && ["loading", "ready"].includes(personalWorkspaceState.status)) return;
+    personalWorkspaceState.status = "loading";
+    personalWorkspaceState.error = null;
+    render();
+    try {
+        const data = await requestJson("/personal-workspace");
+        personalWorkspaceState.tasks = Array.isArray(data.tasks) ? data.tasks : [];
+        personalWorkspaceState.status = "ready";
+    } catch (error) {
+        personalWorkspaceState.status = "error";
+        personalWorkspaceState.error = error.message || "Không tải được công việc cá nhân.";
+    }
+    render();
 }
 
 function getRouteForPath(path) {
@@ -1479,6 +1516,15 @@ function render() {
         `;
         bindAuthEvents();
         return;
+    }
+
+    if (ui.activeView === "personal-cross-squad" && !isPersonalWorkspaceOwner()) {
+        const fallback = getInitialRoute("work/dashboard");
+        ui.activeRoute = fallback.path;
+        ui.activeView = fallback.view;
+        ui.activeTab = fallback.activeTab;
+        ui.activeCategoryId = fallback.categoryId;
+        history.replaceState(null, "", `#${fallback.path}`);
     }
 
     const active = document.activeElement;
@@ -1820,6 +1866,7 @@ function renderSidebar() {
                             ${renderSidebarRouteButton("work/dashboard", "fa-chart-pie", "Dashboard", 1)}
                             ${renderSidebarRouteButton("work/inputs", "fa-file-circle-plus", "Thông tin đầu vào", 1)}
                             ${renderSidebarRouteButton("work/member-kpi", "fa-chart-line", "KPI_Thành viên", 1)}
+                            ${isPersonalWorkspaceOwner() ? renderSidebarRouteButton("personal/cross-squad", "fa-briefcase", "Việc liên Squad", 1) : ""}
                             <button id="sidebar-group-workGroups-toggle" class="tree-parent tree-group-toggle ${workGroupsActive ? "branch-active" : ""} ${workGroupsExpanded ? "is-expanded" : ""}" type="button" data-action="toggle-sidebar-group" data-sidebar-group="workGroups" aria-expanded="${workGroupsExpanded}" aria-controls="sidebar-group-workGroups" title="Nhóm công việc">
                                 <i class="fa-regular fa-folder-open"></i><b>Nhóm công việc</b><i class="fa-solid fa-chevron-right tree-toggle-chevron" aria-hidden="true"></i>
                             </button>
@@ -1886,14 +1933,16 @@ function renderTopbar() {
                 <button class="text-btn" data-auth-action="logout" title="Đăng xuất">
                     <i class="fa-solid fa-right-from-bracket"></i><span>Đăng xuất</span>
                 </button>
-                <button class="text-btn" data-action="export-excel" title="Xuất báo cáo dữ liệu UAT">
-                    <i class="fa-solid fa-file-export"></i><span>Xuất báo cáo</span>
-                </button>
-                ${authState.user?.role === "admin" ? `
-                    <button class="text-btn" data-action="import-data" title="Nhập Excel danh mục UAT">
-                        <i class="fa-solid fa-upload"></i><span>Nhập</span>
+                ${ui.activeView === "personal-cross-squad" ? "" : `
+                    <button class="text-btn" data-action="export-excel" title="Xuất báo cáo dữ liệu UAT">
+                        <i class="fa-solid fa-file-export"></i><span>Xuất báo cáo</span>
                     </button>
-                ` : ""}
+                    ${authState.user?.role === "admin" ? `
+                        <button class="text-btn" data-action="import-data" title="Nhập Excel danh mục UAT">
+                            <i class="fa-solid fa-upload"></i><span>Nhập</span>
+                        </button>
+                    ` : ""}
+                `}
             </div>
         </header>
     `;
@@ -1901,13 +1950,16 @@ function renderTopbar() {
 
 function renderCommandBand() {
     const meta = getActiveViewMeta();
+    const personalView = ui.activeView === "personal-cross-squad";
     const healthCollections = [...new Set([
         ...tabs.map((tab) => modules[tab.id]?.collection).filter(Boolean),
         "schedule",
         "workCategories",
         "workItems"
     ])];
-    const totalRecords = healthCollections.reduce((sum, collection) => sum + (appState[collection]?.length || 0), 0);
+    const totalRecords = personalView
+        ? personalWorkspaceState.tasks.length
+        : healthCollections.reduce((sum, collection) => sum + (appState[collection]?.length || 0), 0);
     return `
         <div class="command-band">
             <div>
@@ -1918,7 +1970,7 @@ function renderCommandBand() {
             <div class="command-meta">
                 ${renderDbStatusPill()}
                 ${renderDataHealthPill(totalRecords)}
-                ${renderDbSyncPill()}
+                ${personalView ? "" : renderDbSyncPill()}
             </div>
         </div>
     `;
@@ -1934,6 +1986,7 @@ function getActiveViewMeta() {
     if (ui.activeView === "work-dashboard") return { title: "Dashboard công việc", subtitle: "Tổng hợp tiến độ trực tiếp từ Task_Master, không nhập số liệu riêng." };
     if (ui.activeView === "work-inputs") return { title: "Thông tin đầu vào", subtitle: "Quản lý nhóm công việc và tra cứu các danh mục dùng chung." };
     if (ui.activeView === "member-kpi") return { title: "KPI thành viên", subtitle: "Kết quả được tính từ công việc thực tế và dữ liệu đánh giá đã cấu hình." };
+    if (ui.activeView === "personal-cross-squad") return { title: "Công việc liên Squad", subtitle: "Không gian cá nhân theo dõi công việc tại Squad 1, Squad 7 và Squad 11." };
     if (ui.activeView === "work-group") return {
         title: category ? `${category.taskPrefix || ""} · ${getWorkCategoryShortName(category)}` : "Nhóm công việc",
         subtitle: category?.description || "Theo dõi tiến độ và danh sách đầu việc của nhóm."
@@ -1967,7 +2020,108 @@ function renderActiveView() {
     if (ui.activeView === "work-inputs") return renderWorkInputsPage();
     if (ui.activeView === "member-kpi") return renderMemberKpiPage();
     if (ui.activeView === "work-group") return renderWorkGroupPage();
+    if (ui.activeView === "personal-cross-squad") return renderPersonalWorkspacePage();
     return renderWorkDashboardPage();
+}
+
+function personalTaskDisplayStatus(task) {
+    if (task.status !== "Hoàn thành" && task.dueDate && task.dueDate < todayStamp()) return "Quá hạn";
+    return task.status || "Chưa bắt đầu";
+}
+
+function personalTaskStatusClass(status) {
+    if (status === "Hoàn thành") return "is-done";
+    if (status === "Đang thực hiện") return "is-progress";
+    if (status === "Quá hạn") return "is-overdue";
+    return "is-todo";
+}
+
+function getVisiblePersonalTasks() {
+    const query = personalWorkspaceState.query.trim().toLocaleLowerCase("vi");
+    return personalWorkspaceState.tasks
+        .filter((task) => String(task.squad) === personalWorkspaceState.activeSquad)
+        .filter((task) => !personalWorkspaceState.statusFilter || personalTaskDisplayStatus(task) === personalWorkspaceState.statusFilter)
+        .filter((task) => !query || [task.title, task.assigner, task.note].some((value) => String(value || "").toLocaleLowerCase("vi").includes(query)))
+        .sort((a, b) => {
+            const doneOrder = Number(a.status === "Hoàn thành") - Number(b.status === "Hoàn thành");
+            if (doneOrder) return doneOrder;
+            return String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31"))
+                || String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+        });
+}
+
+function renderPersonalWorkspacePage() {
+    if (!isPersonalWorkspaceOwner()) return "";
+    const tasks = getVisiblePersonalTasks();
+    const loading = personalWorkspaceState.status === "loading" || personalWorkspaceState.status === "idle";
+    const squadTabs = ["1", "7", "11"].map((squad) => {
+        const count = personalWorkspaceState.tasks.filter((task) => String(task.squad) === squad).length;
+        const active = personalWorkspaceState.activeSquad === squad;
+        return `
+            <button class="personal-squad-tab ${active ? "active" : ""}" type="button" data-action="set-personal-squad" data-squad="${squad}" aria-pressed="${active}">
+                <span>Squad ${squad}</span><b>${count}</b>
+            </button>
+        `;
+    }).join("");
+    return `
+        <section class="panel personal-workspace-panel">
+            <div class="panel-head personal-workspace-head">
+                <div class="panel-title">
+                    <i class="fa-solid fa-briefcase"></i>
+                    <div><h2>Việc của Thành</h2><span>Lưu riêng trên hệ thống · chỉ tài khoản của bạn truy cập được</span></div>
+                </div>
+                <div class="panel-actions">
+                    <button class="text-btn" type="button" data-action="export-personal-workspace" title="Xuất 3 sheet Squad 1, 7 và 11">
+                        <i class="fa-solid fa-file-excel"></i><span>Xuất Excel</span>
+                    </button>
+                    <button class="primary-btn" type="button" data-action="open-personal-task">
+                        <i class="fa-solid fa-plus"></i><span>Thêm công việc</span>
+                    </button>
+                </div>
+            </div>
+            <div class="personal-squad-tabs" role="tablist" aria-label="Chọn Squad">${squadTabs}</div>
+            <div class="personal-workspace-tools">
+                <label class="personal-search">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input id="personalWorkspaceSearch" type="search" value="${e(personalWorkspaceState.query)}" placeholder="Tìm tên công việc, người giao hoặc ghi chú" autocomplete="off">
+                </label>
+                <select id="personalWorkspaceStatus" class="field-select" aria-label="Lọc trạng thái">
+                    <option value="">Tất cả trạng thái</option>
+                    ${["Chưa bắt đầu", "Đang thực hiện", "Quá hạn", "Hoàn thành"].map((status) => `<option value="${e(status)}" ${personalWorkspaceState.statusFilter === status ? "selected" : ""}>${e(status)}</option>`).join("")}
+                </select>
+            </div>
+            <div class="personal-workspace-body">
+                ${loading ? `
+                    <div class="personal-empty"><i class="fa-solid fa-spinner fa-spin"></i><strong>Đang tải công việc</strong></div>
+                ` : personalWorkspaceState.status === "error" ? `
+                    <div class="personal-empty is-error"><i class="fa-solid fa-triangle-exclamation"></i><strong>${e(personalWorkspaceState.error)}</strong><button class="text-btn" type="button" data-action="refresh-personal-workspace">Thử lại</button></div>
+                ` : tasks.length ? `
+                    <div class="personal-table-wrap">
+                        <table class="personal-task-table">
+                            <thead><tr><th>Tên công việc</th><th>Người giao</th><th>Thời gian</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+                            <tbody>${tasks.map((task) => {
+                                const displayStatus = personalTaskDisplayStatus(task);
+                                return `
+                                    <tr>
+                                        <td data-label="Công việc"><strong>${e(task.title)}</strong>${task.note ? `<small>${e(task.note)}</small>` : ""}</td>
+                                        <td data-label="Người giao"><span class="personal-assigner"><i class="fa-regular fa-user"></i>${e(task.assigner)}</span></td>
+                                        <td data-label="Thời gian"><span class="personal-date-line"><b>Giao</b>${formatDate(task.assignedDate)}</span><span class="personal-date-line"><b>Hạn</b>${formatDate(task.dueDate)}</span></td>
+                                        <td data-label="Trạng thái"><span class="personal-status ${personalTaskStatusClass(displayStatus)}"><i></i>${e(displayStatus)}</span></td>
+                                        <td data-label="Thao tác"><div class="personal-row-actions">
+                                            <button class="icon-btn" type="button" data-action="edit-personal-task" data-id="${e(task.id)}" title="Sửa công việc" aria-label="Sửa công việc"><i class="fa-solid fa-pen"></i></button>
+                                            <button class="icon-btn danger" type="button" data-action="delete-personal-task" data-id="${e(task.id)}" title="Xóa công việc" aria-label="Xóa công việc"><i class="fa-solid fa-trash"></i></button>
+                                        </div></td>
+                                    </tr>
+                                `;
+                            }).join("")}</tbody>
+                        </table>
+                    </div>
+                ` : `
+                    <div class="personal-empty"><i class="fa-regular fa-clipboard"></i><strong>Chưa có công việc phù hợp</strong><span>Thêm công việc đầu tiên cho Squad ${e(personalWorkspaceState.activeSquad)}.</span></div>
+                `}
+            </div>
+        </section>
+    `;
 }
 
 function renderTaskMasterPage() {
@@ -4893,6 +5047,7 @@ function renderColumnFilterControl(mod, col, autofocus = false) {
 
 function renderModal() {
     if (!ui.modal) return `<div class="modal-backdrop" id="recordModal"></div>`;
+    if (ui.modal.mode === "personal-task") return renderPersonalTaskModal();
     if (ui.modal.mode === "work-progress") return renderWorkProgressModal();
     if (ui.modal.mode === "work-export") return renderWorkExportModal();
     const mod = modules[ui.modal.tab];
@@ -5113,6 +5268,66 @@ function renderWorkStatusProgressWarning() {
         <div class="work-status-warning field full" data-work-status-warning role="alert" aria-live="polite" hidden>
             <i class="fa-solid fa-triangle-exclamation"></i>
             <span></span>
+        </div>
+    `;
+}
+
+function renderPersonalTaskModal() {
+    const row = ui.modal?.id
+        ? personalWorkspaceState.tasks.find((task) => task.id === ui.modal.id)
+        : null;
+    const squad = row?.squad || personalWorkspaceState.activeSquad || "1";
+    return `
+        <div class="modal-backdrop open" id="recordModal" role="dialog" aria-modal="true" aria-labelledby="personalTaskModalTitle">
+            <form class="modal personal-task-modal" id="personalTaskForm">
+                <div class="modal-head">
+                    <div class="modal-title">
+                        <span><i class="fa-solid fa-briefcase"></i></span>
+                        <div><h2 id="personalTaskModalTitle">${row ? "Sửa công việc" : "Thêm công việc"}</h2><p>Theo dõi riêng công việc tại Squad 1, Squad 7 và Squad 11.</p></div>
+                    </div>
+                    <button class="icon-btn" type="button" data-action="close-modal" title="Đóng" aria-label="Đóng"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-grid">
+                        <div class="field">
+                            <label>Squad <span class="required-chip">Bắt buộc</span></label>
+                            <select class="field-select" name="squad" required>
+                                ${["1", "7", "11"].map((value) => `<option value="${value}" ${squad === value ? "selected" : ""}>Squad ${value}</option>`).join("")}
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Trạng thái <span class="required-chip">Bắt buộc</span></label>
+                            <select class="field-select" name="status" required>
+                                ${["Chưa bắt đầu", "Đang thực hiện", "Hoàn thành"].map((value) => `<option value="${e(value)}" ${(row?.status || "Chưa bắt đầu") === value ? "selected" : ""}>${e(value)}</option>`).join("")}
+                            </select>
+                        </div>
+                        <div class="field full">
+                            <label>Tên công việc <span class="required-chip">Bắt buộc</span></label>
+                            <input class="field-input" name="title" type="text" maxlength="240" value="${e(row?.title || "")}" required autofocus>
+                        </div>
+                        <div class="field full">
+                            <label>Người giao việc <span class="required-chip">Bắt buộc</span></label>
+                            <input class="field-input" name="assigner" type="text" maxlength="160" value="${e(row?.assigner || "")}" required placeholder="Ví dụ: Nguyễn Gia Huy">
+                        </div>
+                        <div class="field">
+                            <label>Ngày giao</label>
+                            <input class="field-input" name="assignedDate" type="date" value="${e(row?.assignedDate || todayStamp())}">
+                        </div>
+                        <div class="field">
+                            <label>Deadline</label>
+                            <input class="field-input" name="dueDate" type="date" value="${e(row?.dueDate || "")}">
+                        </div>
+                        <div class="field full">
+                            <label>Ghi chú</label>
+                            <textarea class="field-textarea" name="note" maxlength="2000" rows="4" placeholder="Thông tin cần nhớ hoặc kết quả bàn giao">${e(row?.note || "")}</textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-foot">
+                    <button class="text-btn" type="button" data-action="close-modal">Hủy</button>
+                    <button class="primary-btn" type="submit" ${ui.saving ? "disabled" : ""}><i class="fa-solid fa-floppy-disk"></i><span>${ui.saving ? "Đang lưu" : "Lưu"}</span></button>
+                </div>
+            </form>
         </div>
     `;
 }
@@ -6085,6 +6300,21 @@ function bindEvents() {
         });
     }
 
+    const personalSearch = document.getElementById("personalWorkspaceSearch");
+    if (personalSearch) {
+        personalSearch.addEventListener("input", (event) => {
+            personalWorkspaceState.query = event.target.value;
+            render();
+        });
+    }
+    const personalStatus = document.getElementById("personalWorkspaceStatus");
+    if (personalStatus) {
+        personalStatus.addEventListener("change", (event) => {
+            personalWorkspaceState.statusFilter = event.target.value;
+            render();
+        });
+    }
+
     document.querySelectorAll("[data-filter-key]").forEach((select) => {
         select.addEventListener("change", (event) => {
             const mod = modules[ui.activeTab];
@@ -6124,6 +6354,9 @@ function bindEvents() {
         bindWorkItemFormHelpers(form);
         form.addEventListener("submit", handleSubmit);
     }
+
+    const personalTaskForm = document.getElementById("personalTaskForm");
+    if (personalTaskForm) personalTaskForm.addEventListener("submit", handlePersonalTaskSubmit);
 
     const workExportForm = document.getElementById("workExportForm");
     if (workExportForm) bindWorkExportForm(workExportForm);
@@ -7324,6 +7557,7 @@ async function initAuth() {
         authState = { status: "authenticated", user: data.user, error: null };
         render();
         await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings(), hydrateGoogleSheetSyncStatus()]);
+        if (ui.activeView === "personal-cross-squad") await hydratePersonalWorkspace(true);
         consumeGmailCallbackNotice();
         render();
     } catch {
@@ -7364,6 +7598,7 @@ async function handleLogin(event) {
         authState = { status: "authenticated", user: data.user, error: null };
         render();
         await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings(), hydrateGoogleSheetSyncStatus()]);
+        if (ui.activeView === "personal-cross-squad") await hydratePersonalWorkspace(true);
         consumeGmailCallbackNotice();
         render();
     } catch (error) {
@@ -7414,6 +7649,7 @@ async function handleAuthAction(event) {
     accountDirectory = [];
     deadlineEmailState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
     googleSheetSyncUiState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
+    personalWorkspaceState = { status: "idle", tasks: [], activeSquad: "1", query: "", statusFilter: "", error: null };
     attachmentUiState = {
         workItemId: null,
         status: "idle",
@@ -7732,6 +7968,17 @@ function readFileAsDataUrl(file) {
 function handleAction(event) {
     const action = event.currentTarget.dataset.action;
     const id = event.currentTarget.dataset.id;
+    if (action === "set-personal-squad") {
+        personalWorkspaceState.activeSquad = event.currentTarget.dataset.squad || "1";
+        personalWorkspaceState.query = "";
+        personalWorkspaceState.statusFilter = "";
+        return render();
+    }
+    if (action === "open-personal-task") return openPersonalTask();
+    if (action === "edit-personal-task") return openPersonalTask(id);
+    if (action === "delete-personal-task") return deletePersonalTask(id);
+    if (action === "refresh-personal-workspace") return hydratePersonalWorkspace(true);
+    if (action === "export-personal-workspace") return exportPersonalWorkspace();
     if (action === "open-create") return openCreate();
     if (action === "open-edit") return openEdit(id);
     if (action === "delete-row") return deleteRow(id);
@@ -7986,6 +8233,84 @@ function openWorkProgress(id) {
     ui.modal = { tab: "workItems", id, mode: "work-progress" };
     render();
     hydrateWorkAttachments(id);
+}
+
+function openPersonalTask(id = null) {
+    if (!isPersonalWorkspaceOwner()) return;
+    if (id && !personalWorkspaceState.tasks.some((task) => task.id === id)) {
+        showToast("Không tìm thấy công việc.");
+        return;
+    }
+    ui.modal = { mode: "personal-task", id };
+    render();
+}
+
+async function handlePersonalTaskSubmit(event) {
+    event.preventDefault();
+    if (!isPersonalWorkspaceOwner() || ui.saving) return;
+    const form = event.currentTarget;
+    const id = ui.modal?.id || null;
+    const payload = {
+        squad: form.elements.squad.value,
+        title: form.elements.title.value.trim(),
+        assigner: form.elements.assigner.value.trim(),
+        assignedDate: form.elements.assignedDate.value,
+        dueDate: form.elements.dueDate.value,
+        status: form.elements.status.value,
+        note: form.elements.note.value.trim()
+    };
+    ui.saving = true;
+    render();
+    try {
+        const data = await requestJson(id
+            ? `/personal-workspace/tasks/${encodeURIComponent(id)}`
+            : "/personal-workspace/tasks", {
+            method: id ? "PUT" : "POST",
+            body: JSON.stringify(payload)
+        });
+        const saved = data.task;
+        const index = personalWorkspaceState.tasks.findIndex((task) => task.id === saved.id);
+        if (index >= 0) personalWorkspaceState.tasks.splice(index, 1, saved);
+        else personalWorkspaceState.tasks.push(saved);
+        personalWorkspaceState.activeSquad = saved.squad;
+        personalWorkspaceState.status = "ready";
+        ui.modal = null;
+        showToast(id ? "Đã cập nhật công việc." : "Đã thêm công việc.");
+    } catch (error) {
+        showToast(error.message || "Không lưu được công việc.");
+    } finally {
+        ui.saving = false;
+        render();
+    }
+}
+
+async function deletePersonalTask(id) {
+    const task = personalWorkspaceState.tasks.find((item) => item.id === id);
+    if (!task || !isPersonalWorkspaceOwner()) return;
+    if (!confirm(`Xóa công việc “${task.title}”?`)) return;
+    try {
+        await requestJson(`/personal-workspace/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
+        personalWorkspaceState.tasks = personalWorkspaceState.tasks.filter((item) => item.id !== id);
+        render();
+        showToast("Đã xóa công việc.");
+    } catch (error) {
+        showToast(error.message || "Không xóa được công việc.");
+    }
+}
+
+async function exportPersonalWorkspace() {
+    if (!isPersonalWorkspaceOwner()) return;
+    try {
+        const response = await fetch(`${API_BASE}/personal-workspace/export`, { credentials: "same-origin" });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || "Không xuất được Excel.");
+        }
+        downloadBlob(await response.blob(), `cong-viec-lien-squad-${todayStamp()}.xlsx`);
+        showToast("Đã xuất Excel gồm 3 sheet Squad 1, 7 và 11.");
+    } catch (error) {
+        showToast(error.message || "Không xuất được Excel.");
+    }
 }
 
 function closeModal() {

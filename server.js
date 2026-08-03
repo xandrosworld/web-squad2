@@ -187,6 +187,9 @@ const dailyBugStatusOptions = ["Cancelled", "Closed", "In Progress", "Open", "Pe
 const bugSeverityOptions = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 const workCategoryStatusOptions = ["Đang theo dõi", "Hoàn thành", "Tạm dừng"];
 const workStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Hoàn thành"];
+const personalWorkspaceOwner = "thanhmt@bidv.com.vn";
+const personalWorkspaceSquads = ["1", "7", "11"];
+const personalWorkspaceStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Hoàn thành"];
 const workPriorityOptions = ["Cao", "Trung bình", "Thấp"];
 const memberKpiRoleOptions = ["PO", "BA", "Squad Lead", "Tester", "Developer", "Reviewer", "Khác"];
 const defaultWorkKpiConfig = {
@@ -1326,6 +1329,94 @@ app.get("/api/export/work-items", asyncHandler(async (req, res) => {
   res.send(Buffer.from(buffer));
 }));
 
+app.get("/api/personal-workspace", requirePersonalWorkspaceOwner, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  res.json({ tasks: await listPersonalWorkspaceTasks(getPool()) });
+}));
+
+app.post("/api/personal-workspace/tasks", requirePersonalWorkspaceOwner, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const task = normalizePersonalWorkspaceTask(req.body);
+  const id = crypto.randomUUID();
+  const result = await getPool().query(`
+    insert into personal_cross_squad_tasks (
+      id, squad, title, assigner, assigned_date, due_date, status, note,
+      completed_date, created_by, updated_by
+    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+    returning id
+  `, [
+    id,
+    task.squad,
+    task.title,
+    task.assigner,
+    task.assignedDate || null,
+    task.dueDate || null,
+    task.status,
+    task.note || null,
+    task.completedDate || null,
+    req.user.id
+  ]);
+  if (!result.rows[0]) throw httpError(500, "Không tạo được công việc.");
+  res.status(201).json({ task: await getPersonalWorkspaceTask(getPool(), id) });
+}));
+
+app.put("/api/personal-workspace/tasks/:id", requirePersonalWorkspaceOwner, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const current = await getPersonalWorkspaceTask(getPool(), req.params.id);
+  if (!current) throw httpError(404, "Không tìm thấy công việc.");
+  const task = normalizePersonalWorkspaceTask(req.body, current);
+  const result = await getPool().query(`
+    update personal_cross_squad_tasks
+    set squad = $1,
+        title = $2,
+        assigner = $3,
+        assigned_date = $4,
+        due_date = $5,
+        status = $6,
+        note = $7,
+        completed_date = $8,
+        updated_by = $9,
+        updated_at = now()
+    where id = $10
+    returning id
+  `, [
+    task.squad,
+    task.title,
+    task.assigner,
+    task.assignedDate || null,
+    task.dueDate || null,
+    task.status,
+    task.note || null,
+    task.completedDate || null,
+    req.user.id,
+    req.params.id
+  ]);
+  if (!result.rows[0]) throw httpError(404, "Không tìm thấy công việc.");
+  res.json({ task: await getPersonalWorkspaceTask(getPool(), req.params.id) });
+}));
+
+app.delete("/api/personal-workspace/tasks/:id", requirePersonalWorkspaceOwner, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const result = await getPool().query(`
+    delete from personal_cross_squad_tasks
+    where id = $1
+    returning id
+  `, [req.params.id]);
+  if (!result.rows[0]) throw httpError(404, "Không tìm thấy công việc.");
+  res.json({ ok: true });
+}));
+
+app.get("/api/personal-workspace/export", requirePersonalWorkspaceOwner, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const workbook = buildPersonalWorkspaceWorkbook(await listPersonalWorkspaceTasks(getPool()));
+  const buffer = await workbook.xlsx.writeBuffer();
+  const filename = `cong-viec-lien-squad-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(Buffer.from(buffer));
+}));
+
 app.post("/api/import/excel/merge", requireAdmin, express.raw({
   type: () => true,
   limit: requestBodyLimit
@@ -1854,6 +1945,7 @@ module.exports = {
   isComputedRecordField,
   buildExcelWorkbook,
   buildWorkItemsExportWorkbook,
+  buildPersonalWorkspaceWorkbook,
   filterWorkItemsForExport,
   parseWorkItemExportFilters,
   excelSheets,
@@ -1876,6 +1968,8 @@ module.exports = {
   __testNormalizeWorkItemCompletion: normalizeWorkItemCompletion,
   __testAssertAndPreserveWorkItemStartDate: assertAndPreserveWorkItemStartDate,
   __testLegacyStartDateBackfillField: legacyStartDateBackfillField,
+  __testNormalizePersonalWorkspaceTask: normalizePersonalWorkspaceTask,
+  __testIsPersonalWorkspaceOwner: isPersonalWorkspaceOwner,
   __testBuildPilotWorkPlanSeedRecords: buildPilotWorkPlanSeedRecords,
   __testEmptyState: emptyState,
   __testCanEditRecord: canEditRecord,
@@ -2030,6 +2124,25 @@ function ensureSchema() {
 
       create index if not exists idx_work_item_attachments_uploader
         on work_item_attachments (created_by, created_at desc);
+
+      create table if not exists personal_cross_squad_tasks (
+        id text primary key,
+        squad text not null,
+        title text not null,
+        assigner text not null,
+        assigned_date date,
+        due_date date,
+        status text not null default 'Chưa bắt đầu',
+        note text,
+        completed_date date,
+        created_by text not null,
+        updated_by text not null,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+
+      create index if not exists idx_personal_cross_squad_tasks_order
+        on personal_cross_squad_tasks (squad, due_date, created_at desc);
     `);
       await ensureSeedAdmin();
       await ensureDefaultUsers();
@@ -3949,6 +4062,138 @@ function isIsoDateOnly(value) {
   if (!match) return false;
   const date = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function normalizePersonalWorkspaceTask(input = {}, current = null) {
+  const squad = String(input.squad ?? current?.squad ?? "").trim();
+  const title = String(input.title ?? current?.title ?? "").replace(/\s+/g, " ").trim();
+  const assigner = String(input.assigner ?? current?.assigner ?? "").replace(/\s+/g, " ").trim();
+  const assignedDate = String(input.assignedDate ?? current?.assignedDate ?? "").trim();
+  const dueDate = String(input.dueDate ?? current?.dueDate ?? "").trim();
+  const status = String(input.status ?? current?.status ?? personalWorkspaceStatusOptions[0]).trim();
+  const note = String(input.note ?? current?.note ?? "").trim();
+
+  if (!personalWorkspaceSquads.includes(squad)) throw httpError(400, "Squad không hợp lệ.");
+  if (!title) throw httpError(400, "Tên công việc là trường bắt buộc.");
+  if (title.length > 240) throw httpError(400, "Tên công việc không được vượt quá 240 ký tự.");
+  if (!assigner) throw httpError(400, "Người giao việc là trường bắt buộc.");
+  if (assigner.length > 160) throw httpError(400, "Người giao việc không được vượt quá 160 ký tự.");
+  if (assignedDate && !isIsoDateOnly(assignedDate)) throw httpError(400, "Ngày giao việc không hợp lệ.");
+  if (dueDate && !isIsoDateOnly(dueDate)) throw httpError(400, "Deadline không hợp lệ.");
+  if (assignedDate && dueDate && dueDate < assignedDate) {
+    throw httpError(400, "Deadline không được trước ngày giao việc.");
+  }
+  if (!personalWorkspaceStatusOptions.includes(status)) throw httpError(400, "Trạng thái không hợp lệ.");
+  if (note.length > 2000) throw httpError(400, "Ghi chú không được vượt quá 2.000 ký tự.");
+
+  const completedDate = status === "Hoàn thành"
+    ? String(input.completedDate || current?.completedDate || new Date().toISOString().slice(0, 10))
+    : "";
+  return { squad, title, assigner, assignedDate, dueDate, status, note, completedDate };
+}
+
+function mapPersonalWorkspaceTaskRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    squad: row.squad,
+    title: row.title,
+    assigner: row.assigner,
+    assignedDate: row.assigned_date || "",
+    dueDate: row.due_date || "",
+    status: row.status,
+    note: row.note || "",
+    completedDate: row.completed_date || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+const personalWorkspaceSelect = `
+  select id,
+         squad,
+         title,
+         assigner,
+         to_char(assigned_date, 'YYYY-MM-DD') as assigned_date,
+         to_char(due_date, 'YYYY-MM-DD') as due_date,
+         status,
+         note,
+         to_char(completed_date, 'YYYY-MM-DD') as completed_date,
+         created_at,
+         updated_at
+  from personal_cross_squad_tasks
+`;
+
+async function listPersonalWorkspaceTasks(db) {
+  const result = await db.query(`${personalWorkspaceSelect}
+    order by case squad when '1' then 1 when '7' then 2 when '11' then 3 else 4 end,
+             case when status = 'Hoàn thành' then 1 else 0 end,
+             due_date asc nulls last,
+             created_at desc
+  `);
+  return result.rows.map(mapPersonalWorkspaceTaskRow);
+}
+
+async function getPersonalWorkspaceTask(db, id) {
+  const result = await db.query(`${personalWorkspaceSelect} where id = $1 limit 1`, [id]);
+  return mapPersonalWorkspaceTaskRow(result.rows[0]);
+}
+
+function buildPersonalWorkspaceWorkbook(tasks = []) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Mai Tấn Thành";
+  workbook.created = new Date();
+  workbook.modified = new Date();
+  const columns = [
+    { header: "STT", key: "index", width: 8 },
+    { header: "Tên công việc", key: "title", width: 42 },
+    { header: "Người giao", key: "assigner", width: 24 },
+    { header: "Ngày giao", key: "assignedDate", width: 14 },
+    { header: "Deadline", key: "dueDate", width: 14 },
+    { header: "Trạng thái", key: "status", width: 20 },
+    { header: "Ghi chú", key: "note", width: 48 }
+  ];
+
+  for (const squad of personalWorkspaceSquads) {
+    const worksheet = workbook.addWorksheet(`Squad ${squad}`, {
+      views: [{ state: "frozen", ySplit: 2 }]
+    });
+    worksheet.mergeCells("A1:G1");
+    worksheet.getCell("A1").value = `CÔNG VIỆC CÁ NHÂN · SQUAD ${squad}`;
+    worksheet.getCell("A1").font = { bold: true, size: 14, color: { argb: "FFFFFFFF" } };
+    worksheet.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF006F6B" } };
+    worksheet.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+    worksheet.getRow(1).height = 28;
+    worksheet.columns = columns.map(({ key, width }) => ({ key, width }));
+    worksheet.getRow(2).values = columns.map((column) => column.header);
+    worksheet.getRow(2).height = 24;
+    worksheet.getRow(2).eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF008C86" } };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    });
+    worksheet.autoFilter = { from: "A2", to: "G2" };
+
+    tasks.filter((task) => String(task.squad) === squad).forEach((task, index) => {
+      const row = worksheet.addRow({
+        index: index + 1,
+        title: task.title,
+        assigner: task.assigner,
+        assignedDate: task.assignedDate ? new Date(`${task.assignedDate}T00:00:00`) : null,
+        dueDate: task.dueDate ? new Date(`${task.dueDate}T00:00:00`) : null,
+        status: task.status,
+        note: task.note
+      });
+      row.getCell("assignedDate").numFmt = "dd/mm/yyyy";
+      row.getCell("dueDate").numFmt = "dd/mm/yyyy";
+      row.alignment = { vertical: "top", wrapText: true };
+      row.height = Math.min(90, Math.max(22, 15 * Math.ceil(Math.max(task.title.length / 40, task.note.length / 48, 1))));
+      row.eachCell((cell) => {
+        cell.border = { bottom: { style: "thin", color: { argb: "FFE2E8F0" } } };
+      });
+    });
+  }
+  return workbook;
 }
 
 function safeFilenamePart(value) {
@@ -6557,6 +6802,21 @@ async function requireApiAuth(req, res, next) {
 function requireAdmin(req, res, next) {
   if (req.user?.role !== "admin") {
     res.status(403).json({ error: "Bạn không có quyền quản trị tài khoản.", status: 403 });
+    return;
+  }
+  next();
+}
+
+function isPersonalWorkspaceOwner(user) {
+  const identities = [user?.email, user?.username]
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+  return identities.includes(personalWorkspaceOwner);
+}
+
+function requirePersonalWorkspaceOwner(req, res, next) {
+  if (!isPersonalWorkspaceOwner(req.user)) {
+    res.status(403).json({ error: "Màn hình này chỉ dành cho tài khoản cá nhân được cấu hình.", status: 403 });
     return;
   }
   next();
