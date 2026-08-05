@@ -263,6 +263,12 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       || !await page.locator(".field-lock-note:not(.completion-progress-note)").isVisible()) {
       throw new Error("Form sửa chưa khóa và giải thích trường Ngày giao việc.");
     }
+    await page.locator('#recordForm [name="progress"]').fill("60");
+    await page.locator('#recordForm [name="status"]').selectOption("Hoàn thành");
+    if (await page.locator('#recordForm [name="progress"]').inputValue() !== "100"
+      || await page.locator('#recordForm [data-work-status-warning]').isVisible()) {
+      throw new Error("Form Sửa Kế hoạch chưa tự chuyển % hoàn thành thành 100 khi chọn Hoàn thành.");
+    }
     await page.waitForSelector(".attachment-dropzone:not(.is-loading)");
     await page.locator("[data-attachment-input]").setInputFiles({
       name: "smoke-attachment.txt",
@@ -308,6 +314,12 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     if (await page.locator("[data-work-status-warning]").isVisible()
       || await page.locator('.work-progress-modal button[type="submit"]').isDisabled()) {
       throw new Error("Form cập nhật tiến độ chưa mở lại Lưu sau khi dữ liệu hợp lệ.");
+    }
+    await page.locator('[name="status"]').selectOption("Hoàn thành");
+    if (await page.locator('[name="progress"]').inputValue() !== "100"
+      || await page.locator("[data-work-status-warning]").isVisible()
+      || await page.locator('.work-progress-modal button[type="submit"]').isDisabled()) {
+      throw new Error("Popup cập nhật tiến độ chưa tự chuyển % hoàn thành thành 100 khi chọn Hoàn thành.");
     }
     await page.locator('.work-progress-modal [name="completedDate"]').fill("2026-07-27");
     if (await page.locator('.work-progress-modal [name="status"]').inputValue() !== "Hoàn thành"

@@ -5223,7 +5223,7 @@ function renderWorkProgressModal() {
                                 <label>% hoàn thành</label>
                                 <input class="field-input" name="progress" type="number" min="0" max="100" step="1" value="${e(progress)}">
                                 <small class="field-lock-note completion-progress-note" data-completion-progress-note ${row.completedDate ? "" : "hidden"}>
-                                    <i class="fa-solid fa-wand-magic-sparkles"></i> Tự cập nhật theo ngày hoàn thành.
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i> Tự cập nhật khi chọn Hoàn thành hoặc nhập ngày hoàn thành.
                                 </small>
                             </div>
                             <div class="field">
@@ -6101,7 +6101,7 @@ function renderField(field, row) {
             ${control}
             ${ui.modal?.tab === "workItems" && field.key === "progress" ? `
                 <small class="field-lock-note completion-progress-note" data-completion-progress-note ${row?.completedDate ? "" : "hidden"}>
-                    <i class="fa-solid fa-wand-magic-sparkles"></i> Tự cập nhật theo ngày hoàn thành.
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Tự cập nhật khi chọn Hoàn thành hoặc nhập ngày hoàn thành.
                 </small>
             ` : ""}
             ${selfAssignmentField ? `<small class="field-lock-note"><i class="fa-solid fa-lock"></i> Tài khoản thường chỉ được tự nhận công việc; admin hoặc người quản lý nhóm có thể phân công nhiều người.</small>` : ""}
@@ -6188,7 +6188,11 @@ function bindWorkStatusProgressValidation(form) {
         if (completionNote) completionNote.hidden = !completed;
         updateValidation();
     };
-    statusInput.addEventListener("change", updateValidation);
+    const syncProgressFromStatus = () => {
+        if (statusInput.value === "Hoàn thành") progressInput.value = "100";
+        updateValidation();
+    };
+    statusInput.addEventListener("change", syncProgressFromStatus);
     progressInput.addEventListener("input", updateValidation);
     progressInput.addEventListener("change", updateValidation);
     completedDateInput?.addEventListener("input", syncCompletedDate);
