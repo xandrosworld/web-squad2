@@ -90,6 +90,21 @@ assert.equal(
 );
 
 assert.deepEqual(
+  Object.fromEntries(
+    ["role", "scope", "status"].map((field) => [
+      field,
+      state.personnel.find((person) => person.name === "Phạm Hoàng Công Huân")[field]
+    ])
+  ),
+  {
+    role: "Tester / Giảng viên nội bộ",
+    scope: "Kiểm thử luân chuyển đa nghiệp vụ",
+    status: "Đang tham gia"
+  },
+  "Tester 7 must use the same personnel classification as the rotating testers."
+);
+
+assert.deepEqual(
   [state.plans[0].t1, state.plans[0].t2, state.plans[0].t3, state.plans[0].t4, state.plans[0].t5, state.plans[0].t6, state.plans[0].t7],
   [12, 13, 14, 15, 16, 17, 18],
   "Personnel normalization must never shift actual PhanCong_UAT allocation columns."

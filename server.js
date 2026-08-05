@@ -3193,27 +3193,28 @@ function canonicalTesterCodeForName(name) {
 
 function applyCanonicalTesterPersonnelRules(personnel) {
   const tester7 = canonicalTesterDirectory.find((tester) => tester.key === "t7");
-  const tester7Exists = (personnel || []).some((row) => (
+  let tester7Row = (personnel || []).find((row) => (
     testerIdentityKey(row?.name) === testerIdentityKey(tester7.name)
     || String(row?.email || "").trim().toLowerCase() === tester7.email
   ));
-  if (!tester7Exists) {
-    personnel.push({
+  if (!tester7Row) {
+    tester7Row = {
       id: "personnel-t7-huanphc",
-      staffCode: tester7.code,
-      name: tester7.name,
-      role: "Tester",
-      scope: "Kiểm thử UAT",
-      status: "Hoạt động",
       birthYear: "",
       phone: "",
-      email: tester7.email,
       unit: "",
       bidvJoinDate: "",
       salaryGrade: "",
       salaryStep: ""
-    });
+    };
+    personnel.push(tester7Row);
   }
+  tester7Row.staffCode = tester7.code;
+  tester7Row.name = tester7.name;
+  tester7Row.email = tester7.email;
+  tester7Row.role = "Tester / Giảng viên nội bộ";
+  tester7Row.scope = "Kiểm thử luân chuyển đa nghiệp vụ";
+  tester7Row.status = "Đang tham gia";
   for (const row of personnel || []) {
     const tester = canonicalTesterForName(row?.name);
     if (!tester) continue;
