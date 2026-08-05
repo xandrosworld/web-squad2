@@ -91,6 +91,7 @@ const personnelNameOptions = [
     "Nguyễn Châu Giang",
     "Nguyễn Gia Huy",
     "Phạm Anh Tuấn",
+    "Phạm Hoàng Công Huân",
     "Trần Đình Tuấn"
 ];
 const dailyTesterLabels = {
@@ -99,7 +100,8 @@ const dailyTesterLabels = {
     "3": "T3 – Hoàng Thành Trí",
     "4": "T4 – Nguyễn Gia Huy",
     "5": "T5 – Trần Đình Tuấn",
-    "6": "T6 – Mai Tấn Thành"
+    "6": "T6 – Mai Tấn Thành",
+    "7": "T7 – Phạm Hoàng Công Huân"
 };
 const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
 const handoffNoteOptions = ["Done RSD", "Done DEV", "Done SIT", "Done UAT"];
@@ -140,6 +142,7 @@ const workAssigneeOptions = [
     "Nguyễn Châu Giang",
     "Nguyễn Gia Huy",
     "Phạm Anh Tuấn",
+    "Phạm Hoàng Công Huân",
     "Trần Đình Tuấn",
     "Lê Trần Sơn",
     "Huỳnh Công Sinh",
@@ -152,6 +155,7 @@ const workAssigneeEmailByName = {
     "Nguyễn Châu Giang": "giangnc2@bidv.com.vn",
     "Nguyễn Gia Huy": "huyng@bidv.com.vn",
     "Phạm Anh Tuấn": "tuanpa13@bidv.com.vn",
+    "Phạm Hoàng Công Huân": "huanphc@bidv.com.vn",
     "Trần Đình Tuấn": "tuantd3@bidv.com.vn",
     "Lê Trần Sơn": "sonlt8@bidv.com.vn",
     "Huỳnh Công Sinh": "sinhhc@bidv.com.vn",
@@ -425,7 +429,7 @@ const modules = {
         shortLabel: "Phân công",
         icon: "fa-calendar-days",
         collection: "plans",
-        description: "Phân công chức năng theo sprint, đầu mối nghiệp vụ, NV, tester T1-T6 và trạng thái testcase.",
+        description: "Phân công chức năng theo sprint, đầu mối nghiệp vụ, NV, tester T1-T7 và trạng thái testcase.",
         emptyIcon: "fa-calendar-plus",
         emptyTitle: "Chưa có phân công Sprint",
         emptyText: "Kế hoạch phân công sẽ hiển thị tại đây sau khi có bản ghi.",
@@ -444,6 +448,7 @@ const modules = {
             { key: "t4", label: "T4", type: "number" },
             { key: "t5", label: "T5", type: "number" },
             { key: "t6", label: "T6", type: "number" },
+            { key: "t7", label: "T7", type: "number" },
             { key: "totalCases", label: "Tổng Testcase", type: "number" },
             { key: "testStatus", label: "Trạng thái kiểm thử", type: "select", options: testStatusOptions },
             { key: "progress", label: "% hoàn thành", type: "percent" },
@@ -471,6 +476,7 @@ const modules = {
             { key: "t4", label: "T4", headerTop: "Huy", width: "76px", render: (row) => numberText(row.t4) },
             { key: "t5", label: "T5", headerTop: "Tuấn", width: "80px", render: (row) => numberText(row.t5) },
             { key: "t6", label: "T6", headerTop: "Thành", width: "84px", render: (row) => numberText(row.t6) },
+            { key: "t7", label: "T7", headerTop: "Huân", width: "80px", render: (row) => numberText(row.t7) },
             { key: "totalCases", label: "Tổng Testcase", width: "130px", render: (row) => numberText(row.totalCases) },
             { key: "testStatus", label: "Trạng thái kiểm thử", width: "170px", render: (row) => renderStatus(row.testStatus) },
             { key: "progress", label: "% hoàn thành", width: "140px", render: (row) => progressCell(resolveRate(row.progress, row.executedCases, row.totalCases)) },
@@ -497,6 +503,7 @@ const modules = {
             { key: "t4", label: "T4", type: "number" },
             { key: "t5", label: "T5", type: "number" },
             { key: "t6", label: "T6", type: "number" },
+            { key: "t7", label: "T7", type: "number" },
             { key: "totalParticipation", label: "Tổng lượt tham gia", type: "number" },
             { key: "target", label: "Mục tiêu", type: "number" },
             { key: "warning", label: "Cảnh báo", type: "text" }
@@ -512,6 +519,7 @@ const modules = {
             { key: "t4", label: "T4", width: "80px", render: (row) => numberText(row.t4) },
             { key: "t5", label: "T5", width: "80px", render: (row) => numberText(row.t5) },
             { key: "t6", label: "T6", width: "80px", render: (row) => numberText(row.t6) },
+            { key: "t7", label: "T7", width: "80px", render: (row) => numberText(row.t7) },
             { key: "totalParticipation", label: "Tổng lượt tham gia", width: "180px", render: (row) => numberText(row.totalParticipation) },
             { key: "target", label: "Mục tiêu", width: "100px", render: (row) => numberText(row.target) },
             { key: "warning", label: "Cảnh báo", width: "180px", render: (row) => renderStatus(row.warning) }
@@ -2418,7 +2426,7 @@ function getT01SheetDashboard(tabId) {
 
     if (normalizedTab === "plans") {
         const rows = getDisplayRows("plans");
-        const hasAssignment = (row) => ["nv", "t1", "t2", "t3", "t4", "t5", "t6"].some((key) => Number(row[key] || 0) > 0);
+        const hasAssignment = (row) => ["nv", "t1", "t2", "t3", "t4", "t5", "t6", "t7"].some((key) => Number(row[key] || 0) > 0);
         const predicates = {
             all: () => true,
             hasCases: (row) => Number(row.totalCases || 0) > 0,
@@ -2551,7 +2559,7 @@ function getT01SheetDashboard(tabId) {
     const rows = getDisplayRows("matrix");
     const reached = (row) => statusIs(row.warning, "Đạt") || (Number(row.target || 0) > 0 && Number(row.totalParticipation || 0) >= Number(row.target || 0));
     const insufficient = (row) => !reached(row);
-    const activeTesterCount = ["t1", "t2", "t3", "t4", "t5", "t6"].filter((key) => rows.some((row) => Number(row[key] || 0) > 0)).length;
+    const activeTesterCount = ["t1", "t2", "t3", "t4", "t5", "t6", "t7"].filter((key) => rows.some((row) => Number(row[key] || 0) > 0)).length;
     return {
         label: "Năng suất Tester",
         collection: "matrix",
@@ -2559,7 +2567,7 @@ function getT01SheetDashboard(tabId) {
             metric("all", "Nhóm chức năng", rows.length, "fa-layer-group", "teal", () => true),
             metric("participation", "Tổng lượt tham gia", sum(rows, "totalParticipation"), "fa-users", "blue", (row) => Number(row.totalParticipation || 0) > 0),
             metric("target", "Tổng mục tiêu", sum(rows, "target"), "fa-bullseye", "yellow", (row) => Number(row.target || 0) > 0),
-            metric("testers", "Tester có tham gia", activeTesterCount, "fa-user-check", "blue", (row) => ["t1", "t2", "t3", "t4", "t5", "t6"].some((key) => Number(row[key] || 0) > 0)),
+            metric("testers", "Tester có tham gia", activeTesterCount, "fa-user-check", "blue", (row) => ["t1", "t2", "t3", "t4", "t5", "t6", "t7"].some((key) => Number(row[key] || 0) > 0)),
             metric("reached", "Nhóm đạt", rows.filter(reached).length, "fa-circle-check", "green", reached),
             metric("insufficient", "Thiếu luân chuyển", rows.filter(insufficient).length, "fa-triangle-exclamation", "red", insufficient)
         ]
@@ -3241,7 +3249,7 @@ function calculateTrainingReadiness() {
     if (!appState.matrix.length) return 0;
     const matrixRows = appState.matrix.filter((row) => isFilled(row.group));
     if (!matrixRows.length) return 0;
-    const rates = ["t1", "t2", "t3", "t4", "t5", "t6"].map((testerKey) => (
+    const rates = ["t1", "t2", "t3", "t4", "t5", "t6", "t7"].map((testerKey) => (
         percent(matrixRows.filter((row) => Number(row[testerKey] || 0) > 0).length, matrixRows.length)
     ));
     return round(averageAll(rates));
@@ -3421,7 +3429,7 @@ function renderTimelinePanel() {
                 <div class="panel-title">
                     <i class="fa-solid fa-timeline"></i>
                     <div>
-                        <h2>Timeline T1-T6</h2>
+                        <h2>Timeline T1-T7</h2>
                         <span>Mốc gần nhất từ phân công Sprint</span>
                     </div>
                 </div>
@@ -3440,7 +3448,7 @@ function renderTimelinePanel() {
                             </div>
                         `).join("")}
                     </div>
-                ` : renderEmpty("fa-calendar-days", "Chưa có timeline Sprint", "Nhập phân công Sprint để dashboard hiển thị các mốc T1-T6 gần nhất.", true)}
+                ` : renderEmpty("fa-calendar-days", "Chưa có timeline Sprint", "Nhập phân công Sprint để dashboard hiển thị các mốc T1-T7 gần nhất.", true)}
             </div>
         </section>
     `;
@@ -3544,7 +3552,7 @@ function getGroupOverviewRows() {
 
     appState.matrix.forEach((row) => {
         const bucket = ensureBucket(row.group);
-        bucket.matrixAssignments += ["t1", "t2", "t3", "t4", "t5", "t6"].filter((key) => isFilled(row[key])).length;
+        bucket.matrixAssignments += ["t1", "t2", "t3", "t4", "t5", "t6", "t7"].filter((key) => isFilled(row[key])).length;
     });
 
     const rows = [...buckets.values()].map((bucket) => {
@@ -3666,7 +3674,7 @@ function getDashboardRisks(metrics) {
 
 function getUpcomingMilestones(limit = 7) {
     const today = getTodayDateOnly();
-    const milestoneKeys = ["t1", "t2", "t3", "t4", "t5", "t6"];
+    const milestoneKeys = ["t1", "t2", "t3", "t4", "t5", "t6", "t7"];
     const items = [];
 
     appState.plans.forEach((row) => {
@@ -4499,7 +4507,7 @@ function normalizeGuideRowsForDisplay(rows) {
 function defaultGuideRows() {
     const rows = [
         ["Hướng dẫn", 1, "Cập nhật lịch bàn giao", "Vào sheet Lich_BG_US"],
-        ["Hướng dẫn", 2, "Phân công Tester", "Vào sheet PhanCong_UAT, đánh dấu ✓ cho T1-T6. Mô hình mặc định đã luân chuyển 2 Tester/Story."],
+        ["Hướng dẫn", 2, "Phân công Tester", "Vào sheet PhanCong_UAT, đánh dấu ✓ cho T1-T7. Mô hình mặc định đã luân chuyển 2 Tester/Story."],
         ["Hướng dẫn", 3, "Theo dõi hằng ngày", "Vào sheet DieuHanh_Ngay để nhập số TC đã chạy, TC đạt, lỗi, blocker và người xử lý."],
         ["Hướng dẫn", 4, "Đánh giá hằng tuần", "Sheet ChatLuong_Tuan tổng hợp Quality Gate theo tuần/Sprint."],
         ["Hướng dẫn", 5, "Kết thúc Sprint", "Sheet TongKet_Sprint tự tính GO / CONDITIONAL GO / NO GO theo coverage, pass rate và lỗi mở."],

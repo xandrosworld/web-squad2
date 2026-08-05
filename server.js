@@ -96,7 +96,8 @@ const defaultUsers = [
   { username: "sinhhc@bidv.com.vn", email: "sinhhc@bidv.com.vn", name: "Huỳnh Công Sinh", password: "123456" },
   { username: "triht@bidv.com.vn", email: "triht@bidv.com.vn", name: "Hoàng Thành Trí", password: "123456" },
   { username: "huyng@bidv.com.vn", email: "huyng@bidv.com.vn", name: "Nguyễn Gia Huy", password: "123456" },
-  { username: "tuantd3@bidv.com.vn", email: "tuantd3@bidv.com.vn", name: "Trần Đình Tuấn", password: "123456" }
+  { username: "tuantd3@bidv.com.vn", email: "tuantd3@bidv.com.vn", name: "Trần Đình Tuấn", password: "123456" },
+  { username: "huanphc@bidv.com.vn", email: "huanphc@bidv.com.vn", name: "Phạm Hoàng Công Huân", password: "123456" }
 ];
 const adminIdentities = ["yenuth@bidv.com.vn", "thanhmt@bidv.com.vn", "huyng@bidv.com.vn"];
 const workItemGroupEditors = {
@@ -158,6 +159,7 @@ const personnelNameOptions = [
   "Nguyễn Châu Giang",
   "Nguyễn Gia Huy",
   "Phạm Anh Tuấn",
+  "Phạm Hoàng Công Huân",
   "Trần Đình Tuấn"
 ];
 const ownerAccountLinks = [
@@ -175,7 +177,8 @@ const canonicalTesterDirectory = Object.freeze([
   Object.freeze({ key: "t3", code: "T3", shortName: "Trí", name: "Hoàng Thành Trí", email: "triht@bidv.com.vn" }),
   Object.freeze({ key: "t4", code: "T4", shortName: "Huy", name: "Nguyễn Gia Huy", email: "huyng@bidv.com.vn" }),
   Object.freeze({ key: "t5", code: "T5", shortName: "Tuấn", name: "Trần Đình Tuấn", email: "tuantd3@bidv.com.vn" }),
-  Object.freeze({ key: "t6", code: "T6", shortName: "Thành", name: "Mai Tấn Thành", email: "thanhmt@bidv.com.vn" })
+  Object.freeze({ key: "t6", code: "T6", shortName: "Thành", name: "Mai Tấn Thành", email: "thanhmt@bidv.com.vn" }),
+  Object.freeze({ key: "t7", code: "T7", shortName: "Huân", name: "Phạm Hoàng Công Huân", email: "huanphc@bidv.com.vn" })
 ]);
 const canonicalTesterByName = new Map(canonicalTesterDirectory.map((tester) => [testerIdentityKey(tester.name), tester]));
 const handoffStatusOptions = ["⏯️Chưa bàn giao", "✅ Đã bàn giao"];
@@ -227,6 +230,7 @@ const workAssigneeDirectory = {
   "Huỳnh Công Sinh": "sinhhc@bidv.com.vn",
   "Hoàng Thành Trí": "triht@bidv.com.vn",
   "Mai Tấn Thành": "thanhmt@bidv.com.vn",
+  "Phạm Hoàng Công Huân": "huanphc@bidv.com.vn",
   "Uông Thị Hải Yến": "yenuth@bidv.com.vn"
 };
 const pilotWorkCategories = [
@@ -359,7 +363,7 @@ const collectionRules = {
   },
   plans: {
     required: ["feature"],
-    numbers: ["nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "executedCases", "priority"],
+    numbers: ["nv", "t1", "t2", "t3", "t4", "t5", "t6", "t7", "totalCases", "executedCases", "priority"],
     percents: ["progress"],
     enums: {
       owner: ownerOptions,
@@ -426,7 +430,7 @@ const collectionRules = {
   },
   matrix: {
     required: ["group"],
-    numbers: ["t1", "t2", "t3", "t4", "t5", "t6", "totalParticipation", "target"],
+    numbers: ["t1", "t2", "t3", "t4", "t5", "t6", "t7", "totalParticipation", "target"],
     percents: [],
     enums: {}
   },
@@ -582,6 +586,7 @@ const excelSheets = [
       ["t4", "T4", 10, "number"],
       ["t5", "T5", 10, "number"],
       ["t6", "T6", 10, "number"],
+      ["t7", "T7", 10, "number"],
       ["totalCases", "Tổng Testcase", 14, "number"],
       ["testStatus", "Trạng thái kiểm thử", 20],
       ["progress", "% hoàn thành", 16, "number"],
@@ -763,6 +768,7 @@ const excelSheets = [
       ["t4", "T4", 10, "number"],
       ["t5", "T5", 10, "number"],
       ["t6", "T6", 10, "number"],
+      ["t7", "T7", 10, "number"],
       ["totalParticipation", "Tổng lượt tham gia", 18, "number"],
       ["target", "Mục tiêu", 12, "number"],
       ["warning", "Cảnh báo", 20]
@@ -1953,6 +1959,7 @@ module.exports = {
   tryAnswerAiShortcut,
   summarizeTesterAssignments,
   canonicalTesterDirectory,
+  __testDefaultUsers: defaultUsers,
   validateWorkbookImportState,
   prepareWorkbookImportState,
   mergeWorkbookSourceState,
@@ -2442,13 +2449,15 @@ function handoffSectionRowType(row) {
 
 function parsePlanSheet(worksheet) {
   if (!worksheet) return [];
+  const hasT7 = worksheetHasTester7Column(worksheet, 15);
+  const trailingOffset = hasT7 ? 1 : 0;
   return parseRows(worksheet, 4, (row) => {
     const code = cellTextAt(row, 1);
     const jiraCode = cellTextAt(row, 2);
     const group = cellTextAt(row, 3);
     const feature = cellTextAt(row, 4);
     if (!jiraCode || !feature) return null;
-    const totalCases = toImportNumber(cellValueAt(row, 15));
+    const totalCases = toImportNumber(cellValueAt(row, 15 + trailingOffset));
     const executedCases = 0;
     return {
       id: importId("plans", cellTextAt(row, 5), jiraCode),
@@ -2467,14 +2476,15 @@ function parsePlanSheet(worksheet) {
       t4: toImportNumber(cellValueAt(row, 12)),
       t5: toImportNumber(cellValueAt(row, 13)),
       t6: toImportNumber(cellValueAt(row, 14)),
+      t7: hasT7 ? toImportNumber(cellValueAt(row, 15)) : "",
       totalCases,
       executedCases,
-      testStatus: cellTextAt(row, 16),
-      progress: toImportPercent(cellValueAt(row, 17)) || percent(executedCases, totalCases),
-      uatStatus: cellTextAt(row, 18),
-      devStatus: cellTextAt(row, 19),
-      priority: toImportNumber(cellValueAt(row, 20)),
-      note: cellTextAt(row, 21)
+      testStatus: cellTextAt(row, 16 + trailingOffset),
+      progress: toImportPercent(cellValueAt(row, 17 + trailingOffset)) || percent(executedCases, totalCases),
+      uatStatus: cellTextAt(row, 18 + trailingOffset),
+      devStatus: cellTextAt(row, 19 + trailingOffset),
+      priority: toImportNumber(cellValueAt(row, 20 + trailingOffset)),
+      note: cellTextAt(row, 21 + trailingOffset)
     };
   });
 }
@@ -2736,6 +2746,8 @@ function parseReadinessSheet(worksheet) {
 
 function parseMatrixSheet(worksheet) {
   if (!worksheet) return [];
+  const hasT7 = worksheetHasTester7Column(worksheet, 8);
+  const trailingOffset = hasT7 ? 1 : 0;
   return parseRows(worksheet, 4, (row) => {
     const group = cellTextAt(row, 1);
     if (!group || group.toLocaleLowerCase("vi").includes("tỷ lệ")) return null;
@@ -2748,9 +2760,10 @@ function parseMatrixSheet(worksheet) {
       t4: toImportNumber(cellValueAt(row, 5)),
       t5: toImportNumber(cellValueAt(row, 6)),
       t6: toImportNumber(cellValueAt(row, 7)),
-      totalParticipation: toImportNumber(cellValueAt(row, 8)),
-      target: toImportNumber(cellValueAt(row, 9)),
-      warning: cellTextAt(row, 10)
+      t7: hasT7 ? toImportNumber(cellValueAt(row, 8)) : "",
+      totalParticipation: toImportNumber(cellValueAt(row, 8 + trailingOffset)),
+      target: toImportNumber(cellValueAt(row, 9 + trailingOffset)),
+      warning: cellTextAt(row, 10 + trailingOffset)
     };
   });
 }
@@ -2906,10 +2919,11 @@ function toImportDate(value) {
 
 function validatePlanTesterHeader(worksheet) {
   if (!worksheet) return;
-  const actualNames = canonicalTesterDirectory.map((_, index) => cellTextAt(worksheet.getRow(2), 9 + index));
-  const expectedNames = canonicalTesterDirectory.map((tester) => tester.shortName);
+  const supportedTesters = canonicalTesterDirectory.slice(0, worksheetHasTester7Column(worksheet, 15) ? 7 : 6);
+  const actualNames = supportedTesters.map((_, index) => cellTextAt(worksheet.getRow(2), 9 + index));
+  const expectedNames = supportedTesters.map((tester) => tester.shortName);
   const mismatches = expectedNames
-    .map((expected, index) => ({ expected, actual: actualNames[index], code: canonicalTesterDirectory[index].code }))
+    .map((expected, index) => ({ expected, actual: actualNames[index], code: supportedTesters[index].code }))
     .filter((item) => testerIdentityKey(item.actual) !== testerIdentityKey(item.expected));
   if (!mismatches.length) return;
   throw httpError(400, [
@@ -2917,6 +2931,12 @@ function validatePlanTesterHeader(worksheet) {
     ...mismatches.map((item) => `${item.code}: cần '${item.expected}', file đang ghi '${item.actual || "trống"}'.`),
     "Dừng import để tránh gán nhầm testcase cho người khác."
   ].join(" "));
+}
+
+function worksheetHasTester7Column(worksheet, column) {
+  if (!worksheet) return false;
+  const markers = [1, 2, 3].map((rowNumber) => testerIdentityKey(cellTextAt(worksheet.getRow(rowNumber), column)));
+  return markers.includes("t7") || markers.includes(testerIdentityKey(canonicalTesterDirectory[6].shortName));
 }
 
 function toImportCellDate(cell) {
@@ -3153,7 +3173,7 @@ function applyWorkbookRules(state) {
   return state;
 }
 
-const testerKeys = ["t1", "t2", "t3", "t4", "t5", "t6"];
+const testerKeys = canonicalTesterDirectory.map((tester) => tester.key);
 
 function testerIdentityKey(value) {
   return String(value || "")
@@ -3172,6 +3192,28 @@ function canonicalTesterCodeForName(name) {
 }
 
 function applyCanonicalTesterPersonnelRules(personnel) {
+  const tester7 = canonicalTesterDirectory.find((tester) => tester.key === "t7");
+  const tester7Exists = (personnel || []).some((row) => (
+    testerIdentityKey(row?.name) === testerIdentityKey(tester7.name)
+    || String(row?.email || "").trim().toLowerCase() === tester7.email
+  ));
+  if (!tester7Exists) {
+    personnel.push({
+      id: "personnel-t7-huanphc",
+      staffCode: tester7.code,
+      name: tester7.name,
+      role: "Tester",
+      scope: "Kiểm thử UAT",
+      status: "Hoạt động",
+      birthYear: "",
+      phone: "",
+      email: tester7.email,
+      unit: "",
+      bidvJoinDate: "",
+      salaryGrade: "",
+      salaryStep: ""
+    });
+  }
   for (const row of personnel || []) {
     const tester = canonicalTesterForName(row?.name);
     if (!tester) continue;
@@ -6920,7 +6962,7 @@ function formatTesterShortageAnswer(state) {
       "Hiện tại chưa có Sprint nào đang thiếu tester.",
       "",
       `Đã kiểm trên PhanCong_UAT: ${summary.totalRows} dòng phân công, ${summary.rowsWithCases} dòng có testcase, tổng ${summary.totalCases} testcase.`,
-      "Tiêu chí kiểm: dòng có testcase nhưng dưới 2 tester T1-T6, hoặc tổng testcase phân bổ cho T1-T6 nhỏ hơn Tổng Testcase.",
+      "Tiêu chí kiểm: dòng có testcase nhưng dưới 2 tester T1-T7, hoặc tổng testcase phân bổ cho T1-T7 nhỏ hơn Tổng Testcase.",
       `Kết quả: 0 dòng thiếu tester theo tiêu chí này.${summary.rowsWithoutCasesAndTester ? ` Có ${summary.rowsWithoutCasesAndTester} dòng chưa có số tester nhưng Tổng Testcase = 0 nên chưa tính là thiếu tester.` : ""}`
     ].join("\n");
   }
@@ -7119,7 +7161,7 @@ function aiFieldOrder(collection) {
     personnel: ["staffCode", "name", "role", "scope", "status", "birthYear", "phone", "email", "unit", "bidvJoinDate", "salaryGrade", "salaryStep"],
     schedule: ["sprint", "devStart", "devEnd", "handoffDate", "startDate", "endDate", "note"],
     handoffs: ["jiraCode", "code", "storyCode", "sectionLevel1", "sectionLevel2", "name", "sprint", "uatHandoff", "uatStart", "uatEnd", "handoffStatus", "uatStatus"],
-    plans: ["code", "jiraCode", "group", "feature", "sprint", "uatHandoff", "owner", "nv", "t1", "t2", "t3", "t4", "t5", "t6", "totalCases", "testStatus", "progress", "uatStatus", "devStatus", "priority", "note"],
+    plans: ["code", "jiraCode", "group", "feature", "sprint", "uatHandoff", "owner", "nv", "t1", "t2", "t3", "t4", "t5", "t6", "t7", "totalCases", "testStatus", "progress", "uatStatus", "devStatus", "priority", "note"],
     daily: ["date", "jiraCode", "feature", "sprint", "tester", "totalCases", "passedCases", "failedCases", "bugStatus", "maxBugSeverity", "bugDetail", "blocker", "handler", "dueDate"],
     defects: ["stt", "bugId", "linkedUsKey", "featureJiraCode", "storyName", "sprint", "severity", "status", "foundDate", "tester", "owner", "resolvedDate", "aging", "note"],
     userStories: ["issueType", "issueKey", "issueId", "summary", "assignee", "reporter", "priority", "status", "resolution", "created", "updated", "dueDate", "squadSummary"],
@@ -7127,7 +7169,7 @@ function aiFieldOrder(collection) {
     defectSummary: ["stt", "code", "storyCode", "jiraCode", "usKey", "group", "name", "sprint", "owner", "handoffStatus", "assignee", "usStatus", "totalCases", "passedCases", "failedCases", "totalBugs", "openBugs", "inProgressBugs", "pendingBugs", "resolvedBugs", "sitPassBugs", "activeBugs", "handledBugs", "handledRate", "severeBugs", "uatResult", "status", "completionRate"],
     weekly: ["week", "sprint", "totalStories", "storyTested", "coverageRate", "successRate", "blockerBugs", "criticalBugs", "reopenRate", "assessment"],
     readiness: ["sprint", "totalStories", "deliveredStories", "coverageRate", "successRate", "openBlockerBugs", "openCriticalBugs", "openMajorBugs", "reopenRate", "decision"],
-    matrix: ["group", "t1", "t2", "t3", "t4", "t5", "t6", "totalParticipation", "target", "warning"],
+    matrix: ["group", "t1", "t2", "t3", "t4", "t5", "t6", "t7", "totalParticipation", "target", "warning"],
     guide: ["category", "index", "topic", "content"]
   }[collection] || [];
 }
@@ -7163,7 +7205,8 @@ function aiFieldLegend() {
     t3: "Tester Trí T3",
     t4: "Tester Huy T4",
     t5: "Tester Tuấn T5",
-    t6: "Tester Thành T6"
+    t6: "Tester Thành T6",
+    t7: "Tester Huân T7"
   };
 }
 

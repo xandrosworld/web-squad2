@@ -106,7 +106,7 @@ async function main() {
   const totalCases = sum(state.plans, "totalCases");
   const featureTotalCases = sum(state.features, "totalCases");
   const deliveredStories = state.handoffs.filter((row) => row.uatHandoff).length;
-  if (state.personnel.length !== 10) throw new Error(`Expected 10 NhanSu_UAT rows, got ${state.personnel.length}`);
+  if (state.personnel.length !== 11) throw new Error(`Expected 11 NhanSu_UAT rows including Tester 7, got ${state.personnel.length}`);
   if (state.schedule.length !== 17) throw new Error(`Expected 17 Lich_UAT rows, got ${state.schedule.length}`);
   if (state.features.length !== 77) throw new Error(`Expected 77 DM_ChucNang source rows, got ${state.features.length}`);
   if (state.handoffs.length !== 77) throw new Error(`Expected 77 Lich_BG_US source rows, got ${state.handoffs.length}`);
@@ -142,6 +142,12 @@ async function main() {
   }
   for (const sheetName of Object.keys(expectedHeaders)) {
     if (!exportedWorkbook.getWorksheet(sheetName)) throw new Error(`Export missing sheet ${sheetName}`);
+  }
+  if (!readHeader(exportedWorkbook.getWorksheet("PhanCong_UAT"), 1, 22).includes("T7")) {
+    throw new Error("Exported PhanCong_UAT is missing the T7 column.");
+  }
+  if (!readHeader(exportedWorkbook.getWorksheet("NangSuat_Tester"), 1, 11).includes("T7")) {
+    throw new Error("Exported NangSuat_Tester is missing the T7 column.");
   }
   const workPlanSheet = exportedWorkbook.getWorksheet("KeHoach_CongViec");
   if (!workPlanSheet) throw new Error("Export missing sheet KeHoach_CongViec");
