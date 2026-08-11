@@ -581,6 +581,30 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     if (await scopedEditorPage.locator('[data-action="open-edit"], [data-action="open-work-progress"], [data-action="delete-row"]').count()) {
       throw new Error("T07 scoped editor action buttons leaked into T08.");
     }
+    await scopedEditorPage.goto(`${baseUrl}/#work/group/pilot-t01/plans`, { waitUntil: "domcontentloaded" });
+    await scopedEditorPage.waitForSelector('[data-resizable-table="plans"] tbody tr', { timeout: 15000 });
+    const planRows = await scopedEditorPage.locator('[data-resizable-table="plans"] tbody tr').count();
+    if (!planRows || await scopedEditorPage.locator('[data-action="open-plan-note"]').count() !== planRows) {
+      throw new Error("Every authenticated member must receive note-only access on PhanCong_UAT.");
+    }
+    if (await scopedEditorPage.locator('[data-action="open-create"], [data-action="open-edit"], [data-action="delete-row"]').count()) {
+      throw new Error("A member received protected PhanCong_UAT assignment management controls.");
+    }
+    if (!await scopedEditorPage.locator('.plan-note-policy').isVisible()) {
+      throw new Error("PhanCong_UAT is missing the note-only permission guidance.");
+    }
+    const planLink = scopedEditorPage.locator('[data-resizable-table="plans"] a.inline-link').first();
+    if (!await planLink.isVisible()
+      || await planLink.getAttribute("target") !== "_blank"
+      || await planLink.getAttribute("rel") !== "noopener noreferrer") {
+      throw new Error("A Jira URL in PhanCong_UAT notes was not rendered as a safe hyperlink.");
+    }
+    await scopedEditorPage.locator('[data-action="open-plan-note"]').first().click();
+    if (!await scopedEditorPage.locator('#planNoteForm #planNoteInput').isVisible()
+      || await scopedEditorPage.locator('#planNoteForm [name="feature"], #planNoteForm [name="t1"], #planNoteForm [name="totalCases"]').count()) {
+      throw new Error("The PhanCong_UAT member modal must expose only the note field.");
+    }
+    await scopedEditorPage.locator('[data-action="close-modal"]').first().click();
     if (scopedEditorErrors.length) throw new Error(`Scoped editor browser errors: ${scopedEditorErrors.join(" | ")}`);
     await scopedEditor.close();
 
@@ -882,6 +906,19 @@ async function mockApi(context, state) {
 
 async function mockScopedEditorApi(context, state) {
   const scopedState = JSON.parse(JSON.stringify(state));
+  scopedState.plans = scopedState.plans.map((row, index) => ({
+    ...row,
+    note: index === 0 ? "Bug đang tồn: https://jira.example/browse/SQ2-101" : row.note,
+    _ownership: {
+      isOwner: false,
+      isLinkedOwner: false,
+      isGroupEditor: false,
+      canManage: false,
+      canEdit: false,
+      canDelete: false,
+      canEditNote: true
+    }
+  }));
   scopedState.workItems = scopedState.workItems.map((row) => {
     const isGroupEditor = row.categoryId === "pilot-t07";
     return {

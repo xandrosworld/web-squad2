@@ -129,6 +129,7 @@ const workbookMergeProtectedCollections = [
   "personnel",
   "schedule",
   "handoffs",
+  "plans",
   "guide",
   ...planningCollections
 ];
@@ -201,6 +202,7 @@ const personalWorkspaceOwner = "thanhmt@bidv.com.vn";
 const personalWorkspaceSquads = ["1", "7", "11"];
 const personalWorkspaceStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Hoàn thành"];
 const workPriorityOptions = ["Cao", "Trung bình", "Thấp"];
+const planNoteMaxLength = 5000;
 const memberKpiRoleOptions = ["PO", "BA", "Squad Lead", "Tester", "Developer", "Reviewer", "Khác"];
 const defaultWorkKpiConfig = {
   id: "work-kpi-default",
@@ -1742,6 +1744,9 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
   if (collection === "workItems" && !canCreateWorkItem(req.user)) {
     throw httpError(403, "Bạn cần đăng nhập để thêm đầu việc.");
   }
+  if (collection === "plans" && !canManagePlanRecords(req.user)) {
+    throw httpError(403, "Chỉ admin được tạo bản ghi PhanCong_UAT. Thành viên chỉ được cập nhật Ghi chú.");
+  }
   if (["kpiConfig", "memberKpiInputs"].includes(collection) && !canManageWorkCategories(req.user)) {
     throw httpError(403, "Chỉ admin được cập nhật cấu hình KPI.");
   }
@@ -1757,6 +1762,7 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
       assignWorkItemToUser(record, req.user);
     }
     await applyRecordDefaults(client, collection, record);
+    if (collection === "plans") record.note = normalizePlanNote(record.note);
     if (collection === "memberKpiInputs") {
       await assertUniqueMemberKpiInput(client, record.memberEmail, record.id);
     }
@@ -1774,12 +1780,43 @@ app.post("/api/records/:collection", asyncHandler(async (req, res) => {
   }
 }));
 
+app.patch("/api/records/plans/:id/note", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  if (!canUpdatePlanNote(req.user)) {
+    throw httpError(403, "Tài khoản không có quyền cập nhật Ghi chú PhanCong_UAT.");
+  }
+  const note = normalizePlanNote(req.body.note);
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    const current = await getRecordForUpdate(client, "plans", req.params.id);
+    const record = mergePlanNoteUpdate(current.data, note);
+    validateRecordForCollection("plans", record);
+    const saved = await updateRecord(client, "plans", record, req.user.id, current);
+    const { state, updatedAt } = await recomputeAndPersistWorkbookRules(client, req.user.id, req.user);
+    const savedRecord = state.plans.find((item) => item.id === saved.data?.id) || decorateRecord({
+      ...saved,
+      collection: "plans"
+    }, req.user);
+    await client.query("commit");
+    res.json({ record: savedRecord, state, updatedAt });
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
 app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
   const collection = requireCollection(req.params.collection);
   let record = normalizeRecord({ ...(req.body.record || req.body), id: req.params.id }, req.params.id);
   await ensureSchema();
   if (computedCollections.has(collection)) {
     throw httpError(403, "Phan he nay duoc tinh tu dong, khong cho sua truc tiep.");
+  }
+  if (collection === "plans" && !canManagePlanRecords(req.user)) {
+    throw httpError(403, "Chỉ admin được sửa phân công và số liệu PhanCong_UAT. Hãy dùng chức năng Cập nhật Ghi chú.");
   }
   const client = await getPool().connect();
   try {
@@ -1822,6 +1859,7 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
     record.createdAt = current.data?.createdAt || current.created_at?.toISOString?.() || record.createdAt;
     record.updatedAt = new Date().toISOString();
     await applyRecordDefaults(client, collection, record);
+    if (collection === "plans") record.note = normalizePlanNote(record.note);
     if (collection === "memberKpiInputs") {
       await assertUniqueMemberKpiInput(client, record.memberEmail, record.id);
     }
@@ -1842,6 +1880,9 @@ app.put("/api/records/:collection/:id", asyncHandler(async (req, res) => {
 app.delete("/api/records/:collection/:id", asyncHandler(async (req, res) => {
   const collection = requireCollection(req.params.collection);
   await ensureSchema();
+  if (collection === "plans" && !canManagePlanRecords(req.user)) {
+    throw httpError(403, "Chỉ admin được xóa bản ghi PhanCong_UAT.");
+  }
   const client = await getPool().connect();
   try {
     await client.query("begin");
@@ -1991,6 +2032,10 @@ module.exports = {
   __testCanEditRecord: canEditRecord,
   __testCanDeleteRecord: canDeleteRecord,
   __testCanFullyManageWorkItem: canFullyManageWorkItem,
+  __testCanManagePlanRecords: canManagePlanRecords,
+  __testCanUpdatePlanNote: canUpdatePlanNote,
+  __testNormalizePlanNote: normalizePlanNote,
+  __testMergePlanNoteUpdate: mergePlanNoteUpdate,
   __testDecorateRecord: decorateRecord,
   __testEnforceWorkItemGroupEditorScope: enforceWorkItemGroupEditorScope,
   __testNormalizeWorkItemPeople: normalizeWorkItemPeople,
@@ -5088,6 +5133,32 @@ function canCreateWorkItem(user) {
   return Boolean(user?.id && user?.active !== false);
 }
 
+function canManagePlanRecords(user) {
+  return Boolean(user?.id && user?.active !== false && user.role === "admin");
+}
+
+function canUpdatePlanNote(user) {
+  return Boolean(user?.id && user?.active !== false);
+}
+
+function normalizePlanNote(value) {
+  const note = String(value ?? "").trim();
+  if (note.length > planNoteMaxLength) {
+    throw httpError(400, `Ghi chú không được vượt quá ${planNoteMaxLength.toLocaleString("vi-VN")} ký tự.`);
+  }
+  return note;
+}
+
+function mergePlanNoteUpdate(currentRecord, note, updatedAt = new Date().toISOString()) {
+  return {
+    ...(currentRecord || {}),
+    id: currentRecord?.id,
+    note: normalizePlanNote(note),
+    createdAt: currentRecord?.createdAt,
+    updatedAt
+  };
+}
+
 function assignWorkItemToUser(record, user) {
   const email = String(user?.email || user?.username || "").trim().toLowerCase();
   if (!email) throw httpError(403, "Tài khoản chưa có email để tự nhận đầu việc.");
@@ -5119,9 +5190,11 @@ function decorateRecord(row, viewer) {
   const linkedOwner = ownerAccountLinkForRecord(row.data, viewer);
   const isLinkedOwner = Boolean(viewer && isOwnerAccountLinkForUser(linkedOwner, viewer));
   const isGroupEditor = Boolean(viewer && isWorkItemGroupEditor(viewer, row.data));
-  const canManage = Boolean(viewer && (viewer.role === "admin" || isOwner || isGroupEditor));
-  const canEdit = Boolean(viewer && (canManage || isLinkedOwner));
-  const canDelete = Boolean(viewer && (viewer.role === "admin" || isOwner));
+  const isPlan = row.collection === "plans";
+  const canManage = Boolean(viewer && (viewer.role === "admin" || (!isPlan && (isOwner || isGroupEditor))));
+  const canEdit = Boolean(viewer && (viewer.role === "admin" || (!isPlan && (canManage || isLinkedOwner))));
+  const canDelete = Boolean(viewer && (viewer.role === "admin" || (!isPlan && isOwner)));
+  const canEditNote = Boolean(isPlan && canUpdatePlanNote(viewer));
   const publicData = { ...(row.data || {}) };
   delete publicData[legacyStartDateBackfillField];
   return {
@@ -5138,7 +5211,8 @@ function decorateRecord(row, viewer) {
       isGroupEditor,
       canManage,
       canEdit,
-      canDelete
+      canDelete,
+      canEditNote
     }
   };
 }

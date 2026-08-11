@@ -3882,6 +3882,100 @@ body.is-column-resizing * {
     gap: 6px;
 }
 
+.plan-note-btn {
+    color: #087f75;
+    background: #e6f7f4;
+    border-color: #b9e8e1;
+}
+
+.plan-note-btn:hover {
+    color: #05665f;
+    background: #d3f1ec;
+}
+
+.plan-note-policy {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding: 13px 15px;
+    border: 1px solid #bfe6df;
+    border-radius: 12px;
+    color: #075f58;
+    background: #effaf8;
+}
+
+.plan-note-policy > i {
+    margin-top: 2px;
+    font-size: 17px;
+}
+
+.plan-note-policy > div {
+    display: grid;
+    gap: 3px;
+}
+
+.plan-note-policy strong {
+    color: #064f49;
+}
+
+.plan-note-policy span {
+    color: #47716d;
+    line-height: 1.45;
+}
+
+.plan-note-modal {
+    width: min(860px, calc(100vw - 32px));
+}
+
+.plan-note-context {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.plan-note-context > div {
+    display: grid;
+    gap: 5px;
+    padding: 13px 15px;
+    border: 1px solid #dce4ec;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+
+.plan-note-context > div.wide {
+    grid-column: 1 / -1;
+}
+
+.plan-note-context span {
+    color: #667085;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+}
+
+.plan-note-context strong {
+    color: #172033;
+    overflow-wrap: anywhere;
+}
+
+.plan-note-field textarea {
+    min-height: 190px;
+    resize: vertical;
+}
+
+@media (max-width: 640px) {
+    .plan-note-context {
+        grid-template-columns: 1fr;
+    }
+
+    .plan-note-context > div.wide {
+        grid-column: auto;
+    }
+}
+
 .module-progress-list,
 .risk-list,
 .activity-list,

@@ -429,7 +429,7 @@ const modules = {
         shortLabel: "Phân công",
         icon: "fa-calendar-days",
         collection: "plans",
-        description: "Phân công chức năng theo sprint, đầu mối nghiệp vụ, NV, tester T1-T7 và trạng thái testcase.",
+        description: "Phân công chức năng theo sprint; thành viên cập nhật Ghi chú, dữ liệu phân công và testcase do admin quản lý.",
         emptyIcon: "fa-calendar-plus",
         emptyTitle: "Chưa có phân công Sprint",
         emptyText: "Kế hoạch phân công sẽ hiển thị tại đây sau khi có bản ghi.",
@@ -465,7 +465,7 @@ const modules = {
             { key: "code", label: "Mã CN", width: "112px", render: (row) => tag(row.code, "teal") },
             { key: "jiraCode", label: "Mã Jira", width: "140px" },
             { key: "group", label: "Nhóm chức năng", width: "220px" },
-            { key: "feature", label: "Tên chức năng", width: "260px", render: (row) => strongText(row.feature, row.note) },
+            { key: "feature", label: "Tên chức năng", width: "260px", render: (row) => strongText(row.feature) },
             { key: "sprint", label: "Sprint", width: "100px", render: (row) => tag(row.sprint, "teal") },
             { key: "uatHandoff", label: "Bàn giao UAT", width: "150px", render: (row) => formatDate(row.uatHandoff) },
             { key: "owner", label: "Đầu mối nghiệp vụ", width: "188px" },
@@ -483,7 +483,7 @@ const modules = {
             { key: "uatStatus", label: "Trạng thái UAT", width: "150px", render: (row) => renderStatus(row.uatStatus) },
             { key: "devStatus", label: "Trạng thái DEV", width: "150px", render: (row) => renderStatus(row.devStatus) },
             { key: "priority", label: "Mức độ ưu tiên", width: "140px", render: (row) => numberText(row.priority) },
-            { key: "note", label: "Ghi chú", width: "220px" }
+            { key: "note", label: "Ghi chú", width: "320px", render: (row) => renderLinkedText(row.note) }
         ]
     },
     matrix: {
@@ -1431,6 +1431,13 @@ async function updateRemoteRecord(collection, id, record) {
     return requestJson(`/records/${encodeURIComponent(collection)}/${encodeURIComponent(id)}`, {
         method: "PUT",
         body: JSON.stringify({ record })
+    });
+}
+
+async function updatePlanNoteRemote(id, note) {
+    return requestJson(`/records/plans/${encodeURIComponent(id)}/note`, {
+        method: "PATCH",
+        body: JSON.stringify({ note })
     });
 }
 
@@ -4178,11 +4185,11 @@ function renderModule(mod) {
                                 <i class="fa-solid fa-filter-circle-xmark"></i><span>${e(activeFilters)} lọc</span>
                             </button>
                         ` : ""}
-                        ${mod.readOnly ? "" : `
+                        ${canCreateModuleRecord(mod) ? `
                             <button class="primary-btn" data-action="open-create">
                                 <i class="fa-solid fa-plus"></i><span>Thêm bản ghi</span>
                             </button>
-                        `}
+                        ` : ""}
                     </div>
                 </div>
                 <div class="panel-body">
@@ -4200,6 +4207,17 @@ function isProtectedWorkCategory(categoryId) {
 }
 
 function renderModuleDataTools(mod) {
+    if (mod.collection === "plans") {
+        return `
+            <div class="plan-note-policy" role="note">
+                <i class="fa-solid fa-shield-halved"></i>
+                <div>
+                    <strong>Ghi chú mở cho toàn bộ thành viên</strong>
+                    <span>Nhấn biểu tượng ghi chú tại từng dòng để cập nhật vướng mắc hoặc dán link Jira. Các trường phân công và số liệu được khóa để tránh sửa nhầm.</span>
+                </div>
+            </div>
+        `;
+    }
     if (mod.collection !== "daily") return "";
     const dateValue = ui.filters[`${mod.collection}:date`] || "";
     const sprintValue = ui.filters[`${mod.collection}:sprint`] || "";
@@ -4567,7 +4585,7 @@ function renderTable(mod, rows) {
                     ${rows.length ? renderTableRows(mod, rows, columnMeta, includeActions) : `
                         <tr>
                             <td colspan="${mod.columns.length + (includeActions ? 1 : 0)}">
-                                ${renderEmpty(mod.emptyIcon, mod.emptyTitle, mod.emptyText, true, mod.readOnly ? null : mod)}
+                                ${renderEmpty(mod.emptyIcon, mod.emptyTitle, mod.emptyText, true, canCreateModuleRecord(mod) ? mod : null)}
                             </td>
                         </tr>
                     `}
@@ -4634,7 +4652,7 @@ function renderTableRows(mod, rows, columnMeta, includeActions = true) {
             sectionMarkup = section && section !== currentSection ? renderSectionRow(mod, section) : "";
         }
         if (section) currentSection = section;
-        const actionCell = includeActions ? (mod.collection === "workItems" ? renderWorkItemActionCell(row) : renderDefaultActionCell(row)) : "";
+        const actionCell = includeActions ? (mod.collection === "workItems" ? renderWorkItemActionCell(row) : renderDefaultActionCell(row, mod)) : "";
         return `
             ${sectionMarkup}
                             <tr>
@@ -4645,9 +4663,10 @@ function renderTableRows(mod, rows, columnMeta, includeActions = true) {
     }).join("");
 }
 
-function renderDefaultActionCell(row) {
-    const canEdit = canModifyRecord(row);
-    const canDelete = canDeleteRecord(row);
+function renderDefaultActionCell(row, mod) {
+    const canEdit = canModifyModuleRecord(mod, row);
+    const canEditNote = mod?.collection === "plans" && canUpdatePlanNote(row);
+    const canDelete = canDeleteModuleRecord(mod, row);
     const owner = recordOwnerLabel(row);
     return `
         <td class="col-actions">
@@ -4657,12 +4676,17 @@ function renderDefaultActionCell(row) {
                         <i class="fa-solid fa-pen"></i>
                     </button>
                 ` : ""}
+                ${canEditNote ? `
+                    <button class="icon-btn plan-note-btn" data-action="open-plan-note" data-id="${e(row.id)}" title="Cập nhật Ghi chú" aria-label="Cập nhật Ghi chú">
+                        <i class="fa-solid fa-note-sticky"></i>
+                    </button>
+                ` : ""}
                 ${canDelete ? `
                     <button class="icon-btn" data-action="delete-row" data-id="${e(row.id)}" title="Xóa" aria-label="Xóa">
                         <i class="fa-solid fa-trash"></i>
                     </button>
                 ` : ""}
-                ${!canEdit && !canDelete ? `
+                ${!canEdit && !canEditNote && !canDelete ? `
                     <span class="permission-lock" title="Bản ghi do ${e(owner)} tạo. Chỉ người tạo hoặc admin được sửa.">
                         <i class="fa-solid fa-lock"></i>
                     </span>
@@ -5058,6 +5082,7 @@ function renderModal() {
     if (ui.modal.mode === "personal-task") return renderPersonalTaskModal();
     if (ui.modal.mode === "work-progress") return renderWorkProgressModal();
     if (ui.modal.mode === "work-export") return renderWorkExportModal();
+    if (ui.modal.mode === "plan-note") return renderPlanNoteModal();
     const mod = modules[ui.modal.tab];
     const row = ui.modal.id
         ? appState[mod.collection].find((item) => item.id === ui.modal.id)
@@ -5125,6 +5150,46 @@ function renderModal() {
                     <button class="ghost-btn" type="button" data-action="close-modal">Hủy</button>
                     ${!row ? `<button class="text-btn" type="submit" data-save-mode="add-more"><i class="fa-solid fa-plus"></i><span>Lưu & thêm tiếp</span></button>` : ""}
                     <button class="primary-btn" type="submit" data-save-mode="close"><i class="fa-solid fa-floppy-disk"></i><span>Lưu</span></button>
+                </div>
+            </form>
+        </div>
+    `;
+}
+
+function renderPlanNoteModal() {
+    const row = appState.plans.find((item) => item.id === ui.modal?.id);
+    if (!row) return `<div class="modal-backdrop" id="recordModal"></div>`;
+    return `
+        <div class="modal-backdrop open" id="recordModal" role="dialog" aria-modal="true" aria-labelledby="planNoteModalTitle">
+            <form class="modal plan-note-modal" id="planNoteForm">
+                <div class="modal-head">
+                    <div class="modal-title">
+                        <span><i class="fa-solid fa-note-sticky"></i></span>
+                        <div>
+                            <h2 id="planNoteModalTitle">Cập nhật Ghi chú</h2>
+                            <p>Chỉ Ghi chú được cập nhật; dữ liệu phân công và số liệu testcase được giữ nguyên.</p>
+                        </div>
+                    </div>
+                    <button class="icon-btn" type="button" data-action="close-modal" title="Đóng" aria-label="Đóng">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="plan-note-context" aria-label="Thông tin phân công">
+                        <div><span>Mã Jira</span><strong>${e(row.jiraCode || row.code || "-")}</strong></div>
+                        <div><span>Sprint</span><strong>${e(row.sprint || "-")}</strong></div>
+                        <div class="wide"><span>Tên chức năng</span><strong>${e(row.feature || "-")}</strong></div>
+                        <div class="wide"><span>Đầu mối nghiệp vụ</span><strong>${e(row.owner || "-")}</strong></div>
+                    </div>
+                    <div class="field full plan-note-field">
+                        <label for="planNoteInput">Ghi chú</label>
+                        <textarea id="planNoteInput" class="field-textarea" name="note" maxlength="5000" rows="8" placeholder="Nhập vướng mắc hoặc dán link Jira tại đây...">${e(row.note || "")}</textarea>
+                        <small class="field-lock-note"><i class="fa-solid fa-link"></i> Link bắt đầu bằng http:// hoặc https:// sẽ tự hiển thị thành hyperlink sau khi lưu.</small>
+                    </div>
+                </div>
+                <div class="modal-foot">
+                    <button class="ghost-btn" type="button" data-action="close-modal">Hủy</button>
+                    <button class="primary-btn" type="submit" ${ui.saving ? "disabled" : ""}><i class="fa-solid fa-floppy-disk"></i><span>Lưu Ghi chú</span></button>
                 </div>
             </form>
         </div>
@@ -6369,6 +6434,9 @@ function bindEvents() {
 
     const personalTaskForm = document.getElementById("personalTaskForm");
     if (personalTaskForm) personalTaskForm.addEventListener("submit", handlePersonalTaskSubmit);
+
+    const planNoteForm = document.getElementById("planNoteForm");
+    if (planNoteForm) planNoteForm.addEventListener("submit", handlePlanNoteSubmit);
 
     const workExportForm = document.getElementById("workExportForm");
     if (workExportForm) bindWorkExportForm(workExportForm);
@@ -7993,6 +8061,7 @@ function handleAction(event) {
     if (action === "export-personal-workspace") return exportPersonalWorkspace();
     if (action === "open-create") return openCreate();
     if (action === "open-edit") return openEdit(id);
+    if (action === "open-plan-note") return openPlanNote(id);
     if (action === "delete-row") return deleteRow(id);
     if (action === "open-category-create") return openWorkCategoryCreate();
     if (action === "open-category-edit") return openWorkCategoryEdit(id);
@@ -8121,7 +8190,10 @@ function clearColumnFilter(columnKey) {
 
 function openCreate() {
     const mod = modules[ui.activeTab];
-    if (!mod || mod.readOnly) return;
+    if (!mod || !canCreateModuleRecord(mod)) {
+        if (mod?.collection === "plans") showToast("Chỉ admin được tạo bản ghi PhanCong_UAT.");
+        return;
+    }
     if (mod.collection === "workItems") {
         if (!canCreateWorkItems()) {
             showToast("Bạn cần đăng nhập để thêm đầu việc.");
@@ -8141,13 +8213,27 @@ function openEdit(id) {
     const mod = modules[ui.activeTab];
     if (!mod || mod.readOnly) return;
     const row = mod ? appState[mod.collection].find((item) => item.id === id) : null;
-    if (!row || !canModifyRecord(row)) {
-        showToast("Bạn chỉ có thể sửa bản ghi do chính mình tạo.");
+    if (!row || !canModifyModuleRecord(mod, row)) {
+        showToast(mod.collection === "plans"
+            ? "Thành viên chỉ được cập nhật Ghi chú PhanCong_UAT."
+            : "Bạn chỉ có thể sửa bản ghi do chính mình tạo.");
         return;
     }
     ui.modal = { tab: ui.activeTab, id };
     render();
     if (mod.collection === "workItems") hydrateWorkAttachments(id);
+}
+
+function openPlanNote(id) {
+    if (!id) return;
+    const row = appState.plans.find((item) => item.id === id);
+    if (!row || !canUpdatePlanNote(row)) {
+        showToast("Bạn cần đăng nhập để cập nhật Ghi chú PhanCong_UAT.");
+        return;
+    }
+    ui.modal = { tab: "plans", id, mode: "plan-note" };
+    render();
+    requestAnimationFrame(() => document.getElementById("planNoteInput")?.focus());
 }
 
 function openWorkCategoryCreate() {
@@ -8257,6 +8343,43 @@ function openPersonalTask(id = null) {
     render();
 }
 
+async function handlePlanNoteSubmit(event) {
+    event.preventDefault();
+    if (!ensureDbReady() || ui.saving) return;
+    const row = appState.plans.find((item) => item.id === ui.modal?.id);
+    if (!row || !canUpdatePlanNote(row)) {
+        showToast("Bạn cần đăng nhập để cập nhật Ghi chú PhanCong_UAT.");
+        return;
+    }
+    const note = String(event.currentTarget.elements.note?.value || "").trim();
+    if (note.length > 5000) {
+        showToast("Ghi chú không được vượt quá 5.000 ký tự.");
+        return;
+    }
+    ui.saving = true;
+    render();
+    try {
+        const result = await updatePlanNoteRemote(row.id, note);
+        if (result.state) {
+            appState = normalizeState(result.state);
+        } else if (result.record) {
+            appState.plans = appState.plans.map((item) => item.id === row.id ? result.record : item);
+        }
+        appState.updatedAt = result.updatedAt || new Date().toISOString();
+        setDataStatus("online", "Railway Postgres đang hoạt động");
+        localStorage.setItem(MIGRATION_FLAG_KEY, "active");
+        cacheState();
+        ui.modal = null;
+        showToast("Đã cập nhật Ghi chú PhanCong_UAT.");
+    } catch (error) {
+        setDataStatus("offline", error.message || "Không lưu được Ghi chú");
+        showToast(`Không lưu được Ghi chú: ${error.message}`);
+    } finally {
+        ui.saving = false;
+        render();
+    }
+}
+
 async function handlePersonalTaskSubmit(event) {
     event.preventDefault();
     if (!isPersonalWorkspaceOwner() || ui.saving) return;
@@ -8342,6 +8465,10 @@ async function handleSubmit(event) {
         showToast("Chỉ admin được tạo hoặc sửa nhóm công việc.");
         return;
     }
+    if (mod.collection === "plans" && !canManageWorkPlans()) {
+        showToast("Thành viên chỉ được cập nhật Ghi chú PhanCong_UAT.");
+        return;
+    }
     const form = event.currentTarget;
     const saveMode = event.submitter?.dataset.saveMode || "close";
     const payload = {};
@@ -8399,8 +8526,10 @@ async function handleSubmit(event) {
     try {
         if (ui.modal.id) {
             const current = appState[mod.collection].find((row) => row.id === ui.modal.id);
-            if (!current || !canModifyRecord(current)) {
-                showToast("Bạn chỉ có thể sửa bản ghi do chính mình tạo.");
+            if (!current || !canModifyModuleRecord(mod, current)) {
+                showToast(mod.collection === "plans"
+                    ? "Thành viên chỉ được cập nhật Ghi chú PhanCong_UAT."
+                    : "Bạn chỉ có thể sửa bản ghi do chính mình tạo.");
                 return;
             }
             const record = {
@@ -8514,8 +8643,10 @@ async function deleteRow(id) {
     if (!mod || mod.readOnly || !id || !ensureDbReady() || ui.saving) return;
     const row = appState[mod.collection].find((item) => item.id === id);
     if (!row) return;
-    if (!canDeleteRecord(row)) {
-        showToast("Bạn chỉ có thể xóa bản ghi do chính mình tạo.");
+    if (!canDeleteModuleRecord(mod, row)) {
+        showToast(mod.collection === "plans"
+            ? "Chỉ admin được xóa bản ghi PhanCong_UAT."
+            : "Bạn chỉ có thể xóa bản ghi do chính mình tạo.");
         return;
     }
     if (!confirm(`Xóa "${recordTitle(row, mod)}"?`)) return;
@@ -9613,6 +9744,28 @@ function renderDbSyncPill() {
 function canModifyRecord(row) {
     if (authState.user?.role === "admin") return true;
     return row?._ownership?.canEdit === true;
+}
+
+function canCreateModuleRecord(mod) {
+    if (!mod || mod.readOnly) return false;
+    if (mod.collection === "plans") return canManageWorkPlans();
+    return true;
+}
+
+function canModifyModuleRecord(mod, row) {
+    if (!mod || !row) return false;
+    if (mod.collection === "plans") return canManageWorkPlans();
+    return canModifyRecord(row);
+}
+
+function canDeleteModuleRecord(mod, row) {
+    if (!mod || !row) return false;
+    if (mod.collection === "plans") return canManageWorkPlans();
+    return canDeleteRecord(row);
+}
+
+function canUpdatePlanNote(row) {
+    return Boolean(authState.user && row?._ownership?.canEditNote === true);
 }
 
 function canDeleteRecord(row) {
