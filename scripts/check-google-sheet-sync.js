@@ -169,6 +169,30 @@ assert.strictEqual(
   "Audit vẫn phải chặn khi nội dung dòng daily thực sự bị thay đổi"
 );
 
+const protectedPersonnelState = {
+  ...baseState,
+  personnel: [{
+    id: "personnel-nv1",
+    staffCode: "NV1",
+    name: "Bùi Thị Mai Phương",
+    email: "phuongbtm@bidv.com.vn"
+  }]
+};
+const protectedPersonnelMerge = mergeWorkbookSourceState(protectedPersonnelState, safeImport, {
+  importedAt: "2026-08-11T00:00:00.000Z",
+  source: "google-sheet"
+});
+assert.deepStrictEqual(
+  protectedPersonnelMerge.state.personnel,
+  protectedPersonnelState.personnel,
+  "Google Sheet merge must never synthesize or modify personnel records while calculating workbook fields."
+);
+assert.ok(
+  !auditMergePreservation(protectedPersonnelState, protectedPersonnelMerge.state)
+    .mismatches.includes("personnel changed"),
+  "Personnel preservation audit must remain clean when Tester 7 is absent from an in-memory fixture."
+);
+
 function excelValueToGridValue(value) {
   if (value == null || value === "") return {};
   if (value instanceof Date) {

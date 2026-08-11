@@ -125,6 +125,13 @@ const collections = [...workbookCollections, ...planningCollections];
 const collectionSet = new Set(collections);
 const computedCollections = new Set(["defectSummary"]);
 const workbookSourceMergeCollections = ["daily", "defects", "userStories", "bugSources"];
+const workbookMergeProtectedCollections = [
+  "personnel",
+  "schedule",
+  "handoffs",
+  "guide",
+  ...planningCollections
+];
 const workbookSourceIdentityFields = {
   defects: "bugId",
   userStories: "issueKey",
@@ -218,6 +225,8 @@ const workItemPeopleMigrationKey = "work_item_people_v1";
 const workItemPeopleBackupKey = "backup_work_item_people_v1";
 const workItemPeopleIdentityMigrationKey = "work_item_people_identity_v1";
 const workItemPeopleIdentityBackupKey = "backup_work_item_people_identity_v1";
+const tester7PersonnelMigrationKey = "tester_t7_personnel_v1";
+const tester7PersonnelBackupKey = "backup_tester_t7_personnel_v1";
 const legacyStartDateBackfillField = "_allowStartDateBackfill";
 const pilotWorkPlanDocumentUrl = "https://drive.google.com/drive/folders/1mraUTa3nb4bVhikApO9i-uCB-THKbVWd";
 const workAssigneeDirectory = {
@@ -2160,6 +2169,7 @@ function ensureSchema() {
       await ensureWorkItemCompletionMigration();
       await ensureWorkItemPeopleMigration();
       await ensureWorkItemPeopleIdentityMigration();
+      await ensureTester7PersonnelMigration();
       await ensureWorkKpiConfig();
     })().catch((error) => {
       schemaPromise = null;
@@ -3193,34 +3203,33 @@ function canonicalTesterCodeForName(name) {
 
 function applyCanonicalTesterPersonnelRules(personnel) {
   const tester7 = canonicalTesterDirectory.find((tester) => tester.key === "t7");
-  let tester7Row = (personnel || []).find((row) => (
-    testerIdentityKey(row?.name) === testerIdentityKey(tester7.name)
-    || String(row?.email || "").trim().toLowerCase() === tester7.email
-  ));
-  if (!tester7Row) {
-    tester7Row = {
-      id: "personnel-t7-huanphc",
-      birthYear: "",
-      phone: "",
-      unit: "",
-      bidvJoinDate: "",
-      salaryGrade: "",
-      salaryStep: ""
-    };
-    personnel.push(tester7Row);
-  }
-  tester7Row.staffCode = tester7.code;
-  tester7Row.name = tester7.name;
-  tester7Row.email = tester7.email;
-  tester7Row.role = "Tester / Giảng viên nội bộ";
-  tester7Row.scope = "Kiểm thử luân chuyển đa nghiệp vụ";
-  tester7Row.status = "Đang tham gia";
+  const tester7Row = (personnel || []).find((row) => isTester7PersonnelRow(row, tester7));
+  if (tester7Row) applyCanonicalTester7PersonnelFields(tester7Row, tester7);
   for (const row of personnel || []) {
     const tester = canonicalTesterForName(row?.name);
     if (!tester) continue;
     row.staffCode = tester.code;
     row.email = tester.email;
   }
+}
+
+function isTester7PersonnelRow(row, tester = canonicalTesterDirectory.find((item) => item.key === "t7")) {
+  if (!row || !tester) return false;
+  return String(row.id || "") === "personnel-t7-huanphc"
+    || String(row.staffCode || "").trim().toUpperCase() === tester.code
+    || testerIdentityKey(row.name) === testerIdentityKey(tester.name)
+    || String(row.email || "").trim().toLowerCase() === tester.email;
+}
+
+function applyCanonicalTester7PersonnelFields(row, tester = canonicalTesterDirectory.find((item) => item.key === "t7")) {
+  if (!row || !tester) return row;
+  row.staffCode = tester.code;
+  row.name = tester.name;
+  row.email = tester.email;
+  row.role = "Tester / Giảng viên nội bộ";
+  row.scope = "Kiểm thử luân chuyển đa nghiệp vụ";
+  row.status = "Đang tham gia";
+  return row;
 }
 
 function collectionRows(state, collection) {
@@ -3553,6 +3562,10 @@ function mergeWorkbookSourceState(existingState, importState, options = {}) {
   const importedAt = options.importedAt || new Date().toISOString();
   const sheetByCollection = new Map(excelSheets.map((sheet) => [sheet.collection, sheet.name]));
   const mergedState = cloneSerializable(existingState);
+  const protectedRows = new Map(workbookMergeProtectedCollections.map((collection) => [
+    collection,
+    cloneSerializable(Array.isArray(existingState?.[collection]) ? existingState[collection] : [])
+  ]));
   const summary = {};
 
   for (const collection of ["userStories", "bugSources", "defects"]) {
@@ -3655,6 +3668,7 @@ function mergeWorkbookSourceState(existingState, importState, options = {}) {
   mergedState.defectSummary = cloneSerializable(collectionRows(importState, "defectSummary"));
   applyWorkbookRules(mergedState);
   assignSortOrder(mergedState);
+  for (const [collection, rows] of protectedRows.entries()) mergedState[collection] = rows;
   mergedState.updatedAt = importedAt;
   return { state: mergedState, summary };
 }
@@ -3925,13 +3939,7 @@ function columnLetters(columnNumber) {
 
 function auditMergePreservation(existingState, mergedState) {
   const mismatches = [];
-  const protectedCollections = [
-    "personnel",
-    "schedule",
-    "handoffs",
-    "guide",
-    ...planningCollections
-  ];
+  const protectedCollections = workbookMergeProtectedCollections;
   for (const collection of protectedCollections) {
     const before = canonicalCollectionRows(collectionRows(existingState, collection));
     const after = canonicalCollectionRows(collectionRows(mergedState, collection));
@@ -6454,6 +6462,118 @@ async function ensureWorkItemPeopleIdentityMigration() {
       values ($1, $2::jsonb, now())
     `, [workItemPeopleIdentityMigrationKey, JSON.stringify(summary)]);
     if (changes.length) await touchMeta(client);
+    await client.query("commit");
+    return summary;
+  } catch (error) {
+    await client.query("rollback").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function ensureTester7PersonnelMigration() {
+  const client = await getPool().connect();
+  try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext($1))", [tester7PersonnelMigrationKey]);
+    const existingMigration = await client.query(
+      "select value from app_meta where key = $1 for update",
+      [tester7PersonnelMigrationKey]
+    );
+    if (existingMigration.rows[0]) {
+      await client.query("commit");
+      return existingMigration.rows[0].value;
+    }
+
+    const result = await client.query(`
+      select id, data, created_by, updated_by, created_at, updated_at
+      from uat_records
+      where collection = 'personnel'
+      order by id
+      for update
+    `);
+    const backup = result.rows.map((row) => ({
+      id: row.id,
+      data: row.data,
+      createdBy: row.created_by,
+      updatedBy: row.updated_by,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+    await client.query(`
+      insert into app_meta (key, value, updated_at)
+      values ($1, $2::jsonb, now())
+      on conflict (key) do nothing
+    `, [tester7PersonnelBackupKey, JSON.stringify({
+      createdAt: new Date().toISOString(),
+      records: backup
+    })]);
+
+    const matches = result.rows.filter((row) => isTester7PersonnelRow({ id: row.id, ...(row.data || {}) }));
+    if (matches.length > 1) {
+      throw new Error(`Có ${matches.length} bản ghi cùng nhận diện Tester 7; migration đã rollback để tránh trùng nhân sự.`);
+    }
+
+    const nowIso = new Date().toISOString();
+    let inserted = false;
+    let updated = false;
+    let personnelId = "personnel-t7-huanphc";
+    if (matches.length === 0) {
+      const data = applyCanonicalTester7PersonnelFields({
+        id: personnelId,
+        birthYear: "",
+        phone: "",
+        unit: "",
+        bidvJoinDate: "",
+        salaryGrade: "",
+        salaryStep: "",
+        createdAt: nowIso,
+        updatedAt: nowIso
+      });
+      validateRecordForCollection("personnel", data);
+      await client.query(`
+        insert into uat_records (collection, id, data, created_by, updated_by, created_at, updated_at)
+        values ('personnel', $1, $2::jsonb, null, null, now(), now())
+      `, [personnelId, JSON.stringify(data)]);
+      inserted = true;
+    } else {
+      const current = matches[0];
+      personnelId = current.id;
+      const data = { ...(current.data || {}), id: personnelId };
+      for (const field of ["birthYear", "phone", "unit", "bidvJoinDate", "salaryGrade", "salaryStep"]) {
+        if (data[field] == null) data[field] = "";
+      }
+      applyCanonicalTester7PersonnelFields(data);
+      if (!data.createdAt) data.createdAt = new Date(current.created_at).toISOString();
+      validateRecordForCollection("personnel", data);
+      if (canonicalRecord(data) !== canonicalRecord(current.data || {})) {
+        data.updatedAt = nowIso;
+        await client.query(`
+          update uat_records
+          set data = $1::jsonb,
+              updated_at = now()
+          where collection = 'personnel' and id = $2
+        `, [JSON.stringify(data), personnelId]);
+        updated = true;
+      }
+    }
+
+    const summary = {
+      version: 1,
+      appliedAt: nowIso,
+      totalPersonnelBefore: result.rows.length,
+      totalPersonnelAfter: result.rows.length + (inserted ? 1 : 0),
+      personnelId,
+      inserted,
+      updated,
+      backupKey: tester7PersonnelBackupKey
+    };
+    await client.query(`
+      insert into app_meta (key, value, updated_at)
+      values ($1, $2::jsonb, now())
+    `, [tester7PersonnelMigrationKey, JSON.stringify(summary)]);
+    if (inserted || updated) await touchMeta(client);
     await client.query("commit");
     return summary;
   } catch (error) {

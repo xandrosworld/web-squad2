@@ -45,6 +45,15 @@ state.personnel = [
   { id: "tri", staffCode: "T4", name: "Hoàng Thành Trí" },
   { id: "huy", staffCode: "T5", name: "Nguyễn Gia Huy" },
   { id: "tuan", staffCode: "T6", name: "Trần Đình Tuấn" },
+  {
+    id: "huan",
+    staffCode: "legacy-t7",
+    name: "Phạm Hoàng Công Huân",
+    email: "legacy-huan@example.test",
+    role: "",
+    scope: "",
+    status: ""
+  },
   { id: "owner", staffCode: "NV1", name: "Bùi Thị Mai Phương" }
 ];
 state.plans = [{
@@ -104,6 +113,17 @@ assert.deepEqual(
   "Tester 7 must use the same personnel classification as the rotating testers."
 );
 
+const stateWithoutTester7 = emptyState();
+stateWithoutTester7.personnel = [
+  { id: "owner-only", staffCode: "NV1", name: "Bùi Thị Mai Phương" }
+];
+applyWorkbookRules(stateWithoutTester7);
+assert.deepEqual(
+  stateWithoutTester7.personnel,
+  [{ id: "owner-only", staffCode: "NV1", name: "Bùi Thị Mai Phương" }],
+  "Workbook calculation must not synthesize personnel records; missing canonical personnel is persisted by the database migration."
+);
+
 assert.deepEqual(
   [state.plans[0].t1, state.plans[0].t2, state.plans[0].t3, state.plans[0].t4, state.plans[0].t5, state.plans[0].t6, state.plans[0].t7],
   [12, 13, 14, 15, 16, 17, 18],
@@ -153,6 +173,7 @@ async function checkImportHeaderGuard() {
     checked: [
       "canonical T1-T7 plan header with legacy T1-T6 compatibility",
       "Tester 7 login account and personnel record",
+      "workbook calculation never inserts missing personnel",
       "personnel codes normalized by full name",
       "legacy tester email normalized by full name",
       "plan allocation columns are not shifted",
