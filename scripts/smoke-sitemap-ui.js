@@ -426,7 +426,22 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     if (await page.locator('[data-resizable-table="handoffs"] tbody tr').count() !== 1) throw new Error("KPI Lich_BG_US Chưa bàn giao lọc sai dữ liệu.");
     await assertRoute(page, "work/group/pilot-t01/plans", '[data-resizable-table="plans"]');
     t01MetricSignatures.push(await assertT01MetricLabels(page, ["Tổng chức năng", "Tổng testcase", "Đã phân công", "Chưa phân công", "Đang kiểm thử", "Hoàn thành"]));
+    const planBugCoverage = page.locator('.plan-bug-coverage');
+    if (await planBugCoverage.getAttribute("data-plan-bug-linked-count") !== "3"
+      || await planBugCoverage.getAttribute("data-plan-bug-unlinked-count") !== "2") {
+      throw new Error("PhanCong_UAT bug coverage summary did not identify linked and unmatched non-Closed bugs.");
+    }
     await assertT01MetricRowFilter(page, "plans", "unassigned", 1);
+    const openPlanBug = page.locator('[data-plan-bug-id="BUG-1"]');
+    if (!await openPlanBug.isVisible() || !(await openPlanBug.textContent() || "").includes("Lỗi hiển thị sai luồng")) {
+      throw new Error("PhanCong_UAT did not render the linked non-Closed bug title.");
+    }
+    const openPlanBugLink = openPlanBug.locator('a.inline-link');
+    if (await openPlanBugLink.getAttribute("href") !== "https://bidv-vn.atlassian.net/browse/BUG-1"
+      || await openPlanBugLink.getAttribute("target") !== "_blank"
+      || await openPlanBugLink.getAttribute("rel") !== "noopener noreferrer") {
+      throw new Error("PhanCong_UAT bug hyperlink is missing or unsafe.");
+    }
     await assertRoute(page, "work/group/pilot-t01/daily", '[data-resizable-table="daily"]');
     t01MetricSignatures.push(await assertT01MetricLabels(page, ["Lượt cập nhật", "Tổng testcase", "TC Passed", "TC Failed", "Dòng có lỗi mở", "Có blocker"]));
     if (!await page.locator(".module-data-tools").isVisible()) {
@@ -725,6 +740,12 @@ async function buildFixtureState() {
     { id: "defect-4", stt: 4, bugId: "BUG-4", featureJiraCode: "SQ2-F03", sprint: "Sprint 1", severity: "Minor", status: "Resolved" },
     { id: "defect-5", stt: 5, bugId: "BUG-5", featureJiraCode: "SQ2-F04", sprint: "Sprint 1", severity: "Minor", status: "SIT Pass" },
     { id: "defect-6", stt: 6, bugId: "BUG-6", featureJiraCode: "SQ2-F05", sprint: "Sprint 1", severity: "Minor", status: "Closed" }
+  ];
+  state.bugSources = [
+    { id: "bug-source-1", issueKey: "BUG-1", summary: "Lỗi hiển thị sai luồng", status: "Open", featureJiraCode: "SQ2-F01" },
+    { id: "bug-source-3", issueKey: "BUG-3", summary: "Lỗi xử lý nghiệp vụ", status: "Reopen", featureJiraCode: "SQ2-F03" },
+    { id: "bug-source-4", issueKey: "BUG-4", summary: "Lỗi đã Resolved chờ Closed", status: "Resolved", featureJiraCode: "SQ2-F03" },
+    { id: "bug-source-6", issueKey: "BUG-6", summary: "Lỗi đã Closed", status: "Closed", featureJiraCode: "SQ2-F05" }
   ];
   state.weekly = [
     { id: "weekly-1", week: "Tuần 1", sprint: "Sprint 1", assessment: "Đạt có điều kiện" },

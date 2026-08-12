@@ -203,6 +203,7 @@ const personalWorkspaceSquads = ["1", "7", "11"];
 const personalWorkspaceStatusOptions = ["Chưa bắt đầu", "Đang thực hiện", "Hoàn thành"];
 const workPriorityOptions = ["Cao", "Trung bình", "Thấp"];
 const planNoteMaxLength = 5000;
+const jiraBrowseBaseUrl = "https://bidv-vn.atlassian.net/browse/";
 const memberKpiRoleOptions = ["PO", "BA", "Squad Lead", "Tester", "Developer", "Reviewer", "Khác"];
 const defaultWorkKpiConfig = {
   id: "work-kpi-default",
@@ -2036,6 +2037,9 @@ module.exports = {
   __testCanUpdatePlanNote: canUpdatePlanNote,
   __testNormalizePlanNote: normalizePlanNote,
   __testMergePlanNoteUpdate: mergePlanNoteUpdate,
+  __testApplyPlanOpenBugRules: applyPlanOpenBugRules,
+  __testIsClosedBugStatus: isClosedBugStatus,
+  __testJiraBugUrl: jiraBugUrl,
   __testDecorateRecord: decorateRecord,
   __testEnforceWorkItemGroupEditorScope: enforceWorkItemGroupEditorScope,
   __testNormalizeWorkItemPeople: normalizeWorkItemPeople,
@@ -2601,6 +2605,7 @@ function parseDefectSheet(worksheet) {
       id: importId("defects", bugId),
       stt,
       bugId,
+      jiraUrl: firstSafeHttpUrl(cellLinksAt(row, 2)),
       linkedUsKey,
       jiraCode: "",
       featureJiraCode: "",
@@ -2668,6 +2673,7 @@ function parseBugSourceSheet(worksheet) {
       testerLookup: cellTextAt(row, 2),
       issueType: cellTextAt(row, 3),
       issueKey,
+      jiraUrl: firstSafeHttpUrl(cellLinksAt(row, 4)),
       issueId: cellTextAt(row, 5),
       summary,
       assignee: cellTextAt(row, 7),
@@ -3130,6 +3136,8 @@ function applyWorkbookRules(state) {
     row.aging = calculateDefectAging(row.foundDate, row.resolvedDate);
   });
 
+  applyPlanOpenBugRules(state);
+
   features.forEach((row) => {
     const story = userStoryByJira.get(lookupKey(row.jiraCode));
     const handoff = handoffByJira.get(lookupKey(row.jiraCode)) || handoffByFeatureName.get(lookupKey(row.name));
@@ -3526,6 +3534,104 @@ function isOpenBugStatus(status) {
   const normalized = normalizeImportHeader(status);
   if (!normalized) return false;
   return !["da dong", "closed", "cancelled", "canceled"].includes(normalized);
+}
+
+function isClosedBugStatus(status) {
+  return ["da dong", "closed"].includes(normalizeImportHeader(status));
+}
+
+function firstSafeHttpUrl(values) {
+  const candidates = Array.isArray(values) ? values : [values];
+  for (const value of candidates) {
+    const text = String(value || "").trim();
+    if (!text) continue;
+    try {
+      const parsed = new URL(text);
+      if (["http:", "https:"].includes(parsed.protocol)) return parsed.toString();
+    } catch {
+      // Invalid and non-HTTP(S) links are deliberately ignored.
+    }
+  }
+  return "";
+}
+
+function jiraIssueKey(value) {
+  const text = normalizeImportedText(value);
+  const match = text.match(/\b[A-Z][A-Z0-9_]*-\d+\b/i);
+  return match ? match[0].toUpperCase() : "";
+}
+
+function jiraBugUrl(bugId, ...candidateUrls) {
+  const sourceUrl = firstSafeHttpUrl(candidateUrls);
+  if (sourceUrl) return sourceUrl;
+  const issueKey = jiraIssueKey(bugId);
+  return issueKey ? `${jiraBrowseBaseUrl}${encodeURIComponent(issueKey)}` : "";
+}
+
+function applyPlanOpenBugRules(state) {
+  const plans = collectionRows(state, "plans");
+  const defects = collectionRows(state, "defects");
+  const userStories = collectionRows(state, "userStories");
+  const bugSources = collectionRows(state, "bugSources");
+  const bugSourceByIssueKey = lookupBy(bugSources, "issueKey");
+  const userStoryKeysByPlanKey = new Map();
+
+  const addStoryPlanKey = (planKey, issueKey) => {
+    const normalizedPlanKey = lookupKey(planKey);
+    const normalizedIssueKey = lookupKey(jiraIssueKey(issueKey) || issueKey);
+    if (!normalizedPlanKey || !normalizedIssueKey) return;
+    if (!userStoryKeysByPlanKey.has(normalizedPlanKey)) userStoryKeysByPlanKey.set(normalizedPlanKey, new Set());
+    userStoryKeysByPlanKey.get(normalizedPlanKey).add(normalizedIssueKey);
+  };
+  userStories.forEach((story) => {
+    addStoryPlanKey(story.jiraCode, story.issueKey);
+    addStoryPlanKey(story.squadSummary, story.issueKey);
+    addStoryPlanKey(story.issueKey, story.issueKey);
+  });
+
+  plans.forEach((plan) => {
+    const planKeys = new Set([plan.jiraCode, plan.code]
+      .map(lookupKey)
+      .filter(Boolean));
+    const linkedUsKeys = new Set();
+    for (const planKey of planKeys) {
+      linkedUsKeys.add(planKey);
+      for (const issueKey of userStoryKeysByPlanKey.get(planKey) || []) linkedUsKeys.add(issueKey);
+    }
+
+    const seenBugIds = new Set();
+    plan.openBugLinks = defects.reduce((items, defect) => {
+      const sourceBug = bugSourceByIssueKey.get(lookupKey(defect.bugId));
+      const status = normalizeBugStatus(defect.status || sourceBug?.status || "");
+      if (isClosedBugStatus(status)) return items;
+
+      const linkedUsKey = lookupKey(jiraIssueKey(defect.linkedUsKey || sourceBug?.linkedUsKey)
+        || defect.linkedUsKey
+        || sourceBug?.linkedUsKey);
+      const featureKey = lookupKey(defect.featureJiraCode || defect.jiraCode || sourceBug?.featureJiraCode || sourceBug?.jiraCode);
+      if (!linkedUsKeys.has(linkedUsKey) && !planKeys.has(featureKey)) return items;
+
+      const bugId = normalizeImportedText(defect.bugId || sourceBug?.issueKey);
+      const dedupeKey = lookupKey(bugId || defect.id);
+      if (!dedupeKey || seenBugIds.has(dedupeKey)) return items;
+      seenBugIds.add(dedupeKey);
+
+      const title = normalizeImportedText(sourceBug?.summary || defect.bugTitle || defect.summary);
+      items.push({
+        bugId,
+        title,
+        label: title && lookupKey(title) !== lookupKey(bugId) ? `${bugId} - ${title}` : bugId,
+        status,
+        severity: normalizeImportedText(defect.severity || sourceBug?.priority),
+        linkedUsKey: jiraIssueKey(defect.linkedUsKey || sourceBug?.linkedUsKey)
+          || normalizeImportedText(defect.linkedUsKey || sourceBug?.linkedUsKey),
+        url: jiraBugUrl(bugId, defect.jiraUrl, sourceBug?.jiraUrl)
+      });
+      return items;
+    }, []);
+  });
+
+  return plans;
 }
 
 function addDays(value, days) {

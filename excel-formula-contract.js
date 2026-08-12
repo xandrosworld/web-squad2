@@ -33,7 +33,7 @@ const computedFieldsByCollection = {
   ],
   schedule: ["devEnd", "handoffDate", "startDate", "endDate"],
   handoffs: ["uatStart", "uatEnd", "uatStatus"],
-  plans: ["sprint", "uatHandoff", "owner", "totalCases", "progress", "devStatus", "priority"],
+  plans: ["sprint", "uatHandoff", "owner", "totalCases", "progress", "devStatus", "priority", "openBugLinks"],
   daily: ["jiraCode", "executedCases", "criticalBugs", "highBugs"],
   defects: ["featureJiraCode", "sprint", "aging"],
   userStories: ["squadSummary", "jiraCode"],

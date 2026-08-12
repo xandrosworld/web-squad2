@@ -40,7 +40,7 @@ const computedFieldsByCollection = {
     ],
     schedule: ["devEnd", "handoffDate", "startDate", "endDate"],
     handoffs: ["uatStart", "uatEnd", "uatStatus"],
-    plans: ["sprint", "uatHandoff", "owner", "totalCases", "progress", "devStatus", "priority"],
+    plans: ["sprint", "uatHandoff", "owner", "totalCases", "progress", "devStatus", "priority", "openBugLinks"],
     daily: ["jiraCode", "executedCases", "criticalBugs", "highBugs"],
     defects: ["featureJiraCode", "sprint", "aging"],
     userStories: ["squadSummary", "jiraCode"],
@@ -483,7 +483,15 @@ const modules = {
             { key: "uatStatus", label: "Trạng thái UAT", width: "150px", render: (row) => renderStatus(row.uatStatus) },
             { key: "devStatus", label: "Trạng thái DEV", width: "150px", render: (row) => renderStatus(row.devStatus) },
             { key: "priority", label: "Mức độ ưu tiên", width: "140px", render: (row) => numberText(row.priority) },
-            { key: "note", label: "Ghi chú", width: "320px", render: (row) => renderLinkedText(row.note) }
+            { key: "note", label: "Ghi chú", width: "320px", render: (row) => renderLinkedText(row.note) },
+            {
+                key: "openBugLinks",
+                label: "Bugs chưa Closed",
+                width: "430px",
+                computedBadge: "Tự tổng hợp",
+                computedTitle: "Tự tổng hợp từ DEFECT_LOG theo Child Of; bug Closed sẽ không hiển thị.",
+                render: (row) => renderPlanBugLinks(row)
+            }
         ]
     },
     matrix: {
@@ -4208,12 +4216,17 @@ function isProtectedWorkCategory(categoryId) {
 
 function renderModuleDataTools(mod) {
     if (mod.collection === "plans") {
+        const bugSummary = getPlanBugCoverageSummary();
         return `
             <div class="plan-note-policy" role="note">
                 <i class="fa-solid fa-shield-halved"></i>
                 <div>
                     <strong>Ghi chú mở cho toàn bộ thành viên</strong>
-                    <span>Nhấn biểu tượng ghi chú tại từng dòng để cập nhật vướng mắc hoặc dán link Jira. Các trường phân công và số liệu được khóa để tránh sửa nhầm.</span>
+                    <span>Nhấn biểu tượng ghi chú tại từng dòng để cập nhật vướng mắc hoặc dán link Jira. Cột Bugs tự tổng hợp từ DEFECT_LOG theo Child Of và chỉ hiện bug chưa Closed; các trường phân công và số liệu được khóa để tránh sửa nhầm.</span>
+                    <div class="plan-bug-coverage" data-plan-bug-linked-count="${e(bugSummary.linked)}" data-plan-bug-unlinked-count="${e(bugSummary.unlinked)}">
+                        <span><i class="fa-solid fa-link"></i> <strong>${e(bugSummary.linked)}</strong> bug đã ghép vào <strong>${e(bugSummary.planRows)}</strong> US</span>
+                        ${bugSummary.unlinked ? `<span class="warning"><i class="fa-solid fa-triangle-exclamation"></i> ${e(bugSummary.unlinked)} bug chưa Closed chưa khớp US trong PhanCong_UAT; cần kiểm tra Child Of.</span>` : `<span class="success"><i class="fa-solid fa-circle-check"></i> Toàn bộ bug chưa Closed đã khớp US.</span>`}
+                    </div>
                 </div>
             </div>
         `;
@@ -4738,7 +4751,7 @@ function renderTableHeaderCell(mod, col, meta) {
         <th${tableCellAttrs(meta, isOpen ? "filter-open" : "")}>
             <div class="th-control" data-column-filter-shell="${e(key)}">
                 <span class="th-label" title="${e(col.label)}">${e(col.label)}</span>
-                ${computed ? `<span class="computed-chip" title="Tự tính theo công thức Excel">Tự tính</span>` : ""}
+                ${computed ? `<span class="computed-chip" title="${e(col.computedTitle || "Tự tính theo công thức Excel")}">${e(col.computedBadge || "Tự tính")}</span>` : ""}
                 <button type="button" class="th-filter-btn ${value ? "active" : ""}" data-action="toggle-column-filter" data-column-key="${e(col.key)}" title="Lọc ${e(col.label)}" aria-label="Lọc ${e(col.label)}">
                     <i class="fa-solid fa-filter"></i>
                 </button>
@@ -8963,6 +8976,9 @@ function getFilteredRows(mod) {
         if (mod.collection === "daily") {
             searchableValues.push(formatDateText(row.date), formatDailyTesterLabel(row.tester));
         }
+        if (mod.collection === "plans") {
+            searchableValues.push(planBugSearchText(row));
+        }
         const matchQuery = !query || searchableValues.some((value) => String(value ?? "").toLowerCase().includes(query));
         if (!matchQuery) return false;
         const matchLegacyFilters = (mod.filters || []).every((filter) => {
@@ -9341,7 +9357,35 @@ function getColumnRawValue(row, col) {
         if (row.executedCases !== undefined || row.totalCases !== undefined) return percent(row.executedCases, row.totalCases);
         return row.progress;
     }
+    if (col.key === "openBugLinks") return planBugSearchText(row);
     return row[col.key];
+}
+
+function planBugSearchText(row) {
+    return (Array.isArray(row?.openBugLinks) ? row.openBugLinks : [])
+        .flatMap((bug) => [bug?.bugId, bug?.title, bug?.status, bug?.severity, bug?.linkedUsKey])
+        .filter(Boolean)
+        .join(" ");
+}
+
+function getPlanBugCoverageSummary() {
+    const linkedIds = new Set();
+    let planRows = 0;
+    (appState.plans || []).forEach((plan) => {
+        const bugs = Array.isArray(plan?.openBugLinks) ? plan.openBugLinks : [];
+        if (bugs.length) planRows += 1;
+        bugs.forEach((bug) => linkedIds.add(normalizeLookupKey(bug?.bugId || "")));
+    });
+    const nonClosedIds = new Set((appState.defects || [])
+        .filter((bug) => !["closed", "da dong"].includes(normalizeWorkbookFormulaText(bug?.status)))
+        .map((bug) => normalizeLookupKey(bug?.bugId || bug?.id || ""))
+        .filter(Boolean));
+    const linked = [...linkedIds].filter((bugId) => nonClosedIds.has(bugId)).length;
+    return {
+        linked,
+        planRows,
+        unlinked: Math.max(0, nonClosedIds.size - linked)
+    };
 }
 
 function validateRecord(mod, payload) {
@@ -9526,6 +9570,28 @@ function renderLinkedText(value, explicitLinks = []) {
                     ${extraLinks.map((url) => renderExternalLink(url, "Mở link")).join("")}
                 </div>
             ` : ""}
+        </div>
+    `;
+}
+
+function renderPlanBugLinks(row) {
+    const bugs = Array.isArray(row?.openBugLinks) ? row.openBugLinks : [];
+    if (!bugs.length) {
+        return `<span class="plan-bug-empty"><i class="fa-solid fa-circle-check"></i> Không có bug chưa Closed</span>`;
+    }
+    return `
+        <div class="plan-bug-list" aria-label="${e(`${bugs.length} bug chưa Closed`)}">
+            <span class="plan-bug-count">${e(bugs.length)} bug chưa Closed</span>
+            ${bugs.map((bug) => {
+                const label = String(bug?.label || bug?.bugId || "Bug").trim();
+                return `
+                    <div class="plan-bug-item" data-plan-bug-id="${e(bug?.bugId || "")}">
+                        <i class="fa-solid fa-bug" aria-hidden="true"></i>
+                        <span class="plan-bug-main">${renderExternalLink(bug?.url, label)}</span>
+                        ${bug?.status ? `<span class="plan-bug-status">${e(bug.status)}</span>` : ""}
+                    </div>
+                `;
+            }).join("")}
         </div>
     `;
 }

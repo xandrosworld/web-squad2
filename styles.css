@@ -3924,6 +3924,31 @@ body.is-column-resizing * {
     line-height: 1.45;
 }
 
+.plan-bug-coverage {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px 14px;
+    margin-top: 7px;
+    padding-top: 9px;
+    border-top: 1px solid #cfe9e4;
+}
+
+.plan-bug-coverage > span {
+    display: inline-flex;
+    gap: 5px;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.plan-bug-coverage > span.warning {
+    color: #a16207;
+}
+
+.plan-bug-coverage > span.success {
+    color: #15803d;
+}
+
 .plan-note-modal {
     width: min(860px, calc(100vw - 32px));
 }
@@ -3964,6 +3989,67 @@ body.is-column-resizing * {
 .plan-note-field textarea {
     min-height: 190px;
     resize: vertical;
+}
+
+.plan-bug-list {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+}
+
+.plan-bug-count {
+    width: max-content;
+    padding: 3px 8px;
+    border-radius: 999px;
+    color: #9a3412;
+    background: #fff7ed;
+    font-size: 11px;
+    font-weight: 850;
+}
+
+.plan-bug-item {
+    display: grid;
+    grid-template-columns: 14px minmax(0, 1fr) auto;
+    gap: 7px;
+    align-items: start;
+    padding-top: 7px;
+    border-top: 1px dashed #dbe4ec;
+}
+
+.plan-bug-item > i {
+    margin-top: 3px;
+    color: #dc2626;
+    font-size: 11px;
+}
+
+.plan-bug-main {
+    min-width: 0;
+    line-height: 1.42;
+    overflow-wrap: anywhere;
+}
+
+.plan-bug-main .inline-link {
+    font-weight: 750;
+}
+
+.plan-bug-status {
+    padding: 2px 6px;
+    border: 1px solid #d7e0e8;
+    border-radius: 999px;
+    color: #596579;
+    background: #f8fafc;
+    font-size: 10px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.plan-bug-empty {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    color: #15803d;
+    font-size: 12px;
+    font-weight: 750;
 }
 
 @media (max-width: 640px) {

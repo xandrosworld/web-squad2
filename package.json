@@ -17,6 +17,7 @@
     "check:work-kpi": "node scripts/check-work-kpi.js",
     "check:group-editor": "node scripts/check-group-editor-policy.js",
     "check:plan-note": "node scripts/check-plan-note-policy.js",
+    "check:plan-bugs": "node scripts/check-plan-bug-links.js",
     "check:work-item-invariants": "node scripts/check-work-item-invariants.js",
     "check:work-item-people": "node scripts/check-work-item-people.js",
     "check:personnel-fields": "node scripts/check-personnel-fields.js",
