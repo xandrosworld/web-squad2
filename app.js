@@ -9371,7 +9371,7 @@ function planBugSearchText(row) {
 function getPlanBugCoverageSummary() {
     const linkedIds = new Set();
     let planRows = 0;
-    (appState.plans || []).forEach((plan) => {
+    getDisplayRows("plans").forEach((plan) => {
         const bugs = Array.isArray(plan?.openBugLinks) ? plan.openBugLinks : [];
         if (bugs.length) planRows += 1;
         bugs.forEach((bug) => linkedIds.add(normalizeLookupKey(bug?.bugId || "")));
