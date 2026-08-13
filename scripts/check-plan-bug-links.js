@@ -4,6 +4,7 @@ const path = require("node:path");
 
 const {
   __testApplyPlanOpenBugRules: applyPlanOpenBugRules,
+  __testDeriveSquadSummaryFromUserStorySummary: deriveSquadSummaryFromUserStorySummary,
   __testIsClosedBugStatus: isClosedBugStatus,
   __testIsPlanTrackableBugStatus: isPlanTrackableBugStatus,
   __testPlanBugRecencyBucket: planBugRecencyBucket,
@@ -13,11 +14,13 @@ const {
 const state = {
   plans: [
     { id: "plan-1", code: "CN001", jiraCode: "SQ02_CN001_001", feature: "Phê duyệt hồ sơ" },
-    { id: "plan-2", code: "CN002", jiraCode: "SQ02_CN002_001", feature: "Tra cứu hồ sơ" }
+    { id: "plan-2", code: "CN002", jiraCode: "SQ02_CN002_001", feature: "Tra cứu hồ sơ" },
+    { id: "plan-3", code: "CN006", jiraCode: "SQ02_CN006_002", feature: "Nguyên tắc chung" }
   ],
   userStories: [
     { id: "story-1", issueKey: "PS0142025-1001", jiraCode: "SQ02_CN001_001" },
-    { id: "story-2", issueKey: "PS0142025-2001", squadSummary: "SQ02_CN002_001" }
+    { id: "story-2", issueKey: "PS0142025-2001", squadSummary: "SQ02_CN002_001" },
+    { id: "story-3", issueKey: "PS0142025-8078", jiraCode: "SQ02_SQ02_CN00", squadSummary: "SQ02_SQ02_CN00", summary: "SQ02_CN006_002_ Nguyên tắc chung" }
   ],
   defects: [
     { id: "defect-1", bugId: "PS0142025-7001", linkedUsKey: "PS0142025-1001", status: "Open", severity: "Major", foundDate: "2026-08-11" },
@@ -27,7 +30,8 @@ const state = {
     { id: "defect-5", bugId: "PS0142025-7005", linkedUsKey: "PS0142025-1001", status: "Cancelled" },
     { id: "defect-1-duplicate", bugId: "PS0142025-7001", linkedUsKey: "PS0142025-1001", status: "Open" },
     { id: "defect-6", bugId: "PS0142025-7006", linkedUsKey: "PS0142025-9999", status: "Open" },
-    { id: "defect-7", bugId: "PS0142025-7007", featureJiraCode: "SQ02_CN002_001", status: "Pending" }
+    { id: "defect-7", bugId: "PS0142025-7007", featureJiraCode: "SQ02_CN002_001", status: "Pending" },
+    { id: "defect-8", bugId: "PS0142025-7008", linkedUsKey: "PS0142025-8078", status: "Open", foundDate: "2026-08-12" }
   ],
   bugSources: [
     { issueKey: "PS0142025-7001", summary: "Lỗi hiển thị sai luồng", jiraUrl: "https://jira.example/browse/PS0142025-7001" },
@@ -67,6 +71,11 @@ assert.equal(
   "A non-HTTP source link must never reach the client."
 );
 assert.equal(state.plans[1].openBugLinks[0].logDate, "2026-08-10", "DS.Loi Created must be the fallback log date.");
+assert.deepEqual(
+  state.plans[2].openBugLinks.map((bug) => bug.bugId),
+  ["PS0142025-7008"],
+  "A broken generated SQ02_SQ02 code must recover from the prefixed DS_US summary."
+);
 
 assert.equal(isClosedBugStatus("Closed"), true);
 assert.equal(isClosedBugStatus("  CLOSED  "), true);
@@ -79,6 +88,13 @@ assert.equal(isPlanTrackableBugStatus("Closed"), false);
 assert.equal(isPlanTrackableBugStatus("Đã đóng"), false);
 assert.equal(isPlanTrackableBugStatus("Cancelled"), false);
 assert.equal(isPlanTrackableBugStatus("Canceled"), false);
+assert.equal(deriveSquadSummaryFromUserStorySummary("CN001_012_Màn hình"), "SQ02_CN001_012");
+assert.equal(deriveSquadSummaryFromUserStorySummary("SQ02_CN006_002_ Nguyên tắc chung"), "SQ02_CN006_002");
+assert.equal(
+  deriveSquadSummaryFromUserStorySummary("SQ02_CN003_0111_ Thông tin Quan hệ TCTD"),
+  "SQ02_CN003_0111",
+  "A four-digit story suffix must never be silently truncated to a different plan code."
+);
 const reference = new Date("2026-08-13T13:30:00.000Z");
 assert.equal(planBugRecencyBucket("2026-08-13", reference), "new");
 assert.equal(planBugRecencyBucket("2026-08-06", reference), "new", "The exact today - 7 boundary must be new.");
@@ -102,6 +118,8 @@ console.log(JSON.stringify({
   ok: true,
   checked: {
     childOfMapping: true,
+    prefixedStoryCodeNormalization: true,
+    noStoryCodeTruncation: true,
     multipleBugsPerUs: true,
     closedExcluded: true,
     resolvedIncluded: true,

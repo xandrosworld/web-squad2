@@ -2038,6 +2038,7 @@ module.exports = {
   __testNormalizePlanNote: normalizePlanNote,
   __testMergePlanNoteUpdate: mergePlanNoteUpdate,
   __testApplyPlanOpenBugRules: applyPlanOpenBugRules,
+  __testDeriveSquadSummaryFromUserStorySummary: deriveSquadSummaryFromUserStorySummary,
   __testIsClosedBugStatus: isClosedBugStatus,
   __testIsPlanTrackableBugStatus: isPlanTrackableBugStatus,
   __testPlanBugRecencyBucket: planBugRecencyBucket,
@@ -2291,7 +2292,7 @@ function normalizeBugStatus(value) {
 
 function deriveSquadSummaryFromUserStorySummary(summary) {
   const text = normalizeImportedText(summary);
-  const match = text.match(/^(CN\d{3})[_\-\s]?(\d{3})\b/i);
+  const match = text.match(/^(?:SQ0?2[_\-\s]+)?(CN\d{3})[_\-\s]+(\d{3,})(?!\d)/i);
   return match ? `SQ02_${match[1].toUpperCase()}_${match[2]}` : "";
 }
 
@@ -3069,17 +3070,26 @@ function applyWorkbookRules(state) {
   const handoffByJira = lookupBy(handoffs, "jiraCode");
   const handoffByFeatureName = lookupBy(handoffs, "name");
   const userStoryByIssueKey = lookupBy(userStories, "issueKey");
-  const userStoryByJira = lookupBy(userStories, "jiraCode");
+  const planJiraKeys = new Set(plans
+    .flatMap((row) => [row.jiraCode, row.code])
+    .map(lookupKey)
+    .filter(Boolean));
 
   userStories.forEach((row) => {
-    row.squadSummary = row.squadSummary || deriveSquadSummaryFromUserStorySummary(row.summary);
-    row.jiraCode = row.jiraCode || row.squadSummary || "";
+    const currentCode = row.jiraCode || row.squadSummary || "";
+    const derivedCode = deriveSquadSummaryFromUserStorySummary(row.summary);
+    const canonicalCode = planJiraKeys.has(lookupKey(currentCode))
+      ? currentCode
+      : derivedCode || currentCode;
+    row.squadSummary = canonicalCode;
+    row.jiraCode = canonicalCode;
     const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.summary));
     row.featureName = feature?.name || row.featureName || "";
     row.group = feature?.group || row.group || "";
     row.owner = feature?.owner || row.owner || "";
     row.sprint = feature?.sprint || row.sprint || "";
   });
+  const userStoryByJira = lookupBy(userStories, "jiraCode");
 
   bugSources.forEach((row) => {
     row.status = normalizeBugStatus(row.status);
@@ -3625,6 +3635,7 @@ function applyPlanOpenBugRules(state) {
   userStories.forEach((story) => {
     addStoryPlanKey(story.jiraCode, story.issueKey);
     addStoryPlanKey(story.squadSummary, story.issueKey);
+    addStoryPlanKey(deriveSquadSummaryFromUserStorySummary(story.summary), story.issueKey);
     addStoryPlanKey(story.issueKey, story.issueKey);
   });
 
