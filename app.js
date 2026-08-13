@@ -486,10 +486,10 @@ const modules = {
             { key: "note", label: "Ghi chú", width: "320px", render: (row) => renderLinkedText(row.note) },
             {
                 key: "openBugLinks",
-                label: "Bugs chưa Closed",
+                label: "Bugs đang theo dõi",
                 width: "430px",
                 computedBadge: "Tự tổng hợp",
-                computedTitle: "Tự tổng hợp từ DEFECT_LOG theo Child Of; bug Closed sẽ không hiển thị.",
+                computedTitle: "Tự tổng hợp từ DEFECT_LOG theo Child Of; bug Closed hoặc Cancelled sẽ không hiển thị.",
                 render: (row) => renderPlanBugLinks(row)
             }
         ]
@@ -4222,10 +4222,10 @@ function renderModuleDataTools(mod) {
                 <i class="fa-solid fa-shield-halved"></i>
                 <div>
                     <strong>Ghi chú mở cho toàn bộ thành viên</strong>
-                    <span>Nhấn biểu tượng ghi chú tại từng dòng để cập nhật vướng mắc hoặc dán link Jira. Cột Bugs tự tổng hợp từ DEFECT_LOG theo Child Of và chỉ hiện bug chưa Closed; các trường phân công và số liệu được khóa để tránh sửa nhầm.</span>
+                    <span>Nhấn biểu tượng ghi chú tại từng dòng để cập nhật vướng mắc hoặc dán link Jira. Cột Bugs tự tổng hợp từ DEFECT_LOG theo Child Of và loại các bug Closed/Cancelled; các trường phân công và số liệu được khóa để tránh sửa nhầm.</span>
                     <div class="plan-bug-coverage" data-plan-bug-linked-count="${e(bugSummary.linked)}" data-plan-bug-unlinked-count="${e(bugSummary.unlinked)}">
                         <span><i class="fa-solid fa-link"></i> <strong>${e(bugSummary.linked)}</strong> bug đã ghép vào <strong>${e(bugSummary.planRows)}</strong> US</span>
-                        ${bugSummary.unlinked ? `<span class="warning"><i class="fa-solid fa-triangle-exclamation"></i> ${e(bugSummary.unlinked)} bug chưa Closed chưa khớp US trong PhanCong_UAT; cần kiểm tra Child Of.</span>` : `<span class="success"><i class="fa-solid fa-circle-check"></i> Toàn bộ bug chưa Closed đã khớp US.</span>`}
+                        ${bugSummary.unlinked ? `<span class="warning"><i class="fa-solid fa-triangle-exclamation"></i> ${e(bugSummary.unlinked)} bug đang theo dõi chưa khớp US trong PhanCong_UAT; cần kiểm tra Child Of.</span>` : `<span class="success"><i class="fa-solid fa-circle-check"></i> Toàn bộ bug đang theo dõi đã khớp US.</span>`}
                     </div>
                 </div>
             </div>
@@ -9376,15 +9376,15 @@ function getPlanBugCoverageSummary() {
         if (bugs.length) planRows += 1;
         bugs.forEach((bug) => linkedIds.add(normalizeLookupKey(bug?.bugId || "")));
     });
-    const nonClosedIds = new Set((appState.defects || [])
-        .filter((bug) => !["closed", "da dong"].includes(normalizeWorkbookFormulaText(bug?.status)))
+    const trackableIds = new Set((appState.defects || [])
+        .filter((bug) => !["closed", "da dong", "cancelled", "canceled"].includes(normalizeWorkbookFormulaText(bug?.status)))
         .map((bug) => normalizeLookupKey(bug?.bugId || bug?.id || ""))
         .filter(Boolean));
-    const linked = [...linkedIds].filter((bugId) => nonClosedIds.has(bugId)).length;
+    const linked = [...linkedIds].filter((bugId) => trackableIds.has(bugId)).length;
     return {
         linked,
         planRows,
-        unlinked: Math.max(0, nonClosedIds.size - linked)
+        unlinked: Math.max(0, trackableIds.size - linked)
     };
 }
 
@@ -9577,11 +9577,11 @@ function renderLinkedText(value, explicitLinks = []) {
 function renderPlanBugLinks(row) {
     const bugs = Array.isArray(row?.openBugLinks) ? row.openBugLinks : [];
     if (!bugs.length) {
-        return `<span class="plan-bug-empty"><i class="fa-solid fa-circle-check"></i> Không có bug chưa Closed</span>`;
+        return `<span class="plan-bug-empty"><i class="fa-solid fa-circle-check"></i> Không có bug đang theo dõi</span>`;
     }
     return `
-        <div class="plan-bug-list" aria-label="${e(`${bugs.length} bug chưa Closed`)}">
-            <span class="plan-bug-count">${e(bugs.length)} bug chưa Closed</span>
+        <div class="plan-bug-list" aria-label="${e(`${bugs.length} bug đang theo dõi`)}">
+            <span class="plan-bug-count">${e(bugs.length)} bug đang theo dõi</span>
             ${bugs.map((bug) => {
                 const label = String(bug?.label || bug?.bugId || "Bug").trim();
                 return `

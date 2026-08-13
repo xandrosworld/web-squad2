@@ -5,6 +5,7 @@ const path = require("node:path");
 const {
   __testApplyPlanOpenBugRules: applyPlanOpenBugRules,
   __testIsClosedBugStatus: isClosedBugStatus,
+  __testIsPlanTrackableBugStatus: isPlanTrackableBugStatus,
   __testJiraBugUrl: jiraBugUrl
 } = require("../server");
 
@@ -39,8 +40,8 @@ applyPlanOpenBugRules(state);
 
 assert.deepEqual(
   state.plans[0].openBugLinks.map((bug) => bug.bugId),
-  ["PS0142025-7001", "PS0142025-7002", "PS0142025-7005"],
-  "A plan must include every non-Closed bug once, including Resolved and Cancelled."
+  ["PS0142025-7001", "PS0142025-7002"],
+  "A plan must include each active bug once while excluding Closed and Cancelled statuses."
 );
 assert.equal(state.plans[0].openBugLinks[0].title, "Lỗi hiển thị sai luồng");
 assert.equal(state.plans[0].openBugLinks[0].label, "PS0142025-7001 - Lỗi hiển thị sai luồng");
@@ -66,11 +67,18 @@ assert.equal(isClosedBugStatus("  CLOSED  "), true);
 assert.equal(isClosedBugStatus("Đã đóng"), true);
 assert.equal(isClosedBugStatus("Resolved"), false);
 assert.equal(isClosedBugStatus("Cancelled"), false);
+assert.equal(isPlanTrackableBugStatus("Open"), true);
+assert.equal(isPlanTrackableBugStatus("Resolved"), true);
+assert.equal(isPlanTrackableBugStatus("Closed"), false);
+assert.equal(isPlanTrackableBugStatus("Đã đóng"), false);
+assert.equal(isPlanTrackableBugStatus("Cancelled"), false);
+assert.equal(isPlanTrackableBugStatus("Canceled"), false);
 assert.equal(jiraBugUrl("PS0142025-9999", "javascript:alert(1)"), "https://bidv-vn.atlassian.net/browse/PS0142025-9999");
 assert.equal(jiraBugUrl("không có mã", "javascript:alert(1)"), "");
 
 const appSource = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
-assert.match(appSource, /label:\s*"Bugs chưa Closed"/);
+assert.match(appSource, /label:\s*"Bugs đang theo dõi"/);
+assert.match(appSource, /bug Closed hoặc Cancelled sẽ không hiển thị/);
 assert.match(appSource, /render:\s*\(row\)\s*=>\s*renderPlanBugLinks\(row\)/);
 assert.match(appSource, /renderExternalLink\(bug\?\.url, label\)/);
 assert.match(appSource, /target="_blank" rel="noopener noreferrer"/);
@@ -82,7 +90,7 @@ console.log(JSON.stringify({
     multipleBugsPerUs: true,
     closedExcluded: true,
     resolvedIncluded: true,
-    cancelledIncludedByExplicitRule: true,
+    cancelledExcluded: true,
     duplicateRemoved: true,
     titleAndSafeHyperlink: true,
     directFeatureFallback: true

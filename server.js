@@ -2039,6 +2039,7 @@ module.exports = {
   __testMergePlanNoteUpdate: mergePlanNoteUpdate,
   __testApplyPlanOpenBugRules: applyPlanOpenBugRules,
   __testIsClosedBugStatus: isClosedBugStatus,
+  __testIsPlanTrackableBugStatus: isPlanTrackableBugStatus,
   __testJiraBugUrl: jiraBugUrl,
   __testDecorateRecord: decorateRecord,
   __testEnforceWorkItemGroupEditorScope: enforceWorkItemGroupEditorScope,
@@ -3540,6 +3541,10 @@ function isClosedBugStatus(status) {
   return ["da dong", "closed"].includes(normalizeImportHeader(status));
 }
 
+function isPlanTrackableBugStatus(status) {
+  return !["da dong", "closed", "cancelled", "canceled"].includes(normalizeImportHeader(status));
+}
+
 function firstSafeHttpUrl(values) {
   const candidates = Array.isArray(values) ? values : [values];
   for (const value of candidates) {
@@ -3603,7 +3608,7 @@ function applyPlanOpenBugRules(state) {
     plan.openBugLinks = defects.reduce((items, defect) => {
       const sourceBug = bugSourceByIssueKey.get(lookupKey(defect.bugId));
       const status = normalizeBugStatus(defect.status || sourceBug?.status || "");
-      if (isClosedBugStatus(status)) return items;
+      if (!isPlanTrackableBugStatus(status)) return items;
 
       const linkedUsKey = lookupKey(jiraIssueKey(defect.linkedUsKey || sourceBug?.linkedUsKey)
         || defect.linkedUsKey
