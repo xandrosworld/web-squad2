@@ -431,6 +431,9 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       || await planBugCoverage.getAttribute("data-plan-bug-unlinked-count") !== "2") {
       throw new Error("PhanCong_UAT bug coverage summary did not identify linked and unmatched trackable bugs.");
     }
+    if (!await page.locator('[data-plan-bug-group="old"] [data-plan-bug-id="BUG-3"]').isVisible()) {
+      throw new Error("PhanCong_UAT did not group an older bug under Bug cũ.");
+    }
     await assertT01MetricRowFilter(page, "plans", "unassigned", 1);
     const openPlanBug = page.locator('[data-plan-bug-id="BUG-1"]');
     if (!await openPlanBug.isVisible() || !(await openPlanBug.textContent() || "").includes("Lỗi hiển thị sai luồng")) {
@@ -441,6 +444,9 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       || await openPlanBugLink.getAttribute("target") !== "_blank"
       || await openPlanBugLink.getAttribute("rel") !== "noopener noreferrer") {
       throw new Error("PhanCong_UAT bug hyperlink is missing or unsafe.");
+    }
+    if (!await page.locator('[data-plan-bug-group="new"] [data-plan-bug-id="BUG-1"]').isVisible()) {
+      throw new Error("PhanCong_UAT did not group a recent bug under Bug mới.");
     }
     if (await page.locator('[data-plan-bug-id="BUG-7"]').count()) {
       throw new Error("PhanCong_UAT must not render a Cancelled bug.");
@@ -737,9 +743,9 @@ async function buildFixtureState() {
     { id: "daily-2", date: "2026-07-14", jiraCode: "SQ2-F05", feature: "Chức năng Done UAT", sprint: "Sprint 1", tester: "T2", totalCases: 5, passedCases: 5, failedCases: 0, bugStatus: "Resolved", maxBugSeverity: "Minor", blocker: "" }
   ];
   state.defects = [
-    { id: "defect-1", stt: 1, bugId: "BUG-1", featureJiraCode: "SQ2-F01", sprint: "Sprint 1", severity: "Critical", status: "Open" },
+    { id: "defect-1", stt: 1, bugId: "BUG-1", featureJiraCode: "SQ2-F01", sprint: "Sprint 1", severity: "Critical", status: "Open", foundDate: new Date().toISOString().slice(0, 10) },
     { id: "defect-2", stt: 2, bugId: "BUG-2", featureJiraCode: "SQ2-F02", sprint: "Sprint 1", severity: "Major", status: "In Progress" },
-    { id: "defect-3", stt: 3, bugId: "BUG-3", featureJiraCode: "SQ2-F03", sprint: "Sprint 1", severity: "Major", status: "Reopen" },
+    { id: "defect-3", stt: 3, bugId: "BUG-3", featureJiraCode: "SQ2-F03", sprint: "Sprint 1", severity: "Major", status: "Reopen", foundDate: "2026-01-01" },
     { id: "defect-4", stt: 4, bugId: "BUG-4", featureJiraCode: "SQ2-F03", sprint: "Sprint 1", severity: "Minor", status: "Resolved" },
     { id: "defect-5", stt: 5, bugId: "BUG-5", featureJiraCode: "SQ2-F04", sprint: "Sprint 1", severity: "Minor", status: "SIT Pass" },
     { id: "defect-6", stt: 6, bugId: "BUG-6", featureJiraCode: "SQ2-F05", sprint: "Sprint 1", severity: "Minor", status: "Closed" },

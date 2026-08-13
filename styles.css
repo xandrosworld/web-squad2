@@ -4007,6 +4007,74 @@ body.is-column-resizing * {
     font-weight: 850;
 }
 
+.plan-bug-group {
+    display: grid;
+    gap: 0;
+    padding: 8px 9px 3px;
+    border: 1px solid #dce5eb;
+    border-radius: 10px;
+    background: #fbfcfd;
+}
+
+.plan-bug-group.new {
+    border-color: #a7dfd6;
+    background: #f0fdfa;
+}
+
+.plan-bug-group.old {
+    background: #f8fafc;
+}
+
+.plan-bug-group.unknown {
+    border-color: #fde1a7;
+    background: #fffbeb;
+}
+
+.plan-bug-group-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 6px;
+    align-items: center;
+    padding-bottom: 5px;
+}
+
+.plan-bug-group-head > span {
+    color: #0f766e;
+    font-size: 11px;
+    font-weight: 850;
+}
+
+.plan-bug-group.old .plan-bug-group-head > span {
+    color: #475569;
+}
+
+.plan-bug-group.unknown .plan-bug-group-head > span {
+    color: #a16207;
+}
+
+.plan-bug-group-head small {
+    color: #8490a2;
+    font-size: 10px;
+}
+
+.plan-bug-group-head strong {
+    min-width: 21px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    color: #ffffff;
+    background: #0f766e;
+    font-size: 10px;
+    text-align: center;
+}
+
+.plan-bug-group.old .plan-bug-group-head strong {
+    background: #64748b;
+}
+
+.plan-bug-group.unknown .plan-bug-group-head strong {
+    background: #d97706;
+}
+
 .plan-bug-item {
     display: grid;
     grid-template-columns: 14px minmax(0, 1fr) auto;
@@ -4030,6 +4098,14 @@ body.is-column-resizing * {
 
 .plan-bug-main .inline-link {
     font-weight: 750;
+}
+
+.plan-bug-main > small {
+    display: block;
+    margin-top: 2px;
+    color: #7a8698;
+    font-size: 10px;
+    font-weight: 650;
 }
 
 .plan-bug-status {

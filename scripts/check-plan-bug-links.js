@@ -6,6 +6,7 @@ const {
   __testApplyPlanOpenBugRules: applyPlanOpenBugRules,
   __testIsClosedBugStatus: isClosedBugStatus,
   __testIsPlanTrackableBugStatus: isPlanTrackableBugStatus,
+  __testPlanBugRecencyBucket: planBugRecencyBucket,
   __testJiraBugUrl: jiraBugUrl
 } = require("../server");
 
@@ -19,8 +20,8 @@ const state = {
     { id: "story-2", issueKey: "PS0142025-2001", squadSummary: "SQ02_CN002_001" }
   ],
   defects: [
-    { id: "defect-1", bugId: "PS0142025-7001", linkedUsKey: "PS0142025-1001", status: "Open", severity: "Major" },
-    { id: "defect-2", bugId: "PS0142025-7002", linkedUsKey: "PS0142025-1001", status: "Resolved", severity: "Minor" },
+    { id: "defect-1", bugId: "PS0142025-7001", linkedUsKey: "PS0142025-1001", status: "Open", severity: "Major", foundDate: "2026-08-11" },
+    { id: "defect-2", bugId: "PS0142025-7002", linkedUsKey: "PS0142025-1001", status: "Resolved", severity: "Minor", foundDate: "2026-07-20" },
     { id: "defect-3", bugId: "PS0142025-7003", linkedUsKey: "PS0142025-1001", status: "Closed" },
     { id: "defect-4", bugId: "PS0142025-7004", linkedUsKey: "PS0142025-1001", status: "Đã đóng" },
     { id: "defect-5", bugId: "PS0142025-7005", linkedUsKey: "PS0142025-1001", status: "Cancelled" },
@@ -32,7 +33,7 @@ const state = {
     { issueKey: "PS0142025-7001", summary: "Lỗi hiển thị sai luồng", jiraUrl: "https://jira.example/browse/PS0142025-7001" },
     { issueKey: "PS0142025-7002", summary: "Lỗi trình duyệt hồ sơ" },
     { issueKey: "PS0142025-7005", summary: "Lỗi đã hủy nhưng chưa Closed" },
-    { issueKey: "PS0142025-7007", summary: "Lỗi ghép trực tiếp theo mã chức năng", jiraUrl: "javascript:alert(1)" }
+    { issueKey: "PS0142025-7007", summary: "Lỗi ghép trực tiếp theo mã chức năng", jiraUrl: "javascript:alert(1)", created: "2026-08-10" }
   ]
 };
 
@@ -46,6 +47,10 @@ assert.deepEqual(
 assert.equal(state.plans[0].openBugLinks[0].title, "Lỗi hiển thị sai luồng");
 assert.equal(state.plans[0].openBugLinks[0].label, "PS0142025-7001 - Lỗi hiển thị sai luồng");
 assert.equal(state.plans[0].openBugLinks[0].url, "https://jira.example/browse/PS0142025-7001");
+assert.equal(state.plans[0].openBugLinks[0].logDate, "2026-08-11");
+assert.equal(state.plans[0].openBugLinks[0].recencyBucket, planBugRecencyBucket("2026-08-11"));
+assert.equal(state.plans[0].openBugLinks[1].logDate, "2026-07-20");
+assert.equal(state.plans[0].openBugLinks[1].recencyBucket, "old");
 assert.equal(
   state.plans[0].openBugLinks[1].url,
   "https://bidv-vn.atlassian.net/browse/PS0142025-7002",
@@ -61,6 +66,7 @@ assert.equal(
   "https://bidv-vn.atlassian.net/browse/PS0142025-7007",
   "A non-HTTP source link must never reach the client."
 );
+assert.equal(state.plans[1].openBugLinks[0].logDate, "2026-08-10", "DS.Loi Created must be the fallback log date.");
 
 assert.equal(isClosedBugStatus("Closed"), true);
 assert.equal(isClosedBugStatus("  CLOSED  "), true);
@@ -73,12 +79,21 @@ assert.equal(isPlanTrackableBugStatus("Closed"), false);
 assert.equal(isPlanTrackableBugStatus("Đã đóng"), false);
 assert.equal(isPlanTrackableBugStatus("Cancelled"), false);
 assert.equal(isPlanTrackableBugStatus("Canceled"), false);
+const reference = new Date("2026-08-13T13:30:00.000Z");
+assert.equal(planBugRecencyBucket("2026-08-13", reference), "new");
+assert.equal(planBugRecencyBucket("2026-08-06", reference), "new", "The exact today - 7 boundary must be new.");
+assert.equal(planBugRecencyBucket("2026-08-05", reference), "old");
+assert.equal(planBugRecencyBucket("", reference), "unknown");
+assert.equal(planBugRecencyBucket("2026-08-14", reference), "unknown", "Future log dates must be flagged for review.");
 assert.equal(jiraBugUrl("PS0142025-9999", "javascript:alert(1)"), "https://bidv-vn.atlassian.net/browse/PS0142025-9999");
 assert.equal(jiraBugUrl("không có mã", "javascript:alert(1)"), "");
 
 const appSource = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
 assert.match(appSource, /label:\s*"Bugs đang theo dõi"/);
-assert.match(appSource, /bug Closed hoặc Cancelled sẽ không hiển thị/);
+assert.match(appSource, /chia bug mới trong 7 ngày gần nhất và bug cũ, đồng thời loại Closed\/Cancelled/);
+assert.match(appSource, /data-plan-bug-group=/);
+assert.match(appSource, /Bug mới/);
+assert.match(appSource, /Bug cũ/);
 assert.match(appSource, /render:\s*\(row\)\s*=>\s*renderPlanBugLinks\(row\)/);
 assert.match(appSource, /renderExternalLink\(bug\?\.url, label\)/);
 assert.match(appSource, /target="_blank" rel="noopener noreferrer"/);
@@ -91,6 +106,8 @@ console.log(JSON.stringify({
     closedExcluded: true,
     resolvedIncluded: true,
     cancelledExcluded: true,
+    sevenDayRecencyGrouping: true,
+    sourceCreatedDateFallback: true,
     duplicateRemoved: true,
     titleAndSafeHyperlink: true,
     directFeatureFallback: true

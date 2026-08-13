@@ -2040,6 +2040,7 @@ module.exports = {
   __testApplyPlanOpenBugRules: applyPlanOpenBugRules,
   __testIsClosedBugStatus: isClosedBugStatus,
   __testIsPlanTrackableBugStatus: isPlanTrackableBugStatus,
+  __testPlanBugRecencyBucket: planBugRecencyBucket,
   __testJiraBugUrl: jiraBugUrl,
   __testDecorateRecord: decorateRecord,
   __testEnforceWorkItemGroupEditorScope: enforceWorkItemGroupEditorScope,
@@ -3545,6 +3546,39 @@ function isPlanTrackableBugStatus(status) {
   return !["da dong", "closed", "cancelled", "canceled"].includes(normalizeImportHeader(status));
 }
 
+function vietnamDateKey(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function dateOnlyOrdinal(value) {
+  const match = String(value || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return Math.floor(date.getTime() / (24 * 60 * 60 * 1000));
+}
+
+function planBugRecencyBucket(logDate, referenceDate = new Date()) {
+  const logOrdinal = dateOnlyOrdinal(logDate);
+  const todayOrdinal = dateOnlyOrdinal(vietnamDateKey(referenceDate));
+  if (logOrdinal === null || todayOrdinal === null) return "unknown";
+  const ageDays = todayOrdinal - logOrdinal;
+  if (ageDays < 0) return "unknown";
+  return ageDays <= 7 ? "new" : "old";
+}
+
 function firstSafeHttpUrl(values) {
   const candidates = Array.isArray(values) ? values : [values];
   for (const value of candidates) {
@@ -3622,12 +3656,15 @@ function applyPlanOpenBugRules(state) {
       seenBugIds.add(dedupeKey);
 
       const title = normalizeImportedText(sourceBug?.summary || defect.bugTitle || defect.summary);
+      const logDate = normalizeImportedDate(defect.foundDate || sourceBug?.created || "");
       items.push({
         bugId,
         title,
         label: title && lookupKey(title) !== lookupKey(bugId) ? `${bugId} - ${title}` : bugId,
         status,
         severity: normalizeImportedText(defect.severity || sourceBug?.priority),
+        logDate,
+        recencyBucket: planBugRecencyBucket(logDate),
         linkedUsKey: jiraIssueKey(defect.linkedUsKey || sourceBug?.linkedUsKey)
           || normalizeImportedText(defect.linkedUsKey || sourceBug?.linkedUsKey),
         url: jiraBugUrl(bugId, defect.jiraUrl, sourceBug?.jiraUrl)

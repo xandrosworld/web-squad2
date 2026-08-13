@@ -489,7 +489,7 @@ const modules = {
                 label: "Bugs đang theo dõi",
                 width: "430px",
                 computedBadge: "Tự tổng hợp",
-                computedTitle: "Tự tổng hợp từ DEFECT_LOG theo Child Of; bug Closed hoặc Cancelled sẽ không hiển thị.",
+                computedTitle: "Tự tổng hợp từ DEFECT_LOG theo Child Of; chia bug mới trong 7 ngày gần nhất và bug cũ, đồng thời loại Closed/Cancelled.",
                 render: (row) => renderPlanBugLinks(row)
             }
         ]
@@ -4222,7 +4222,7 @@ function renderModuleDataTools(mod) {
                 <i class="fa-solid fa-shield-halved"></i>
                 <div>
                     <strong>Ghi chú mở cho toàn bộ thành viên</strong>
-                    <span>Nhấn biểu tượng ghi chú tại từng dòng để cập nhật vướng mắc hoặc dán link Jira. Cột Bugs tự tổng hợp từ DEFECT_LOG theo Child Of và loại các bug Closed/Cancelled; các trường phân công và số liệu được khóa để tránh sửa nhầm.</span>
+                    <span>Nhấn biểu tượng ghi chú tại từng dòng để cập nhật vướng mắc hoặc dán link Jira. Cột Bugs tự tổng hợp từ DEFECT_LOG theo Child Of, chia bug mới trong 7 ngày gần nhất và bug cũ, đồng thời loại Closed/Cancelled.</span>
                     <div class="plan-bug-coverage" data-plan-bug-linked-count="${e(bugSummary.linked)}" data-plan-bug-unlinked-count="${e(bugSummary.unlinked)}">
                         <span><i class="fa-solid fa-link"></i> <strong>${e(bugSummary.linked)}</strong> bug đã ghép vào <strong>${e(bugSummary.planRows)}</strong> US</span>
                         ${bugSummary.unlinked ? `<span class="warning"><i class="fa-solid fa-triangle-exclamation"></i> ${e(bugSummary.unlinked)} bug đang theo dõi chưa khớp US trong PhanCong_UAT; cần kiểm tra Child Of.</span>` : `<span class="success"><i class="fa-solid fa-circle-check"></i> Toàn bộ bug đang theo dõi đã khớp US.</span>`}
@@ -9363,7 +9363,7 @@ function getColumnRawValue(row, col) {
 
 function planBugSearchText(row) {
     return (Array.isArray(row?.openBugLinks) ? row.openBugLinks : [])
-        .flatMap((bug) => [bug?.bugId, bug?.title, bug?.status, bug?.severity, bug?.linkedUsKey])
+        .flatMap((bug) => [bug?.bugId, bug?.title, bug?.status, bug?.severity, bug?.linkedUsKey, bug?.logDate, bug?.recencyBucket])
         .filter(Boolean)
         .join(" ");
 }
@@ -9579,19 +9579,41 @@ function renderPlanBugLinks(row) {
     if (!bugs.length) {
         return `<span class="plan-bug-empty"><i class="fa-solid fa-circle-check"></i> Không có bug đang theo dõi</span>`;
     }
+    const groups = [
+        { key: "new", label: "Bug mới", note: "7 ngày gần nhất", icon: "fa-bolt" },
+        { key: "old", label: "Bug cũ", note: "trước 7 ngày", icon: "fa-clock-rotate-left" },
+        { key: "unknown", label: "Chưa xác định ngày log", note: "cần kiểm tra dữ liệu", icon: "fa-circle-question" }
+    ].map((group) => ({
+        ...group,
+        bugs: bugs
+            .filter((bug) => (bug?.recencyBucket || "unknown") === group.key)
+            .sort((a, b) => String(b?.logDate || "").localeCompare(String(a?.logDate || "")))
+    })).filter((group) => group.bugs.length);
     return `
         <div class="plan-bug-list" aria-label="${e(`${bugs.length} bug đang theo dõi`)}">
             <span class="plan-bug-count">${e(bugs.length)} bug đang theo dõi</span>
-            ${bugs.map((bug) => {
-                const label = String(bug?.label || bug?.bugId || "Bug").trim();
-                return `
-                    <div class="plan-bug-item" data-plan-bug-id="${e(bug?.bugId || "")}">
-                        <i class="fa-solid fa-bug" aria-hidden="true"></i>
-                        <span class="plan-bug-main">${renderExternalLink(bug?.url, label)}</span>
-                        ${bug?.status ? `<span class="plan-bug-status">${e(bug.status)}</span>` : ""}
+            ${groups.map((group) => `
+                <section class="plan-bug-group ${e(group.key)}" data-plan-bug-group="${e(group.key)}">
+                    <div class="plan-bug-group-head">
+                        <span><i class="fa-solid ${e(group.icon)}"></i> ${e(group.label)}</span>
+                        <small>${e(group.note)}</small>
+                        <strong>${e(group.bugs.length)}</strong>
                     </div>
-                `;
-            }).join("")}
+                    ${group.bugs.map((bug) => {
+                        const label = String(bug?.label || bug?.bugId || "Bug").trim();
+                        return `
+                            <div class="plan-bug-item" data-plan-bug-id="${e(bug?.bugId || "")}">
+                                <i class="fa-solid fa-bug" aria-hidden="true"></i>
+                                <span class="plan-bug-main">
+                                    ${renderExternalLink(bug?.url, label)}
+                                    ${bug?.logDate ? `<small>Log ${e(formatPlainDate(bug.logDate))}</small>` : ""}
+                                </span>
+                                ${bug?.status ? `<span class="plan-bug-status">${e(bug.status)}</span>` : ""}
+                            </div>
+                        `;
+                    }).join("")}
+                </section>
+            `).join("")}
         </div>
     `;
 }
