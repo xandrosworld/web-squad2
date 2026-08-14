@@ -37,7 +37,7 @@ const state = {
     { id: "defect-7", bugId: "PS0142025-7007", featureJiraCode: "SQ02_CN002_001", status: "Pending" },
     { id: "defect-8", bugId: "PS0142025-7008", linkedUsKey: "PS0142025-8078", status: "Open", foundDate: "2026-08-12" },
     { id: "defect-9", bugId: "PS0142025-7009", status: "Open", foundDate: "2026-08-13" },
-    { id: "defect-10", bugId: "PS0142025-11862", linkedUsKey: "PS0142025-2095", status: "Open", foundDate: "2026-08-11" }
+    { id: "defect-10", bugId: "PS0142025-11862", linkedUsKey: "PS0142025-2095", featureJiraCode: "SQ02_CN003_010", status: "Open", foundDate: "2026-08-11" }
   ],
   bugSources: [
     { issueKey: "PS0142025-7001", summary: "Lỗi hiển thị sai luồng", jiraUrl: "https://jira.example/browse/PS0142025-7001" },

@@ -3146,7 +3146,7 @@ function applyWorkbookRules(state) {
     row.status = normalizeBugStatus(row.status);
     row.linkedUsKey = row.linkedUsKey || sourceBug?.linkedUsKey || "";
     const story = userStoryByIssueKey.get(lookupKey(row.linkedUsKey));
-    const featureJiraCode = row.featureJiraCode || row.jiraCode || story?.jiraCode || "";
+    const featureJiraCode = story?.jiraCode || row.featureJiraCode || row.jiraCode || "";
     const feature = featureByJira.get(lookupKey(featureJiraCode)) || featureByName.get(lookupKey(row.featureName || row.storyName));
     row.featureJiraCode = feature?.jiraCode || story?.jiraCode || featureJiraCode || "";
     row.jiraCode = row.featureJiraCode || row.jiraCode || "";
@@ -3660,6 +3660,9 @@ function applyPlanOpenBugRules(state) {
     .flatMap((plan) => [plan.jiraCode, plan.code])
     .map(lookupKey)
     .filter(Boolean));
+  const knownUserStoryKeys = new Set(userStories
+    .map((story) => lookupKey(jiraIssueKey(story?.issueKey) || story?.issueKey))
+    .filter(Boolean));
 
   const addStoryPlanKey = (planKey, issueKey) => {
     const normalizedPlanKey = lookupKey(planKey);
@@ -3701,7 +3704,9 @@ function applyPlanOpenBugRules(state) {
         || defect.linkedUsKey
         || sourceBug?.linkedUsKey);
       const featureKey = lookupKey(defect.featureJiraCode || defect.jiraCode || sourceBug?.featureJiraCode || sourceBug?.jiraCode);
-      if (!linkedUsKeys.has(linkedUsKey) && !planKeys.has(featureKey)) return items;
+      const matchesLinkedStory = linkedUsKeys.has(linkedUsKey);
+      const canUseFeatureFallback = !linkedUsKey || !knownUserStoryKeys.has(linkedUsKey);
+      if (!matchesLinkedStory && !(canUseFeatureFallback && planKeys.has(featureKey))) return items;
 
       const dedupeKey = lookupKey(bugLink.bugId || defect.id);
       if (!dedupeKey || seenBugIds.has(dedupeKey)) return items;
