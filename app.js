@@ -1051,6 +1051,7 @@ const emptyState = () => ({
     kpiConfig: [],
     memberKpiInputs: [],
     memberKpiResults: [],
+    unmappedPlanBugGroups: [],
     updatedAt: null
 });
 
@@ -1271,6 +1272,7 @@ function normalizeState(raw) {
     });
     nextState.workItems = nextState.workItems.map((row) => normalizeWorkItemPeople(row));
     nextState.memberKpiResults = Array.isArray(source.memberKpiResults) ? source.memberKpiResults : [];
+    nextState.unmappedPlanBugGroups = Array.isArray(source.unmappedPlanBugGroups) ? source.unmappedPlanBugGroups : [];
     nextState.updatedAt = typeof source.updatedAt === "string" ? source.updatedAt : null;
     return nextState;
 }
@@ -4225,10 +4227,13 @@ function renderModuleDataTools(mod) {
                     <span>Nhấn biểu tượng ghi chú tại từng dòng để cập nhật vướng mắc hoặc dán link Jira. Cột Bugs tự tổng hợp từ DEFECT_LOG theo Child Of, chia bug mới trong 7 ngày gần nhất và bug cũ, đồng thời loại Closed/Cancelled.</span>
                     <div class="plan-bug-coverage" data-plan-bug-linked-count="${e(bugSummary.linked)}" data-plan-bug-unlinked-count="${e(bugSummary.unlinked)}">
                         <span><i class="fa-solid fa-link"></i> <strong>${e(bugSummary.linked)}</strong> bug đã ghép vào <strong>${e(bugSummary.planRows)}</strong> US</span>
-                        ${bugSummary.unlinked ? `<span class="warning"><i class="fa-solid fa-triangle-exclamation"></i> ${e(bugSummary.unlinked)} bug đang theo dõi chưa khớp US trong PhanCong_UAT; cần kiểm tra Child Of.</span>` : `<span class="success"><i class="fa-solid fa-circle-check"></i> Toàn bộ bug đang theo dõi đã khớp US.</span>`}
+                        ${bugSummary.missingPlan ? `<span class="warning"><i class="fa-solid fa-table-list"></i> ${e(bugSummary.missingPlan)} bug có Child Of nhưng chưa có dòng PhanCong_UAT phù hợp.</span>` : ""}
+                        ${bugSummary.missingChildOf ? `<span class="warning"><i class="fa-solid fa-link-slash"></i> ${e(bugSummary.missingChildOf)} bug chưa khai báo Child Of.</span>` : ""}
+                        ${!bugSummary.unlinked ? `<span class="success"><i class="fa-solid fa-circle-check"></i> Toàn bộ bug đang theo dõi đã khớp US.</span>` : ""}
                     </div>
                 </div>
             </div>
+            ${renderUnmappedPlanBugGroups()}
         `;
     }
     if (mod.collection !== "daily") return "";
@@ -9381,10 +9386,19 @@ function getPlanBugCoverageSummary() {
         .map((bug) => normalizeLookupKey(bug?.bugId || bug?.id || ""))
         .filter(Boolean));
     const linked = [...linkedIds].filter((bugId) => trackableIds.has(bugId)).length;
+    const exceptionGroups = Array.isArray(appState.unmappedPlanBugGroups) ? appState.unmappedPlanBugGroups : [];
+    const missingChildOf = exceptionGroups
+        .filter((group) => group?.missingChildOf)
+        .reduce((total, group) => total + (Array.isArray(group?.openBugLinks) ? group.openBugLinks.length : 0), 0);
+    const missingPlan = exceptionGroups
+        .filter((group) => !group?.missingChildOf)
+        .reduce((total, group) => total + (Array.isArray(group?.openBugLinks) ? group.openBugLinks.length : 0), 0);
     return {
         linked,
         planRows,
-        unlinked: Math.max(0, trackableIds.size - linked)
+        unlinked: Math.max(0, trackableIds.size - linked),
+        missingPlan,
+        missingChildOf
     };
 }
 
@@ -9615,6 +9629,49 @@ function renderPlanBugLinks(row) {
                 </section>
             `).join("")}
         </div>
+    `;
+}
+
+function renderUnmappedPlanBugGroups() {
+    const groups = Array.isArray(appState.unmappedPlanBugGroups) ? appState.unmappedPlanBugGroups : [];
+    if (!groups.length) return "";
+    const bugCount = groups.reduce((total, group) => (
+        total + (Array.isArray(group?.openBugLinks) ? group.openBugLinks.length : 0)
+    ), 0);
+    return `
+        <section class="plan-unmapped-panel" data-plan-unmapped-group-count="${e(groups.length)}">
+            <div class="plan-unmapped-head">
+                <div>
+                    <span class="plan-unmapped-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+                    <div>
+                        <strong>Bug chưa có dòng Phân công UAT tương ứng</strong>
+                        <span>${e(bugCount)} bug vẫn được hiển thị để không bị bỏ sót; cần bổ sung US hoặc Child Of tại nguồn.</span>
+                    </div>
+                </div>
+                <span class="plan-unmapped-count">${e(groups.length)} nhóm cần xử lý</span>
+            </div>
+            <div class="plan-unmapped-groups">
+                ${groups.map((group) => {
+                    const usKey = String(group?.linkedUsKey || "").trim();
+                    const storyName = String(group?.storyName || "").trim();
+                    const featureCode = String(group?.featureJiraCode || "").trim();
+                    return `
+                        <article class="plan-unmapped-card ${group?.missingChildOf ? "missing-child" : "missing-plan"}">
+                            <div class="plan-unmapped-context">
+                                <div>
+                                    <span class="plan-unmapped-label">${group?.missingChildOf ? "Liên kết US" : "User Story"}</span>
+                                    <strong>${usKey ? renderExternalLink(`https://bidv-vn.atlassian.net/browse/${encodeURIComponent(usKey)}`, usKey) : "Chưa có Child Of"}</strong>
+                                </div>
+                                ${featureCode ? `<div><span class="plan-unmapped-label">Mã chức năng</span><strong>${e(featureCode)}</strong></div>` : ""}
+                                ${storyName ? `<div class="wide"><span class="plan-unmapped-label">Tên Story</span><strong>${e(storyName)}</strong></div>` : ""}
+                                <div class="wide plan-unmapped-reason"><i class="fa-solid fa-circle-info"></i><span>${e(group?.reason || "Chưa ghép được vào PhanCong_UAT")}</span></div>
+                            </div>
+                            ${renderPlanBugLinks(group)}
+                        </article>
+                    `;
+                }).join("")}
+            </div>
+        </section>
     `;
 }
 

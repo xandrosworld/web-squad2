@@ -4,6 +4,7 @@ const path = require("node:path");
 
 const {
   __testApplyPlanOpenBugRules: applyPlanOpenBugRules,
+  __testBuildUnmappedPlanBugGroups: buildUnmappedPlanBugGroups,
   __testDeriveSquadSummaryFromUserStorySummary: deriveSquadSummaryFromUserStorySummary,
   __testIsClosedBugStatus: isClosedBugStatus,
   __testIsPlanTrackableBugStatus: isPlanTrackableBugStatus,
@@ -31,7 +32,8 @@ const state = {
     { id: "defect-1-duplicate", bugId: "PS0142025-7001", linkedUsKey: "PS0142025-1001", status: "Open" },
     { id: "defect-6", bugId: "PS0142025-7006", linkedUsKey: "PS0142025-9999", status: "Open" },
     { id: "defect-7", bugId: "PS0142025-7007", featureJiraCode: "SQ02_CN002_001", status: "Pending" },
-    { id: "defect-8", bugId: "PS0142025-7008", linkedUsKey: "PS0142025-8078", status: "Open", foundDate: "2026-08-12" }
+    { id: "defect-8", bugId: "PS0142025-7008", linkedUsKey: "PS0142025-8078", status: "Open", foundDate: "2026-08-12" },
+    { id: "defect-9", bugId: "PS0142025-7009", status: "Open", foundDate: "2026-08-13" }
   ],
   bugSources: [
     { issueKey: "PS0142025-7001", summary: "Lỗi hiển thị sai luồng", jiraUrl: "https://jira.example/browse/PS0142025-7001" },
@@ -42,6 +44,7 @@ const state = {
 };
 
 applyPlanOpenBugRules(state);
+const unmappedGroups = buildUnmappedPlanBugGroups(state);
 
 assert.deepEqual(
   state.plans[0].openBugLinks.map((bug) => bug.bugId),
@@ -75,6 +78,16 @@ assert.deepEqual(
   state.plans[2].openBugLinks.map((bug) => bug.bugId),
   ["PS0142025-7008"],
   "A broken generated SQ02_SQ02 code must recover from the prefixed DS_US summary."
+);
+assert.deepEqual(
+  unmappedGroups.find((group) => group.linkedUsKey === "PS0142025-9999")?.openBugLinks.map((bug) => bug.bugId),
+  ["PS0142025-7006"],
+  "A trackable bug whose Child Of is absent from PhanCong_UAT must remain visible in an exception US group."
+);
+assert.deepEqual(
+  unmappedGroups.find((group) => group.missingChildOf)?.openBugLinks.map((bug) => bug.bugId),
+  ["PS0142025-7009"],
+  "A trackable bug without Child Of must remain visible in a dedicated exception group."
 );
 
 assert.equal(isClosedBugStatus("Closed"), true);
@@ -112,6 +125,8 @@ assert.match(appSource, /Bug mới/);
 assert.match(appSource, /Bug cũ/);
 assert.match(appSource, /render:\s*\(row\)\s*=>\s*renderPlanBugLinks\(row\)/);
 assert.match(appSource, /renderExternalLink\(bug\?\.url, label\)/);
+assert.match(appSource, /renderUnmappedPlanBugGroups\(\)/);
+assert.match(appSource, /Bug chưa có dòng Phân công UAT tương ứng/);
 assert.match(appSource, /target="_blank" rel="noopener noreferrer"/);
 
 console.log(JSON.stringify({
@@ -128,6 +143,8 @@ console.log(JSON.stringify({
     sourceCreatedDateFallback: true,
     duplicateRemoved: true,
     titleAndSafeHyperlink: true,
-    directFeatureFallback: true
+    directFeatureFallback: true,
+    unmappedUsFallback: true,
+    missingChildOfFallback: true
   }
 }, null, 2));

@@ -71,6 +71,31 @@ assert.strictEqual(daily.getCell("A3").result, 3, "Công thức phải dùng eff
 assert.strictEqual(daily.getCell("B3").font.strike, true);
 assert.strictEqual(daily.getRow(3).hidden, true);
 
+const negativeAgingResource = {
+  properties: { title: "Aging formula guard" },
+  sheets: GOOGLE_SHEET_REQUIRED_TABS.map((title) => sheet(title, title === "DEFECT_LOG"
+    ? [
+      Array.from({ length: 13 }, (_, index) => cell(index === 11 ? "Aging" : `H${index + 1}`)),
+      [
+        cell(1), cell("PS0142025-TEST"), cell("PS0142025-US"), cell("Story"), cell("Sprint 1"),
+        cell("Major"), cell("Open"), cell("2026-08-01"), cell(""), cell(""),
+        cell(""), cell(-5, { formula: "=-5" }), cell("")
+      ]
+    ]
+    : [[cell(title)]]
+  ))
+};
+const negativeAgingState = parseGoogleSpreadsheetImportState(negativeAgingResource).state;
+assert.strictEqual(negativeAgingState.defects.length, 1);
+assert.ok(
+  negativeAgingState.defects[0].aging === "" || Number(negativeAgingState.defects[0].aging) >= 0,
+  "A transient negative Aging formula must be ignored and recomputed from defect dates."
+);
+assert.doesNotThrow(
+  () => validateWorkbookImportState(negativeAgingState, { allowLegacyDailyWithoutDate: true }),
+  "A transient negative Aging formula must never block the complete Google Sheet synchronization."
+);
+
 const baseState = {
   daily: [{ id: "daily-1" }, { id: "daily-2" }],
   defects: [{ id: "defect-1", bugId: "BUG-1" }],

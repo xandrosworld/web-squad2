@@ -2038,6 +2038,7 @@ module.exports = {
   __testNormalizePlanNote: normalizePlanNote,
   __testMergePlanNoteUpdate: mergePlanNoteUpdate,
   __testApplyPlanOpenBugRules: applyPlanOpenBugRules,
+  __testBuildUnmappedPlanBugGroups: buildUnmappedPlanBugGroups,
   __testDeriveSquadSummaryFromUserStorySummary: deriveSquadSummaryFromUserStorySummary,
   __testIsClosedBugStatus: isClosedBugStatus,
   __testIsPlanTrackableBugStatus: isPlanTrackableBugStatus,
@@ -2601,6 +2602,8 @@ function parseDefectSheet(worksheet) {
     const severity = cellTextAt(row, 6);
     const status = normalizeBugStatus(cellTextAt(row, 7));
     const note = cellTextAt(row, 13);
+    const foundDate = toImportDate(cellValueAt(row, 8));
+    const resolvedDate = toImportDate(cellValueAt(row, 11));
     if (!bugId && !linkedUsKey && !severity && !status && !note) return null;
     if (!bugId) return null;
     if (!Number.isFinite(Number(stt)) || Number(stt) <= 0) return null;
@@ -2616,15 +2619,17 @@ function parseDefectSheet(worksheet) {
       sprint: cellTextAt(row, 5),
       severity,
       status,
-      foundDate: toImportDate(cellValueAt(row, 8)),
+      foundDate,
       tester: cellTextAt(row, 9),
       owner: normalizeImportedOwner(cellValueAt(row, 10)),
-      resolvedDate: toImportDate(cellValueAt(row, 11)),
-      aging: toImportNumber(cellValueAt(row, 12)),
+      resolvedDate,
+      // Aging is a computed field. Google formulas can briefly become negative
+      // while source dates are being refreshed, so never let that transient
+      // value block the atomic import of every other source tab.
+      aging: calculateDefectAging(foundDate, resolvedDate),
       note
     }, [
-      ...(isInvalidWorkbookCell(row.getCell(8)) ? ["foundDate"] : []),
-      ...(isInvalidWorkbookCell(row.getCell(12)) ? ["aging"] : [])
+      ...(isInvalidWorkbookCell(row.getCell(8)) ? ["foundDate"] : [])
     ]);
   });
 }
@@ -3149,6 +3154,7 @@ function applyWorkbookRules(state) {
   });
 
   applyPlanOpenBugRules(state);
+  state.unmappedPlanBugGroups = buildUnmappedPlanBugGroups(state);
 
   features.forEach((row) => {
     const story = userStoryByJira.get(lookupKey(row.jiraCode));
@@ -3617,6 +3623,27 @@ function jiraBugUrl(bugId, ...candidateUrls) {
   return issueKey ? `${jiraBrowseBaseUrl}${encodeURIComponent(issueKey)}` : "";
 }
 
+function buildPlanBugLink(defect, sourceBug) {
+  const status = normalizeBugStatus(defect?.status || sourceBug?.status || "");
+  if (!isPlanTrackableBugStatus(status)) return null;
+  const bugId = normalizeImportedText(defect?.bugId || sourceBug?.issueKey);
+  if (!bugId) return null;
+  const title = normalizeImportedText(sourceBug?.summary || defect?.bugTitle || defect?.summary);
+  const logDate = normalizeImportedDate(defect?.foundDate || sourceBug?.created || "");
+  return {
+    bugId,
+    title,
+    label: title && lookupKey(title) !== lookupKey(bugId) ? `${bugId} - ${title}` : bugId,
+    status,
+    severity: normalizeImportedText(defect?.severity || sourceBug?.priority),
+    logDate,
+    recencyBucket: planBugRecencyBucket(logDate),
+    linkedUsKey: jiraIssueKey(defect?.linkedUsKey || sourceBug?.linkedUsKey)
+      || normalizeImportedText(defect?.linkedUsKey || sourceBug?.linkedUsKey),
+    url: jiraBugUrl(bugId, defect?.jiraUrl, sourceBug?.jiraUrl)
+  };
+}
+
 function applyPlanOpenBugRules(state) {
   const plans = collectionRows(state, "plans");
   const defects = collectionRows(state, "defects");
@@ -3652,8 +3679,8 @@ function applyPlanOpenBugRules(state) {
     const seenBugIds = new Set();
     plan.openBugLinks = defects.reduce((items, defect) => {
       const sourceBug = bugSourceByIssueKey.get(lookupKey(defect.bugId));
-      const status = normalizeBugStatus(defect.status || sourceBug?.status || "");
-      if (!isPlanTrackableBugStatus(status)) return items;
+      const bugLink = buildPlanBugLink(defect, sourceBug);
+      if (!bugLink) return items;
 
       const linkedUsKey = lookupKey(jiraIssueKey(defect.linkedUsKey || sourceBug?.linkedUsKey)
         || defect.linkedUsKey
@@ -3661,30 +3688,77 @@ function applyPlanOpenBugRules(state) {
       const featureKey = lookupKey(defect.featureJiraCode || defect.jiraCode || sourceBug?.featureJiraCode || sourceBug?.jiraCode);
       if (!linkedUsKeys.has(linkedUsKey) && !planKeys.has(featureKey)) return items;
 
-      const bugId = normalizeImportedText(defect.bugId || sourceBug?.issueKey);
-      const dedupeKey = lookupKey(bugId || defect.id);
+      const dedupeKey = lookupKey(bugLink.bugId || defect.id);
       if (!dedupeKey || seenBugIds.has(dedupeKey)) return items;
       seenBugIds.add(dedupeKey);
-
-      const title = normalizeImportedText(sourceBug?.summary || defect.bugTitle || defect.summary);
-      const logDate = normalizeImportedDate(defect.foundDate || sourceBug?.created || "");
-      items.push({
-        bugId,
-        title,
-        label: title && lookupKey(title) !== lookupKey(bugId) ? `${bugId} - ${title}` : bugId,
-        status,
-        severity: normalizeImportedText(defect.severity || sourceBug?.priority),
-        logDate,
-        recencyBucket: planBugRecencyBucket(logDate),
-        linkedUsKey: jiraIssueKey(defect.linkedUsKey || sourceBug?.linkedUsKey)
-          || normalizeImportedText(defect.linkedUsKey || sourceBug?.linkedUsKey),
-        url: jiraBugUrl(bugId, defect.jiraUrl, sourceBug?.jiraUrl)
-      });
+      items.push(bugLink);
       return items;
     }, []);
   });
 
   return plans;
+}
+
+function buildUnmappedPlanBugGroups(state) {
+  const plans = collectionRows(state, "plans");
+  const defects = collectionRows(state, "defects");
+  const userStories = collectionRows(state, "userStories");
+  const bugSources = collectionRows(state, "bugSources");
+  const sourceByIssueKey = lookupBy(bugSources, "issueKey");
+  const storyByIssueKey = lookupBy(userStories, "issueKey");
+  const linkedBugIds = new Set(plans
+    .flatMap((plan) => Array.isArray(plan.openBugLinks) ? plan.openBugLinks : [])
+    .map((bug) => lookupKey(bug?.bugId))
+    .filter(Boolean));
+  const groups = new Map();
+  const seenBugIds = new Set();
+
+  for (const defect of defects) {
+    const sourceBug = sourceByIssueKey.get(lookupKey(defect?.bugId));
+    const bugLink = buildPlanBugLink(defect, sourceBug);
+    const bugKey = lookupKey(bugLink?.bugId);
+    if (!bugLink || !bugKey || linkedBugIds.has(bugKey) || seenBugIds.has(bugKey)) continue;
+    seenBugIds.add(bugKey);
+
+    const linkedUsKey = jiraIssueKey(bugLink.linkedUsKey) || normalizeImportedText(bugLink.linkedUsKey);
+    const story = storyByIssueKey.get(lookupKey(linkedUsKey));
+    const groupKey = lookupKey(linkedUsKey) || "__missing_child_of__";
+    if (!groups.has(groupKey)) {
+      const featureJiraCode = linkedUsKey ? normalizeImportedText(
+        story?.jiraCode
+        || story?.squadSummary
+        || deriveSquadSummaryFromUserStorySummary(story?.summary)
+        || defect?.featureJiraCode
+        || defect?.jiraCode
+      ) : "";
+      groups.set(groupKey, {
+        id: importId("unmapped-plan-bugs", groupKey),
+        linkedUsKey,
+        featureJiraCode,
+        storyName: linkedUsKey ? normalizeImportedText(story?.summary || defect?.storyName || "") : "",
+        sprint: normalizeImportedText(story?.sprint || defect?.sprint || ""),
+        reason: linkedUsKey
+          ? "US chưa có dòng phù hợp trong PhanCong_UAT"
+          : "Bug chưa khai báo Child Of",
+        missingChildOf: !linkedUsKey,
+        openBugLinks: []
+      });
+    }
+    groups.get(groupKey).openBugLinks.push(bugLink);
+  }
+
+  return [...groups.values()]
+    .map((group) => ({
+      ...group,
+      openBugLinks: group.openBugLinks.sort((left, right) => (
+        String(right.logDate || "").localeCompare(String(left.logDate || ""))
+        || String(left.bugId || "").localeCompare(String(right.bugId || ""), "vi", { numeric: true })
+      ))
+    }))
+    .sort((left, right) => (
+      Number(left.missingChildOf) - Number(right.missingChildOf)
+      || String(left.linkedUsKey || "").localeCompare(String(right.linkedUsKey || ""), "vi", { numeric: true })
+    ));
 }
 
 function addDays(value, days) {

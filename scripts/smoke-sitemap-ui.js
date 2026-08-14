@@ -431,6 +431,13 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
       || await planBugCoverage.getAttribute("data-plan-bug-unlinked-count") !== "2") {
       throw new Error("PhanCong_UAT bug coverage summary did not identify linked and unmatched trackable bugs.");
     }
+    const unmappedPanel = page.locator('.plan-unmapped-panel');
+    if (!await unmappedPanel.isVisible()
+      || await unmappedPanel.getAttribute("data-plan-unmapped-group-count") !== "1"
+      || !await unmappedPanel.locator('[data-plan-bug-id="BUG-2"]').isVisible()
+      || !await unmappedPanel.locator('[data-plan-bug-id="BUG-5"]').isVisible()) {
+      throw new Error("Trackable bugs without a matching PhanCong_UAT row must remain visible in the fallback US panel.");
+    }
     if (!await page.locator('[data-plan-bug-group="old"] [data-plan-bug-id="BUG-3"]').isVisible()) {
       throw new Error("PhanCong_UAT did not group an older bug under Bug cũ.");
     }
