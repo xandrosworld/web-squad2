@@ -16,12 +16,15 @@ const state = {
   plans: [
     { id: "plan-1", code: "CN001", jiraCode: "SQ02_CN001_001", feature: "Phê duyệt hồ sơ" },
     { id: "plan-2", code: "CN002", jiraCode: "SQ02_CN002_001", feature: "Tra cứu hồ sơ" },
-    { id: "plan-3", code: "CN006", jiraCode: "SQ02_CN006_002", feature: "Nguyên tắc chung" }
+    { id: "plan-3", code: "CN006", jiraCode: "SQ02_CN006_002", feature: "Nguyên tắc chung" },
+    { id: "plan-4", code: "CN003", jiraCode: "SQ02_CN003_010", feature: "Tài sản bảo đảm" },
+    { id: "plan-5", code: "CN001", jiraCode: "SQ02_CN001_015", feature: "Màn hình phê duyệt" }
   ],
   userStories: [
     { id: "story-1", issueKey: "PS0142025-1001", jiraCode: "SQ02_CN001_001" },
     { id: "story-2", issueKey: "PS0142025-2001", squadSummary: "SQ02_CN002_001" },
-    { id: "story-3", issueKey: "PS0142025-8078", jiraCode: "SQ02_SQ02_CN00", squadSummary: "SQ02_SQ02_CN00", summary: "SQ02_CN006_002_ Nguyên tắc chung" }
+    { id: "story-3", issueKey: "PS0142025-8078", jiraCode: "SQ02_SQ02_CN00", squadSummary: "SQ02_SQ02_CN00", summary: "SQ02_CN006_002_ Nguyên tắc chung" },
+    { id: "story-4", issueKey: "PS0142025-2095", jiraCode: "SQ02_CN003_010", squadSummary: "SQ02_CN003_010", summary: "CN001_015_Màn hình và xử lý logic phê duyệt" }
   ],
   defects: [
     { id: "defect-1", bugId: "PS0142025-7001", linkedUsKey: "PS0142025-1001", status: "Open", severity: "Major", foundDate: "2026-08-11" },
@@ -33,7 +36,8 @@ const state = {
     { id: "defect-6", bugId: "PS0142025-7006", linkedUsKey: "PS0142025-9999", status: "Open" },
     { id: "defect-7", bugId: "PS0142025-7007", featureJiraCode: "SQ02_CN002_001", status: "Pending" },
     { id: "defect-8", bugId: "PS0142025-7008", linkedUsKey: "PS0142025-8078", status: "Open", foundDate: "2026-08-12" },
-    { id: "defect-9", bugId: "PS0142025-7009", status: "Open", foundDate: "2026-08-13" }
+    { id: "defect-9", bugId: "PS0142025-7009", status: "Open", foundDate: "2026-08-13" },
+    { id: "defect-10", bugId: "PS0142025-11862", linkedUsKey: "PS0142025-2095", status: "Open", foundDate: "2026-08-11" }
   ],
   bugSources: [
     { issueKey: "PS0142025-7001", summary: "Lỗi hiển thị sai luồng", jiraUrl: "https://jira.example/browse/PS0142025-7001" },
@@ -78,6 +82,16 @@ assert.deepEqual(
   state.plans[2].openBugLinks.map((bug) => bug.bugId),
   ["PS0142025-7008"],
   "A broken generated SQ02_SQ02 code must recover from the prefixed DS_US summary."
+);
+assert.deepEqual(
+  state.plans[3].openBugLinks.map((bug) => bug.bugId),
+  [],
+  "A stale SQ2_Summary code must not duplicate a bug into the wrong PhanCong_UAT row."
+);
+assert.deepEqual(
+  state.plans[4].openBugLinks.map((bug) => bug.bugId),
+  ["PS0142025-11862"],
+  "The explicit feature code in the Jira Story summary must win when it matches PhanCong_UAT."
 );
 assert.deepEqual(
   unmappedGroups.find((group) => group.linkedUsKey === "PS0142025-9999")?.openBugLinks.map((bug) => bug.bugId),
@@ -144,6 +158,7 @@ console.log(JSON.stringify({
     duplicateRemoved: true,
     titleAndSafeHyperlink: true,
     directFeatureFallback: true,
+    conflictingStoryCodeUsesSummary: true,
     unmappedUsFallback: true,
     missingChildOfFallback: true
   }

@@ -78,7 +78,7 @@ const negativeAgingResource = {
     ? [
       Array.from({ length: 13 }, (_, index) => cell(index === 11 ? "Aging" : `H${index + 1}`)),
       [
-        cell(1), cell("PS0142025-TEST"), cell("PS0142025-US"), cell("Story"), cell("Sprint 1"),
+        cell(""), cell("PS0142025-TEST"), cell("PS0142025-US"), cell("Story"), cell("Sprint 1"),
         cell("Major"), cell("Open"), cell("2026-08-01"), cell(""), cell(""),
         cell(""), cell(-5, { formula: "=-5" }), cell("")
       ]
@@ -88,6 +88,7 @@ const negativeAgingResource = {
 };
 const negativeAgingState = parseGoogleSpreadsheetImportState(negativeAgingResource).state;
 assert.strictEqual(negativeAgingState.defects.length, 1);
+assert.strictEqual(negativeAgingState.defects[0].stt, 1, "A missing display STT must not discard a valid defect row.");
 assert.ok(
   negativeAgingState.defects[0].aging === "" || Number(negativeAgingState.defects[0].aging) >= 0,
   "A transient negative Aging formula must be ignored and recomputed from defect dates."

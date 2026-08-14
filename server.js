@@ -2607,10 +2607,12 @@ function parseDefectSheet(worksheet) {
     const resolvedDate = toImportDate(cellValueAt(row, 11));
     if (!bugId && !linkedUsKey && !severity && !status && !note) return null;
     if (!bugId) return null;
-    if (!Number.isFinite(Number(stt)) || Number(stt) <= 0) return null;
+    const effectiveStt = Number.isFinite(Number(stt)) && Number(stt) > 0
+      ? Number(stt)
+      : Math.max(1, Number(row.number || 2) - 1);
     return markSourceInvalidFields({
       id: importId("defects", bugId),
-      stt,
+      stt: effectiveStt,
       bugId,
       jiraUrl: firstSafeHttpUrl(cellLinksAt(row, 2)),
       linkedUsKey,
@@ -3084,9 +3086,11 @@ function applyWorkbookRules(state) {
   userStories.forEach((row) => {
     const currentCode = row.jiraCode || row.squadSummary || "";
     const derivedCode = deriveSquadSummaryFromUserStorySummary(row.summary);
-    const canonicalCode = planJiraKeys.has(lookupKey(currentCode))
-      ? currentCode
-      : derivedCode || currentCode;
+    const canonicalCode = planJiraKeys.has(lookupKey(derivedCode))
+      ? derivedCode
+      : planJiraKeys.has(lookupKey(currentCode))
+        ? currentCode
+        : derivedCode || currentCode;
     row.squadSummary = canonicalCode;
     row.jiraCode = canonicalCode;
     const feature = featureByJira.get(lookupKey(row.jiraCode)) || featureByName.get(lookupKey(row.summary));
@@ -3652,6 +3656,10 @@ function applyPlanOpenBugRules(state) {
   const bugSources = collectionRows(state, "bugSources");
   const bugSourceByIssueKey = lookupBy(bugSources, "issueKey");
   const userStoryKeysByPlanKey = new Map();
+  const knownPlanKeys = new Set(plans
+    .flatMap((plan) => [plan.jiraCode, plan.code])
+    .map(lookupKey)
+    .filter(Boolean));
 
   const addStoryPlanKey = (planKey, issueKey) => {
     const normalizedPlanKey = lookupKey(planKey);
@@ -3661,9 +3669,15 @@ function applyPlanOpenBugRules(state) {
     userStoryKeysByPlanKey.get(normalizedPlanKey).add(normalizedIssueKey);
   };
   userStories.forEach((story) => {
-    addStoryPlanKey(story.jiraCode, story.issueKey);
-    addStoryPlanKey(story.squadSummary, story.issueKey);
-    addStoryPlanKey(deriveSquadSummaryFromUserStorySummary(story.summary), story.issueKey);
+    const derivedPlanKey = deriveSquadSummaryFromUserStorySummary(story.summary);
+    const canonicalPlanKey = knownPlanKeys.has(lookupKey(derivedPlanKey))
+      ? derivedPlanKey
+      : knownPlanKeys.has(lookupKey(story.jiraCode))
+        ? story.jiraCode
+        : knownPlanKeys.has(lookupKey(story.squadSummary))
+          ? story.squadSummary
+          : derivedPlanKey || story.jiraCode || story.squadSummary;
+    addStoryPlanKey(canonicalPlanKey, story.issueKey);
     addStoryPlanKey(story.issueKey, story.issueKey);
   });
 
