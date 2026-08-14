@@ -16,7 +16,8 @@ const {
   mergeWorkbookSourceState,
   auditWorkbookObjectAgainstSource,
   auditMergePreservation,
-  validateWorkbookImportState
+  validateWorkbookImportState,
+  __testNormalizeGoogleSheetGoldenAudit: normalizeGoogleSheetGoldenAudit
 } = require("../server");
 
 function cell(value, options = {}) {
@@ -95,6 +96,21 @@ assert.doesNotThrow(
   () => validateWorkbookImportState(negativeAgingState, { allowLegacyDailyWithoutDate: true }),
   "A transient negative Aging formula must never block the complete Google Sheet synchronization."
 );
+
+const dashboardOnlyMismatch = normalizeGoogleSheetGoldenAudit({
+  ok: false,
+  checkedCells: 10,
+  mismatches: [{ cell: "DEFECT_Dashboard US!B19", actual: 31, expected: 33 }]
+});
+assert.strictEqual(dashboardOnlyMismatch.ok, true, "Derived dashboard cache differences must not block raw source synchronization.");
+assert.strictEqual(dashboardOnlyMismatch.mismatches.length, 0);
+assert.strictEqual(dashboardOnlyMismatch.warnings.length, 1);
+const sourceMismatch = normalizeGoogleSheetGoldenAudit({
+  ok: false,
+  mismatches: [{ cell: "Tong hop loi!U2", actual: 1, expected: 2 }]
+});
+assert.strictEqual(sourceMismatch.ok, false, "A source-summary mismatch must remain blocking.");
+assert.strictEqual(sourceMismatch.mismatches.length, 1);
 
 const baseState = {
   daily: [{ id: "daily-1" }, { id: "daily-2" }],

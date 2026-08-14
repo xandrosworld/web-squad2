@@ -2039,6 +2039,7 @@ module.exports = {
   __testMergePlanNoteUpdate: mergePlanNoteUpdate,
   __testApplyPlanOpenBugRules: applyPlanOpenBugRules,
   __testBuildUnmappedPlanBugGroups: buildUnmappedPlanBugGroups,
+  __testNormalizeGoogleSheetGoldenAudit: normalizeGoogleSheetGoldenAudit,
   __testDeriveSquadSummaryFromUserStorySummary: deriveSquadSummaryFromUserStorySummary,
   __testIsClosedBugStatus: isClosedBugStatus,
   __testIsPlanTrackableBugStatus: isPlanTrackableBugStatus,
@@ -8057,7 +8058,9 @@ function buildGoogleSheetSyncCandidate(source, existingState, syncState = {}) {
     importedAt,
     source: "google-sheet"
   });
-  const goldenAudit = auditWorkbookObjectAgainstSource(source.workbook, merged.state);
+  const goldenAudit = normalizeGoogleSheetGoldenAudit(
+    auditWorkbookObjectAgainstSource(source.workbook, merged.state)
+  );
   const preservationAudit = auditMergePreservation(existingState, merged.state);
   const ok = safetyAudit.ok && goldenAudit.ok && preservationAudit.ok;
   return {
@@ -8076,6 +8079,24 @@ function buildGoogleSheetSyncCandidate(source, existingState, syncState = {}) {
     preservationAudit,
     existingState,
     mergedState: merged.state
+  };
+}
+
+function normalizeGoogleSheetGoldenAudit(audit) {
+  const mismatches = Array.isArray(audit?.mismatches) ? audit.mismatches : [];
+  const dashboardWarnings = mismatches.filter((item) => String(item?.cell || "").startsWith("DEFECT_Dashboard"));
+  const blockingMismatches = mismatches.filter((item) => !String(item?.cell || "").startsWith("DEFECT_Dashboard"));
+  return {
+    ...audit,
+    ok: blockingMismatches.length === 0,
+    mismatches: blockingMismatches,
+    warnings: [
+      ...(Array.isArray(audit?.warnings) ? audit.warnings : []),
+      ...dashboardWarnings.map((item) => ({
+        ...item,
+        reason: "Dashboard là dữ liệu dẫn xuất; web sẽ tính lại từ DEFECT_LOG/DS.Loi sau đồng bộ."
+      }))
+    ]
   };
 }
 
