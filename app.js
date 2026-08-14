@@ -233,6 +233,7 @@ const modules = {
         shortLabel: "Kế hoạch",
         icon: "fa-clipboard-list",
         collection: "workItems",
+        stickyColumns: 2,
         compactTable: true,
         description: "Lập kế hoạch, giao người thực hiện và theo dõi tiến độ các đầu việc ngoài luồng UAT Excel.",
         emptyIcon: "fa-list-check",
@@ -314,6 +315,7 @@ const modules = {
         shortLabel: "Nhân sự",
         icon: "fa-users",
         collection: "personnel",
+        stickyColumns: 2,
         description: "Danh sách nhân sự tham gia UAT, vai trò, phạm vi phụ trách và thông tin liên hệ.",
         emptyIcon: "fa-user-plus",
         emptyTitle: "Chưa có dữ liệu nhân sự",
@@ -357,6 +359,7 @@ const modules = {
         shortLabel: "Lịch",
         icon: "fa-calendar-check",
         collection: "schedule",
+        stickyColumns: 2,
         description: "Lịch bàn giao, bắt đầu và kết thúc UAT theo Sprint.",
         emptyIcon: "fa-calendar-plus",
         emptyTitle: "Chưa có lịch UAT",
@@ -388,6 +391,7 @@ const modules = {
         shortLabel: "Bàn giao",
         icon: "fa-truck-fast",
         collection: "handoffs",
+        stickyColumns: 2,
         sectionKeys: ["sectionLevel1", "sectionLevel2"],
         description: "Lịch bàn giao UAT chi tiết theo từng User Story.",
         emptyIcon: "fa-calendar-day",
@@ -429,6 +433,7 @@ const modules = {
         shortLabel: "Phân công",
         icon: "fa-calendar-days",
         collection: "plans",
+        stickyColumns: 2,
         description: "Phân công chức năng theo sprint; thành viên cập nhật Ghi chú, dữ liệu phân công và testcase do admin quản lý.",
         emptyIcon: "fa-calendar-plus",
         emptyTitle: "Chưa có phân công Sprint",
@@ -499,6 +504,7 @@ const modules = {
         shortLabel: "Năng suất",
         icon: "fa-table-cells-large",
         collection: "matrix",
+        stickyColumns: 1,
         description: "Theo dõi đào tạo chéo và mức độ tham gia của tester theo nhóm chức năng.",
         emptyIcon: "fa-grip",
         emptyTitle: "Chưa có dữ liệu năng suất tester",
@@ -538,6 +544,7 @@ const modules = {
         shortLabel: "Daily",
         icon: "fa-clipboard-check",
         collection: "daily",
+        stickyColumns: 3,
         description: "Theo dõi testcase, tiến độ, lỗi nghiêm trọng, lỗi mức cao và vướng mắc hằng ngày.",
         emptyIcon: "fa-clipboard-list",
         emptyTitle: "Chưa có dữ liệu điều hành hằng ngày",
@@ -585,6 +592,7 @@ const modules = {
         shortLabel: "Defect",
         icon: "fa-bug",
         collection: "defects",
+        stickyColumns: 3,
         description: "Theo dõi defect UAT theo Jira, Severity, Status, tester, owner và aging.",
         emptyIcon: "fa-bug-slash",
         emptyTitle: "Chưa có defect",
@@ -777,6 +785,7 @@ const modules = {
         shortLabel: "Chất lượng",
         icon: "fa-chart-line",
         collection: "weekly",
+        stickyColumns: 2,
         description: "Tổng hợp chất lượng kiểm thử theo tuần và nhóm chức năng.",
         emptyIcon: "fa-chart-column",
         emptyTitle: "Chưa có dữ liệu chất lượng tuần",
@@ -816,6 +825,7 @@ const modules = {
         shortLabel: "Kết thúc",
         icon: "fa-flag-checkered",
         collection: "readiness",
+        stickyColumns: 1,
         description: "Chốt sprint theo tỷ lệ bao phủ, tỷ lệ thành công, lỗi tồn đọng, mức độ sẵn sàng và quyết định.",
         emptyIcon: "fa-flag",
         emptyTitle: "Chưa có dữ liệu kết thúc Sprint",
@@ -854,6 +864,7 @@ const modules = {
         shortLabel: "HD_UAT",
         icon: "fa-book-open",
         collection: "guide",
+        stickyColumns: 2,
         sectionKey: "category",
         sectionColumnKey: "topic",
         description: "Hướng dẫn sử dụng bộ công cụ UAT Squad 2.",
@@ -1104,6 +1115,7 @@ let attachmentPresentationAbortController = null;
 let lastRenderedTab = null;
 let pendingActiveTabScroll = null;
 let responsiveTableResizeFrame = 0;
+let tableNavigationCleanup = null;
 const initialRoute = getInitialRoute();
 if ((window.location.hash || "").replace(/^#\/?/, "") !== initialRoute.path) {
     history.replaceState(null, "", `#${initialRoute.path}`);
@@ -4591,7 +4603,10 @@ function renderTable(mod, rows) {
     return `
         <div class="table-shell" data-table-scroll-shell>
             <div class="table-top-scroll" data-table-scrollbar="top" aria-label="Cuộn ngang bảng">
-                <div data-table-scroll-spacer style="width:${e(`${layout.totalWidth}px`)}"></div>
+                <div data-table-scroll-spacer="top" style="width:${e(`${layout.totalWidth}px`)}"></div>
+            </div>
+            <div class="table-floating-header" data-table-floating-header aria-hidden="true">
+                <div class="table-floating-header-viewport" data-table-floating-header-viewport></div>
             </div>
             <div class="table-wrap" data-table-scrollbar="main">
             <table class="${e(tableClass)}" data-resizable-table="${e(mod.collection)}" style="width:${e(`${layout.totalWidth}px`)}; min-width:${e(`${layout.totalWidth}px`)}">
@@ -4609,6 +4624,9 @@ function renderTable(mod, rows) {
                     `}
                 </tbody>
             </table>
+            </div>
+            <div class="table-floating-scroll" data-table-scrollbar="floating" aria-label="Thanh cuộn ngang luôn hiển thị">
+                <div data-table-scroll-spacer="floating" style="width:${e(`${layout.totalWidth}px`)}"></div>
             </div>
         </div>
     `;
@@ -6505,44 +6523,177 @@ function fitTableHeadersToLabels() {
 }
 
 function bindTableScrollbars() {
+    if (typeof tableNavigationCleanup === "function") tableNavigationCleanup();
+    const cleanups = [];
     document.querySelectorAll("[data-table-scroll-shell]").forEach((shell) => {
         const top = shell.querySelector('[data-table-scrollbar="top"]');
         const main = shell.querySelector('[data-table-scrollbar="main"]');
+        const floating = shell.querySelector('[data-table-scrollbar="floating"]');
         const table = shell.querySelector("[data-resizable-table]");
-        const spacer = shell.querySelector("[data-table-scroll-spacer]");
-        if (!top || !main || !table || !spacer) return;
+        const spacers = [...shell.querySelectorAll("[data-table-scroll-spacer]")];
+        if (!top || !main || !floating || !table || !spacers.length) return;
 
         const collection = table.dataset.resizableTable || ui.activeTab;
-        spacer.style.width = `${getTableRenderedWidth(table)}px`;
+        spacers.forEach((spacer) => {
+            spacer.style.width = `${getTableRenderedWidth(table)}px`;
+        });
         table.style.setProperty("--table-view-width", `${main.clientWidth}px`);
         syncStickyColumnOffsets(table);
-        restoreTableScrollLeft(collection, top, main);
+        refreshFloatingTableHeader(shell, table);
+        restoreTableScrollLeft(collection, top, main, floating);
         let syncing = false;
-        const syncScroll = (source, target) => {
+        const scrollers = [top, main, floating];
+        const syncScroll = (source) => {
             if (syncing) return;
             syncing = true;
-            target.scrollLeft = source.scrollLeft;
+            scrollers.forEach((target) => {
+                if (target !== source) target.scrollLeft = source.scrollLeft;
+            });
             rememberTableScrollLeft(collection, source.scrollLeft);
+            updateTableHorizontalState(shell);
             requestAnimationFrame(() => {
                 syncing = false;
             });
         };
 
-        top.addEventListener("scroll", () => syncScroll(top, main));
-        main.addEventListener("scroll", () => syncScroll(main, top));
+        scrollers.forEach((scroller) => {
+            const handler = () => syncScroll(scroller);
+            scroller.addEventListener("scroll", handler, { passive: true });
+            cleanups.push(() => scroller.removeEventListener("scroll", handler));
+        });
+        updateTableHorizontalState(shell);
     });
+
+    const updateNavigation = () => {
+        document.querySelectorAll("[data-table-scroll-shell]").forEach(updateFloatingTableNavigation);
+    };
+    const workspace = document.querySelector(".workspace");
+    workspace?.addEventListener("scroll", updateNavigation, { passive: true });
+    window.addEventListener("scroll", updateNavigation, { passive: true });
+    window.addEventListener("resize", updateNavigation, { passive: true });
+    cleanups.push(() => workspace?.removeEventListener("scroll", updateNavigation));
+    cleanups.push(() => window.removeEventListener("scroll", updateNavigation));
+    cleanups.push(() => window.removeEventListener("resize", updateNavigation));
+    tableNavigationCleanup = () => {
+        cleanups.forEach((cleanup) => cleanup());
+        tableNavigationCleanup = null;
+    };
+    requestAnimationFrame(updateNavigation);
 }
 
-function restoreTableScrollLeft(collection, top, main) {
+function restoreTableScrollLeft(collection, top, main, floating) {
     const desired = Number(ui.tableScrollLefts?.[collection] || 0);
     const maxScrollLeft = Math.max(0, main.scrollWidth - main.clientWidth);
     const nextScrollLeft = Math.min(Math.max(0, desired), maxScrollLeft);
     main.scrollLeft = nextScrollLeft;
     top.scrollLeft = nextScrollLeft;
+    if (floating) floating.scrollLeft = nextScrollLeft;
     requestAnimationFrame(() => {
         main.scrollLeft = nextScrollLeft;
         top.scrollLeft = nextScrollLeft;
+        if (floating) floating.scrollLeft = nextScrollLeft;
     });
+}
+
+function refreshFloatingTableHeader(shell, table) {
+    const viewport = shell?.querySelector("[data-table-floating-header-viewport]");
+    const colgroup = table?.querySelector("colgroup");
+    const thead = table?.querySelector("thead");
+    if (!viewport || !colgroup || !thead) return;
+    const clone = table.cloneNode(false);
+    clone.removeAttribute("data-resizable-table");
+    clone.classList.add("table-floating-header-table");
+    clone.setAttribute("aria-hidden", "true");
+    clone.inert = true;
+    clone.append(colgroup.cloneNode(true), thead.cloneNode(true));
+    clone.querySelectorAll(".column-filter-popover, .column-resize-handle").forEach((element) => element.remove());
+    clone.querySelectorAll("button, input, select").forEach((element) => element.setAttribute("tabindex", "-1"));
+    viewport.replaceChildren(clone);
+    syncFloatingTableLayout(table);
+}
+
+function syncFloatingTableLayout(table) {
+    const shell = table?.closest("[data-table-scroll-shell]");
+    const floatingTable = shell?.querySelector(".table-floating-header-table");
+    if (!floatingTable) return;
+    const width = getTableRenderedWidth(table);
+    floatingTable.style.width = `${width}px`;
+    floatingTable.style.minWidth = `${width}px`;
+    const sourceCols = [...table.querySelectorAll("col[data-column-key]")];
+    const floatingCols = [...floatingTable.querySelectorAll("col[data-column-key]")];
+    sourceCols.forEach((source, index) => {
+        if (floatingCols[index]) floatingCols[index].style.width = `${getTableColumnWidth(source)}px`;
+    });
+    const sourceHeaders = [...table.querySelectorAll("thead th[data-column-index]")];
+    const floatingHeaders = [...floatingTable.querySelectorAll("thead th[data-column-index]")];
+    sourceHeaders.forEach((source, index) => {
+        const target = floatingHeaders[index];
+        if (!target) return;
+        target.className = source.className;
+        target.style.left = source.style.left;
+    });
+}
+
+function getTableNavigationViewport() {
+    const workspace = document.querySelector(".workspace");
+    const topbar = document.querySelector(".topbar");
+    const workspaceStyle = workspace ? getComputedStyle(workspace) : null;
+    const workspaceScrolls = Boolean(workspace
+        && ["auto", "scroll"].includes(workspaceStyle?.overflowY)
+        && workspace.scrollHeight > workspace.clientHeight + 1);
+    if (workspaceScrolls) {
+        const rect = workspace.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom };
+    }
+    return {
+        top: Math.max(0, topbar?.getBoundingClientRect().bottom || 0),
+        bottom: window.innerHeight
+    };
+}
+
+function updateFloatingTableNavigation(shell) {
+    const main = shell?.querySelector('[data-table-scrollbar="main"]');
+    const table = shell?.querySelector("[data-resizable-table]");
+    const sourceHeader = table?.querySelector("thead");
+    const floatingHeader = shell?.querySelector("[data-table-floating-header]");
+    const floatingScroll = shell?.querySelector('[data-table-scrollbar="floating"]');
+    if (!main || !table || !sourceHeader || !floatingHeader || !floatingScroll) return;
+
+    const viewport = getTableNavigationViewport();
+    const mainRect = main.getBoundingClientRect();
+    const tableRect = table.getBoundingClientRect();
+    const sourceHeaderRect = sourceHeader.getBoundingClientRect();
+    const intersectsViewport = mainRect.bottom > viewport.top && mainRect.top < viewport.bottom;
+    const headerHeight = sourceHeaderRect.height || 42;
+    const showFloatingHeader = intersectsViewport
+        && sourceHeaderRect.bottom <= viewport.top + 1
+        && tableRect.bottom > viewport.top + headerHeight;
+    const hasHorizontalOverflow = main.scrollWidth > main.clientWidth + 1;
+    const showFloatingScroll = intersectsViewport && hasHorizontalOverflow;
+
+    floatingHeader.classList.toggle("is-visible", showFloatingHeader);
+    floatingHeader.style.top = `${Math.max(0, viewport.top)}px`;
+    floatingHeader.style.left = `${Math.max(0, mainRect.left)}px`;
+    floatingHeader.style.width = `${Math.max(0, mainRect.width)}px`;
+
+    floatingScroll.classList.toggle("is-visible", showFloatingScroll);
+    floatingScroll.style.left = `${Math.max(0, mainRect.left)}px`;
+    floatingScroll.style.width = `${Math.max(0, mainRect.width)}px`;
+    floatingScroll.style.bottom = `${Math.max(8, window.innerHeight - viewport.bottom + 8)}px`;
+    updateTableHorizontalState(shell);
+}
+
+function updateTableHorizontalState(shell) {
+    const main = shell?.querySelector('[data-table-scrollbar="main"]');
+    const headerViewport = shell?.querySelector("[data-table-floating-header-viewport]");
+    if (!main) return;
+    const maxScrollLeft = Math.max(0, main.scrollWidth - main.clientWidth);
+    shell.classList.toggle("has-horizontal-overflow", maxScrollLeft > 1);
+    const canScrollLeft = main.scrollLeft > 2;
+    const canScrollRight = main.scrollLeft < maxScrollLeft - 2;
+    shell.classList.toggle("can-scroll-left", canScrollLeft);
+    shell.classList.toggle("can-scroll-right", canScrollRight);
+    if (headerViewport) headerViewport.scrollLeft = main.scrollLeft;
 }
 
 function rememberTableScrollLeft(collection, scrollLeft) {
@@ -6645,8 +6796,10 @@ function syncTableWidth(table) {
         .reduce((total, col) => total + getTableColumnWidth(col), 0);
     table.style.width = `${totalWidth}px`;
     table.style.minWidth = `${totalWidth}px`;
-    const spacer = table.closest("[data-table-scroll-shell]")?.querySelector("[data-table-scroll-spacer]");
-    if (spacer) spacer.style.width = `${totalWidth}px`;
+    table.closest("[data-table-scroll-shell]")?.querySelectorAll("[data-table-scroll-spacer]").forEach((spacer) => {
+        spacer.style.width = `${totalWidth}px`;
+    });
+    syncFloatingTableLayout(table);
 }
 
 function syncStickyColumnOffsets(table) {
@@ -6686,6 +6839,7 @@ function syncStickyColumnOffsets(table) {
     });
     table.classList.toggle("has-sticky-columns", stickyCount > 0);
     table.dataset.stickyColumnCount = String(stickyCount);
+    syncFloatingTableLayout(table);
 }
 
 function formatModuleFilterOption(mod, col, value) {

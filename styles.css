@@ -2109,18 +2109,102 @@ button {
     height: 1px;
 }
 
+.table-floating-header {
+    position: fixed;
+    z-index: 29;
+    display: none;
+    overflow: hidden;
+    border: 1px solid #cbd5e1;
+    border-radius: 0 0 8px 8px;
+    background: #f8fafc;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, .14);
+    pointer-events: none;
+}
+
+.table-floating-header.is-visible {
+    display: block;
+}
+
+.table-floating-header-viewport {
+    width: 100%;
+    overflow: hidden;
+}
+
+.table-floating-header-table {
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.table-floating-header::before,
+.table-floating-header::after {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 30;
+    width: 22px;
+    content: "";
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .16s ease;
+}
+
+.table-floating-header::before {
+    left: 0;
+    background: linear-gradient(90deg, rgba(15, 23, 42, .18), transparent);
+}
+
+.table-floating-header::after {
+    right: 0;
+    background: linear-gradient(270deg, rgba(15, 23, 42, .18), transparent);
+}
+
+.table-shell.can-scroll-left .table-floating-header::before,
+.table-shell.can-scroll-right .table-floating-header::after {
+    opacity: 1;
+}
+
+.table-floating-scroll {
+    position: fixed;
+    z-index: 31;
+    display: none;
+    height: 18px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: linear-gradient(#f8fafc, #e8eef4);
+    box-shadow: 0 5px 16px rgba(15, 23, 42, .2);
+    scrollbar-color: #64748b #e2e8f0;
+    scrollbar-width: thin;
+}
+
+.table-shell:not(.has-horizontal-overflow) .table-top-scroll {
+    display: none;
+}
+
+.table-floating-scroll.is-visible {
+    display: block;
+}
+
+.table-floating-scroll [data-table-scroll-spacer] {
+    height: 1px;
+}
+
 .table-top-scroll::-webkit-scrollbar,
+.table-floating-scroll::-webkit-scrollbar,
 .table-wrap::-webkit-scrollbar {
     height: 12px;
 }
 
 .table-top-scroll::-webkit-scrollbar-track,
+.table-floating-scroll::-webkit-scrollbar-track,
 .table-wrap::-webkit-scrollbar-track {
     background: #eef2f7;
     border-radius: 999px;
 }
 
 .table-top-scroll::-webkit-scrollbar-thumb,
+.table-floating-scroll::-webkit-scrollbar-thumb,
 .table-wrap::-webkit-scrollbar-thumb {
     border: 2px solid #eef2f7;
     border-radius: 999px;
@@ -2128,6 +2212,7 @@ button {
 }
 
 .table-top-scroll::-webkit-scrollbar-thumb:hover,
+.table-floating-scroll::-webkit-scrollbar-thumb:hover,
 .table-wrap::-webkit-scrollbar-thumb:hover {
     background: #64748b;
 }

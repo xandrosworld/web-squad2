@@ -420,6 +420,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     const t01FilteredRows = await page.locator('[data-resizable-table="features"] tbody tr').count();
     if (t01FilteredRows !== 3) throw new Error(`KPI T01 Đang thực hiện cần lọc 3 chức năng, nhận ${t01FilteredRows}.`);
     await assertFeatureTableHorizontalAccess(page, "desktop");
+    await assertPersistentTableNavigation(page, "features");
     await assertRoute(page, "work/group/pilot-t01/handoffs", '[data-resizable-table="handoffs"]');
     t01MetricSignatures.push(await assertT01MetricLabels(page, ["Tổng User Story", "Đã bàn giao", "Chưa bàn giao", "Chưa bắt đầu UAT", "Đang UAT", "Hoàn thành UAT"]));
     await page.locator('[data-action="set-t01-metric"][data-t01-view="notHandedOff"]').click();
@@ -1155,6 +1156,54 @@ async function assertFeatureTableHorizontalAccess(page, label) {
   if (!lateColumnVisible) {
     throw new Error(`DM_ChucNang ${label} cannot scroll to the UAT warning column.`);
   }
+}
+
+async function assertPersistentTableNavigation(page, collection) {
+  const originalViewport = page.viewportSize();
+  const tableSelector = `[data-resizable-table="${collection}"]`;
+  await page.setViewportSize({ width: 1000, height: 420 });
+  await page.locator(tableSelector).evaluate((table) => {
+    const workspace = document.querySelector(".workspace");
+    const header = table.querySelector("thead");
+    if (!workspace || !header) return;
+    table.style.height = "900px";
+    const workspaceRect = workspace.getBoundingClientRect();
+    const headerRect = header.getBoundingClientRect();
+    workspace.scrollTop += Math.max(0, headerRect.bottom - workspaceRect.top + 12);
+  });
+
+  const shell = page.locator(`${tableSelector} >> xpath=ancestor::*[@data-table-scroll-shell][1]`);
+  const floatingHeader = shell.locator("[data-table-floating-header]");
+  const floatingScroll = shell.locator('[data-table-scrollbar="floating"]');
+  await floatingHeader.waitFor({ state: "visible", timeout: 5000 });
+  await floatingScroll.waitFor({ state: "visible", timeout: 5000 });
+  const floatingColumnCount = await floatingHeader.locator("thead th[data-column-index]").count();
+  if (floatingColumnCount !== 21) {
+    throw new Error(`Sticky table header lost columns: expected 21, received ${floatingColumnCount}.`);
+  }
+
+  const scrollSync = await floatingScroll.evaluate((floating) => {
+    const shellElement = floating.closest("[data-table-scroll-shell]");
+    const main = shellElement?.querySelector('[data-table-scrollbar="main"]');
+    if (!main) return null;
+    floating.scrollLeft = Math.max(1, Math.round((floating.scrollWidth - floating.clientWidth) * 0.65));
+    floating.dispatchEvent(new Event("scroll"));
+    return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+      floating: floating.scrollLeft,
+      main: main.scrollLeft,
+      header: shellElement.querySelector("[data-table-floating-header-viewport]")?.scrollLeft || 0
+    }))));
+  });
+  if (!scrollSync || scrollSync.floating <= 0 || scrollSync.main !== scrollSync.floating || scrollSync.header !== scrollSync.floating) {
+    throw new Error(`Floating horizontal scrollbar is not synchronized: ${JSON.stringify(scrollSync)}.`);
+  }
+
+  await page.locator(tableSelector).evaluate((table) => {
+    const workspace = document.querySelector(".workspace");
+    if (workspace) workspace.scrollTop = 0;
+    table.style.removeProperty("height");
+  });
+  if (originalViewport) await page.setViewportSize(originalViewport);
 }
 
 async function assertNoPageOverflow(page, label) {
