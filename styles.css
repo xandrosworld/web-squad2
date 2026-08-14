@@ -4005,6 +4005,51 @@ body.is-column-resizing * {
     font-weight: 850;
 }
 
+.plan-unmapped-head-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.plan-unmapped-toggle {
+    display: inline-flex;
+    gap: 7px;
+    align-items: center;
+    justify-content: center;
+    min-height: 32px;
+    padding: 6px 10px;
+    border: 1px solid #e8bd63;
+    border-radius: 9px;
+    color: #92400e;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(120, 53, 15, .06);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 850;
+    cursor: pointer;
+    transition: border-color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+
+.plan-unmapped-toggle:hover {
+    border-color: #d99a24;
+    background: #fff7dc;
+    box-shadow: 0 3px 10px rgba(120, 53, 15, .1);
+}
+
+.plan-unmapped-toggle:focus-visible {
+    outline: 3px solid rgba(217, 119, 6, .2);
+    outline-offset: 2px;
+}
+
+.plan-unmapped-toggle > i {
+    transition: transform .2s ease;
+}
+
+.plan-unmapped-panel.is-expanded .plan-unmapped-toggle > i {
+    transform: rotate(180deg);
+}
+
 .plan-unmapped-groups {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
@@ -4025,6 +4070,12 @@ body.is-column-resizing * {
 .plan-unmapped-card.missing-child {
     border-color: #f1b5b5;
     background: #fffafa;
+}
+
+.plan-unmapped-panel:not(.is-expanded) .plan-unmapped-card.is-preview-overflow,
+.plan-unmapped-panel:not(.is-expanded) .plan-bug-group.is-preview-overflow,
+.plan-unmapped-panel:not(.is-expanded) .plan-bug-item.is-preview-overflow {
+    display: none;
 }
 
 .plan-unmapped-context {
@@ -4079,6 +4130,10 @@ body.is-column-resizing * {
 
     .plan-unmapped-count {
         width: max-content;
+    }
+
+    .plan-unmapped-head-actions {
+        flex-wrap: wrap;
     }
 
     .plan-unmapped-context {
@@ -4258,6 +4313,24 @@ body.is-column-resizing * {
     font-size: 10px;
     font-weight: 800;
     white-space: nowrap;
+}
+
+.plan-bug-preview-note {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    width: max-content;
+    max-width: 100%;
+    padding: 5px 8px;
+    border-radius: 8px;
+    color: #8a5b20;
+    background: #fff7dc;
+    font-size: 10px;
+    font-weight: 750;
+}
+
+.plan-unmapped-panel.is-expanded .plan-bug-preview-note {
+    display: none;
 }
 
 .plan-bug-empty {

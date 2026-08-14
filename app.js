@@ -8066,6 +8066,7 @@ function readFileAsDataUrl(file) {
 function handleAction(event) {
     const action = event.currentTarget.dataset.action;
     const id = event.currentTarget.dataset.id;
+    if (action === "toggle-unmapped-plan-bugs") return toggleUnmappedPlanBugs(event.currentTarget);
     if (action === "set-personal-squad") {
         personalWorkspaceState.activeSquad = event.currentTarget.dataset.squad || "1";
         personalWorkspaceState.query = "";
@@ -8176,6 +8177,22 @@ function handleAction(event) {
         if (authState.user?.role !== "admin") return showToast("Chỉ admin được nhập dữ liệu.");
         return document.getElementById("importDataInput")?.click();
     }
+}
+
+function toggleUnmappedPlanBugs(button) {
+    const panel = button?.closest(".plan-unmapped-panel");
+    if (!panel) return;
+    const expanded = !panel.classList.contains("is-expanded");
+    panel.classList.toggle("is-expanded", expanded);
+    panel.querySelectorAll('[data-action="toggle-unmapped-plan-bugs"]').forEach((toggle) => {
+        toggle.setAttribute("aria-expanded", String(expanded));
+        const label = toggle.querySelector("[data-plan-unmapped-toggle-label]");
+        if (label) {
+            label.textContent = expanded
+                ? "Thu gọn"
+                : `Xem chi tiết ${panel.dataset.planUnmappedGroupCount || 0} nhóm · ${panel.dataset.planUnmappedBugCount || 0} bug`;
+        }
+    });
 }
 
 function openKpiConfig() {
@@ -9588,8 +9605,9 @@ function renderLinkedText(value, explicitLinks = []) {
     `;
 }
 
-function renderPlanBugLinks(row) {
+function renderPlanBugLinks(row, options = {}) {
     const bugs = Array.isArray(row?.openBugLinks) ? row.openBugLinks : [];
+    const previewLimit = Math.max(0, Number(options.previewLimit || 0));
     if (!bugs.length) {
         return `<span class="plan-bug-empty"><i class="fa-solid fa-circle-check"></i> Không có bug đang theo dõi</span>`;
     }
@@ -9603,20 +9621,25 @@ function renderPlanBugLinks(row) {
             .filter((bug) => (bug?.recencyBucket || "unknown") === group.key)
             .sort((a, b) => String(b?.logDate || "").localeCompare(String(a?.logDate || "")))
     })).filter((group) => group.bugs.length);
+    let renderedBugCount = 0;
     return `
         <div class="plan-bug-list" aria-label="${e(`${bugs.length} bug đang theo dõi`)}">
             <span class="plan-bug-count">${e(bugs.length)} bug đang theo dõi</span>
-            ${groups.map((group) => `
-                <section class="plan-bug-group ${e(group.key)}" data-plan-bug-group="${e(group.key)}">
+            ${groups.map((group) => {
+                const groupStartsOutsidePreview = previewLimit > 0 && renderedBugCount >= previewLimit;
+                return `
+                <section class="plan-bug-group ${e(group.key)} ${groupStartsOutsidePreview ? "is-preview-overflow" : ""}" data-plan-bug-group="${e(group.key)}">
                     <div class="plan-bug-group-head">
                         <span><i class="fa-solid ${e(group.icon)}"></i> ${e(group.label)}</span>
                         <small>${e(group.note)}</small>
                         <strong>${e(group.bugs.length)}</strong>
                     </div>
                     ${group.bugs.map((bug) => {
+                        const outsidePreview = previewLimit > 0 && renderedBugCount >= previewLimit;
+                        renderedBugCount += 1;
                         const label = String(bug?.label || bug?.bugId || "Bug").trim();
                         return `
-                            <div class="plan-bug-item" data-plan-bug-id="${e(bug?.bugId || "")}">
+                            <div class="plan-bug-item ${outsidePreview ? "is-preview-overflow" : ""}" data-plan-bug-id="${e(bug?.bugId || "")}">
                                 <i class="fa-solid fa-bug" aria-hidden="true"></i>
                                 <span class="plan-bug-main">
                                     ${renderExternalLink(bug?.url, label)}
@@ -9627,7 +9650,11 @@ function renderPlanBugLinks(row) {
                         `;
                     }).join("")}
                 </section>
-            `).join("")}
+            `;
+            }).join("")}
+            ${previewLimit > 0 && bugs.length > previewLimit ? `
+                <span class="plan-bug-preview-note"><i class="fa-solid fa-ellipsis"></i> Còn ${e(bugs.length - previewLimit)} bug sẽ hiển thị khi mở rộng</span>
+            ` : ""}
         </div>
     `;
 }
@@ -9635,11 +9662,16 @@ function renderPlanBugLinks(row) {
 function renderUnmappedPlanBugGroups() {
     const groups = Array.isArray(appState.unmappedPlanBugGroups) ? appState.unmappedPlanBugGroups : [];
     if (!groups.length) return "";
+    const previewGroupLimit = 3;
+    const previewBugLimit = 3;
     const bugCount = groups.reduce((total, group) => (
         total + (Array.isArray(group?.openBugLinks) ? group.openBugLinks.length : 0)
     ), 0);
+    const canExpand = groups.length > previewGroupLimit || groups.some((group) => (
+        (Array.isArray(group?.openBugLinks) ? group.openBugLinks.length : 0) > previewBugLimit
+    ));
     return `
-        <section class="plan-unmapped-panel" data-plan-unmapped-group-count="${e(groups.length)}">
+        <section id="plan-unmapped-panel" class="plan-unmapped-panel" data-plan-unmapped-group-count="${e(groups.length)}" data-plan-unmapped-bug-count="${e(bugCount)}" data-plan-unmapped-preview-count="${e(Math.min(previewGroupLimit, groups.length))}">
             <div class="plan-unmapped-head">
                 <div>
                     <span class="plan-unmapped-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
@@ -9648,15 +9680,23 @@ function renderUnmappedPlanBugGroups() {
                         <span>${e(bugCount)} bug vẫn được hiển thị để không bị bỏ sót; cần bổ sung US hoặc Child Of tại nguồn.</span>
                     </div>
                 </div>
-                <span class="plan-unmapped-count">${e(groups.length)} nhóm cần xử lý</span>
+                <div class="plan-unmapped-head-actions">
+                    <span class="plan-unmapped-count">${e(groups.length)} nhóm cần xử lý</span>
+                    ${canExpand ? `
+                        <button class="plan-unmapped-toggle" type="button" data-action="toggle-unmapped-plan-bugs" aria-expanded="false" aria-controls="plan-unmapped-groups">
+                            <span data-plan-unmapped-toggle-label>Xem chi tiết ${e(groups.length)} nhóm · ${e(bugCount)} bug</span>
+                            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                        </button>
+                    ` : ""}
+                </div>
             </div>
-            <div class="plan-unmapped-groups">
-                ${groups.map((group) => {
+            <div id="plan-unmapped-groups" class="plan-unmapped-groups">
+                ${groups.map((group, groupIndex) => {
                     const usKey = String(group?.linkedUsKey || "").trim();
                     const storyName = String(group?.storyName || "").trim();
                     const featureCode = String(group?.featureJiraCode || "").trim();
                     return `
-                        <article class="plan-unmapped-card ${group?.missingChildOf ? "missing-child" : "missing-plan"}">
+                        <article class="plan-unmapped-card ${group?.missingChildOf ? "missing-child" : "missing-plan"} ${groupIndex >= previewGroupLimit ? "is-preview-overflow" : ""}">
                             <div class="plan-unmapped-context">
                                 <div>
                                     <span class="plan-unmapped-label">${group?.missingChildOf ? "Liên kết US" : "User Story"}</span>
@@ -9666,7 +9706,7 @@ function renderUnmappedPlanBugGroups() {
                                 ${storyName ? `<div class="wide"><span class="plan-unmapped-label">Tên Story</span><strong>${e(storyName)}</strong></div>` : ""}
                                 <div class="wide plan-unmapped-reason"><i class="fa-solid fa-circle-info"></i><span>${e(group?.reason || "Chưa ghép được vào PhanCong_UAT")}</span></div>
                             </div>
-                            ${renderPlanBugLinks(group)}
+                            ${renderPlanBugLinks(group, { previewLimit: previewBugLimit })}
                         </article>
                     `;
                 }).join("")}

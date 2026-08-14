@@ -433,10 +433,29 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     }
     const unmappedPanel = page.locator('.plan-unmapped-panel');
     if (!await unmappedPanel.isVisible()
-      || await unmappedPanel.getAttribute("data-plan-unmapped-group-count") !== "1"
+      || await unmappedPanel.getAttribute("data-plan-unmapped-group-count") !== "4"
       || !await unmappedPanel.locator('[data-plan-bug-id="BUG-2"]').isVisible()
       || !await unmappedPanel.locator('[data-plan-bug-id="BUG-5"]').isVisible()) {
       throw new Error("Trackable bugs without a matching PhanCong_UAT row must remain visible in the fallback US panel.");
+    }
+    const unmappedToggle = unmappedPanel.locator('[data-action="toggle-unmapped-plan-bugs"]');
+    if (!await unmappedToggle.isVisible()
+      || await unmappedToggle.getAttribute("aria-expanded") !== "false"
+      || await unmappedPanel.locator(".plan-unmapped-card:visible").count() !== 3
+      || await unmappedPanel.locator('[data-plan-bug-id="PREVIEW-3"]').isVisible()) {
+      throw new Error("Unmatched bug panel must default to a compact three-group, three-bug preview.");
+    }
+    await unmappedToggle.click();
+    if (await unmappedToggle.getAttribute("aria-expanded") !== "true"
+      || await unmappedPanel.locator(".plan-unmapped-card:visible").count() !== 4
+      || !await unmappedPanel.locator('[data-plan-bug-id="PREVIEW-3"]').isVisible()) {
+      throw new Error("Unmatched bug panel did not reveal every group and bug after expansion.");
+    }
+    await unmappedToggle.click();
+    if (await unmappedToggle.getAttribute("aria-expanded") !== "false"
+      || await unmappedPanel.locator(".plan-unmapped-card:visible").count() !== 3
+      || await unmappedPanel.locator('[data-plan-bug-id="PREVIEW-3"]').isVisible()) {
+      throw new Error("Unmatched bug panel did not return to its compact preview.");
     }
     if (!await page.locator('[data-plan-bug-group="old"] [data-plan-bug-id="BUG-3"]').isVisible()) {
       throw new Error("PhanCong_UAT did not group an older bug under Bug cũ.");
@@ -784,6 +803,28 @@ async function buildFixtureState() {
   state.memberKpiInputs = [];
   applyWorkbookRules(state);
   applyWorkKpiRules(state);
+  const unmatchedPreviewGroup = state.unmappedPlanBugGroups[0];
+  if (unmatchedPreviewGroup) {
+    unmatchedPreviewGroup.openBugLinks.push(
+      { bugId: "PREVIEW-1", label: "PREVIEW-1 - Bug xem trước", url: "https://bidv-vn.atlassian.net/browse/PREVIEW-1", status: "Open", recencyBucket: "unknown" },
+      { bugId: "PREVIEW-2", label: "PREVIEW-2 - Bug ẩn mặc định", url: "https://bidv-vn.atlassian.net/browse/PREVIEW-2", status: "Open", recencyBucket: "unknown" },
+      { bugId: "PREVIEW-3", label: "PREVIEW-3 - Bug chỉ hiện khi mở rộng", url: "https://bidv-vn.atlassian.net/browse/PREVIEW-3", status: "Open", recencyBucket: "unknown" }
+    );
+    [2, 3, 4].forEach((index) => {
+      state.unmappedPlanBugGroups.push({
+        ...unmatchedPreviewGroup,
+        linkedUsKey: `UNMATCHED-${index}`,
+        storyName: `User Story chưa có dòng phân công ${index}`,
+        openBugLinks: [{
+          bugId: `UNMATCHED-BUG-${index}`,
+          label: `UNMATCHED-BUG-${index} - Bug chưa ghép`,
+          url: `https://bidv-vn.atlassian.net/browse/UNMATCHED-BUG-${index}`,
+          status: "Open",
+          recencyBucket: "unknown"
+        }]
+      });
+    });
+  }
   state.updatedAt = now;
   return state;
 }
