@@ -2596,7 +2596,7 @@ function parseDailySheet(worksheet) {
 
 function parseDefectSheet(worksheet) {
   if (!worksheet) return [];
-  return parseRows(worksheet, 2, (row) => {
+  const records = parseRows(worksheet, 2, (row) => {
     const stt = toImportNumber(cellValueAt(row, 1));
     const bugId = cellTextAt(row, 2);
     const linkedUsKey = cellTextAt(row, 3);
@@ -2610,7 +2610,7 @@ function parseDefectSheet(worksheet) {
     const effectiveStt = Number.isFinite(Number(stt)) && Number(stt) > 0
       ? Number(stt)
       : Math.max(1, Number(row.number || 2) - 1);
-    return markSourceInvalidFields({
+    const record = markSourceInvalidFields({
       id: importId("defects", bugId),
       stt: effectiveStt,
       bugId,
@@ -2634,7 +2634,34 @@ function parseDefectSheet(worksheet) {
     }, [
       ...(isInvalidWorkbookCell(row.getCell(8)) ? ["foundDate"] : [])
     ]);
+    Object.defineProperty(record, "_sourceHasValidStt", {
+      configurable: true,
+      enumerable: false,
+      value: Number.isFinite(Number(stt)) && Number(stt) > 0
+    });
+    return record;
   });
+  const primaryIndexByBugId = new Map();
+  const deduplicated = [];
+  for (const record of records) {
+    const key = lookupKey(record.bugId);
+    const existingIndex = primaryIndexByBugId.get(key);
+    if (existingIndex === undefined) {
+      primaryIndexByBugId.set(key, deduplicated.length);
+      deduplicated.push(record);
+      continue;
+    }
+    const existing = deduplicated[existingIndex];
+    if (existing?._sourceHasValidStt && !record._sourceHasValidStt) continue;
+    if (!existing?._sourceHasValidStt && record._sourceHasValidStt) {
+      deduplicated[existingIndex] = record;
+      continue;
+    }
+    // Two equally authoritative rows remain duplicated so the safety audit can
+    // stop the import instead of silently guessing which business row is right.
+    deduplicated.push(record);
+  }
+  return deduplicated;
 }
 
 function parseUserStorySheet(worksheet) {

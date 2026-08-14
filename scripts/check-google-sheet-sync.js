@@ -81,16 +81,30 @@ const negativeAgingResource = {
         cell(""), cell("PS0142025-TEST"), cell("PS0142025-US"), cell("Story"), cell("Sprint 1"),
         cell("Major"), cell("Open"), cell("2026-08-01"), cell(""), cell(""),
         cell(""), cell(-5, { formula: "=-5" }), cell("")
+      ],
+      [
+        cell(""), cell("PS0142025-DUP"), cell("PS0142025-US"), cell("Duplicate draft"), cell("Sprint 1"),
+        cell("Major"), cell("Open"), cell("2026-08-01"), cell(""), cell(""),
+        cell(""), cell(-5, { formula: "=-5" }), cell("")
+      ],
+      [
+        cell(7), cell("PS0142025-DUP"), cell("PS0142025-US"), cell("Authoritative row"), cell("Sprint 1"),
+        cell("Major"), cell("Resolved"), cell("2026-08-01"), cell(""), cell(""),
+        cell("2026-08-02"), cell(1), cell("")
       ]
     ]
     : [[cell(title)]]
   ))
 };
 const negativeAgingState = parseGoogleSpreadsheetImportState(negativeAgingResource).state;
-assert.strictEqual(negativeAgingState.defects.length, 1);
-assert.strictEqual(negativeAgingState.defects[0].stt, 1, "A missing display STT must not discard a valid defect row.");
+assert.strictEqual(negativeAgingState.defects.length, 2);
+const missingSttDefect = negativeAgingState.defects.find((row) => row.bugId === "PS0142025-TEST");
+const deduplicatedDefect = negativeAgingState.defects.find((row) => row.bugId === "PS0142025-DUP");
+assert.strictEqual(missingSttDefect.stt, 1, "A unique defect missing its display STT must not be discarded.");
+assert.strictEqual(deduplicatedDefect.stt, 7, "A valid-STT row must win over a duplicate draft without STT.");
+assert.strictEqual(deduplicatedDefect.status, "Resolved");
 assert.ok(
-  negativeAgingState.defects[0].aging === "" || Number(negativeAgingState.defects[0].aging) >= 0,
+  missingSttDefect.aging === "" || Number(missingSttDefect.aging) >= 0,
   "A transient negative Aging formula must be ignored and recomputed from defect dates."
 );
 assert.doesNotThrow(
