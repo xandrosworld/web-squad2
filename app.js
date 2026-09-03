@@ -1087,6 +1087,11 @@ let googleSheetSyncUiState = {
     busyAction: "",
     error: null
 };
+let jiraWeeklyDashboardState = {
+    status: "idle",
+    data: null,
+    error: null
+};
 let attachmentUiState = {
     workItemId: null,
     status: "idle",
@@ -1149,6 +1154,8 @@ let ui = {
     profileAvatarDraft: null,
     workView: "all",
     t01MetricView: "all",
+    defectDashboardView: "overview",
+    jiraWeeklyDetail: null,
     profileSaving: false,
     passwordSaving: false,
     toast: null,
@@ -1501,6 +1508,55 @@ function navigateToRoute(path, options = {}) {
     requestActiveTabScroll();
     render();
     if (route.view === "personal-cross-squad") hydratePersonalWorkspace();
+    if (route.t01Tab === "defectDashboard" && ui.defectDashboardView === "weekly") hydrateJiraWeeklyDashboard();
+}
+
+async function hydrateJiraWeeklyDashboard(forceSync = false) {
+    if (jiraWeeklyDashboardState.status === "loading" || jiraWeeklyDashboardState.status === "syncing") return;
+    if (!forceSync && jiraWeeklyDashboardState.status === "ready" && jiraWeeklyDashboardState.data) return;
+    jiraWeeklyDashboardState = {
+        ...jiraWeeklyDashboardState,
+        status: forceSync ? "syncing" : "loading",
+        error: null
+    };
+    render();
+    try {
+        const data = await requestJson(forceSync ? "/jira/weekly-dashboard/sync" : "/jira/weekly-dashboard", forceSync ? {
+            method: "POST",
+            body: "{}"
+        } : {});
+        jiraWeeklyDashboardState = {
+            status: "ready",
+            data: data.dashboard || null,
+            error: null
+        };
+        if (forceSync) showToast(`Đã đồng bộ ${Number(data.result?.total || data.dashboard?.total || 0)} bug TESTLUONG từ Jira.`);
+    } catch (error) {
+        jiraWeeklyDashboardState = {
+            ...jiraWeeklyDashboardState,
+            status: "error",
+            error: error.message || "Không tải được dữ liệu Jira."
+        };
+        if (forceSync) showToast(jiraWeeklyDashboardState.error);
+    }
+    render();
+}
+
+function setDefectDashboardView(view) {
+    ui.defectDashboardView = view === "weekly" ? "weekly" : "overview";
+    ui.jiraWeeklyDetail = null;
+    render();
+    if (ui.defectDashboardView === "weekly") hydrateJiraWeeklyDashboard();
+}
+
+function openJiraWeekDetail(weekNumber, metric) {
+    if (!jiraWeeklyDashboardState.data) return;
+    ui.jiraWeeklyDetail = {
+        weekNumber: Number(weekNumber || 0),
+        metric: ["created", "handled", "remaining"].includes(metric) ? metric : "remaining"
+    };
+    render();
+    requestAnimationFrame(() => document.querySelector(".jira-week-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
 }
 
 function isPersonalWorkspaceOwner(user = authState.user) {
@@ -3069,8 +3125,154 @@ function renderDefectDashboardPanel() {
 function renderDefectDashboardPage() {
     return `
         <div class="sheet-dashboard">
-            ${renderDefectDashboardPanel()}
+            <nav class="defect-dashboard-tabs" aria-label="Chế độ xem Dashboard Defect">
+                <button class="${ui.defectDashboardView === "overview" ? "active" : ""}" type="button" data-action="set-defect-dashboard-view" data-dashboard-view="overview">
+                    <i class="fa-solid fa-chart-pie"></i><span>Tổng quan hiện tại</span>
+                </button>
+                <button class="${ui.defectDashboardView === "weekly" ? "active" : ""}" type="button" data-action="set-defect-dashboard-view" data-dashboard-view="weekly">
+                    <i class="fa-solid fa-calendar-week"></i><span>Đối chiếu theo tuần</span>
+                </button>
+            </nav>
+            ${ui.defectDashboardView === "weekly" ? renderJiraWeeklyDashboard() : renderDefectDashboardPanel()}
         </div>
+    `;
+}
+
+function renderJiraWeeklyDashboard() {
+    const state = jiraWeeklyDashboardState;
+    if (state.status === "idle" || state.status === "loading") {
+        return `
+            <section class="panel jira-weekly-panel">
+                <div class="jira-weekly-loading"><i class="fa-solid fa-spinner fa-spin"></i><strong>Đang tải dữ liệu TESTLUONG từ Jira...</strong></div>
+            </section>
+        `;
+    }
+    if (state.status === "error") {
+        return `
+            <section class="panel jira-weekly-panel">
+                <div class="jira-weekly-empty error">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <div><strong>Chưa tải được dashboard Jira</strong><span>${e(state.error || "Có lỗi khi kết nối Jira.")}</span></div>
+                    <button class="ghost-btn" type="button" data-action="refresh-jira-weekly"><i class="fa-solid fa-rotate"></i> Thử lại</button>
+                </div>
+            </section>
+        `;
+    }
+    const dashboard = state.data || {};
+    if (!dashboard.configured) {
+        return `
+            <section class="panel jira-weekly-panel">
+                <div class="jira-weekly-empty warning">
+                    <i class="fa-solid fa-plug-circle-xmark"></i>
+                    <div><strong>Máy chủ chưa cấu hình Jira</strong><span>Admin cần bổ sung JIRA_EMAIL và JIRA_API_TOKEN trên Railway.</span></div>
+                </div>
+            </section>
+        `;
+    }
+    const weeks = Array.isArray(dashboard.weeks) ? dashboard.weeks : [];
+    const latest = weeks.at(-1);
+    return `
+        <section class="panel jira-weekly-panel">
+            <div class="jira-weekly-head">
+                <div>
+                    <span class="jira-weekly-kicker"><i class="fa-brands fa-jira"></i> Jira · ${e(dashboard.projectKey)} · Label ${e(dashboard.label)}</span>
+                    <h2>Đối chiếu kết quả kiểm thử luồng theo tuần</h2>
+                    <p>Mỗi tuần chốt vào 15:00 Thứ Năm. Tuần đã chốt được giữ nguyên; tuần hiện tại tự cập nhật theo Jira.</p>
+                </div>
+                <div class="jira-weekly-head-actions">
+                    <span class="jira-sync-time"><i class="fa-solid fa-arrows-rotate"></i> ${dashboard.syncedAt ? `Cập nhật ${e(formatShortDateTime(dashboard.syncedAt))}` : "Chưa đồng bộ"}</span>
+                    ${authState.user?.role === "admin" ? `<button class="ghost-btn" type="button" data-action="refresh-jira-weekly" ${state.status === "syncing" ? "disabled" : ""}><i class="fa-solid fa-rotate ${state.status === "syncing" ? "fa-spin" : ""}"></i> Đồng bộ ngay</button>` : ""}
+                </div>
+            </div>
+            <div class="jira-weekly-method">
+                <span><i class="fa-solid fa-circle-info"></i> Phạm vi: Bug có label <strong>${e(dashboard.label)}</strong></span>
+                <span>Đã xử lý: ${e((dashboard.handledStatuses || []).join(", "))}</span>
+                <span>Đã xử lý/Còn tồn: lũy kế tại mốc chốt</span>
+                <span>${e(dashboard.cutoffDescription || "")}</span>
+            </div>
+            ${weeks.length ? `
+                <div class="jira-weekly-grid">
+                    ${weeks.map((week, index) => renderJiraWeekCard(week, weeks[index - 1], week === latest)).join("")}
+                </div>
+                ${renderJiraWeeklyDetail(dashboard)}
+            ` : `
+                <div class="jira-weekly-empty"><i class="fa-solid fa-inbox"></i><div><strong>Chưa có kỳ báo cáo</strong><span>Kỳ đầu tiên bắt đầu từ 13/08/2026.</span></div></div>
+            `}
+        </section>
+    `;
+}
+
+function renderJiraWeekCard(week, previousWeek, isLatest) {
+    const metrics = [
+        { key: "created", label: "Bug phát sinh", icon: "fa-plus", tone: "blue" },
+        { key: "handled", label: "Bug đã xử lý", icon: "fa-circle-check", tone: "green" },
+        { key: "remaining", label: "Bug còn tồn", icon: "fa-hourglass-half", tone: "orange" }
+    ];
+    return `
+        <article class="jira-week-card ${isLatest ? "latest" : ""}">
+            <div class="jira-week-card-head">
+                <div><span>Tuần ${e(week.weekNumber)}</span><small>${e(formatWeeklyPeriod(week))}</small></div>
+                <span class="jira-week-status ${week.finalized ? "final" : "live"}"><i class="fa-solid ${week.finalized ? "fa-lock" : "fa-signal"}"></i>${week.finalized ? "Đã chốt" : "Tạm tính"}</span>
+            </div>
+            <div class="jira-week-metrics">
+                ${metrics.map((metric) => {
+                    const value = Number(week[metric.key] || 0);
+                    const previous = previousWeek ? Number(previousWeek[metric.key] || 0) : null;
+                    const delta = previous === null ? null : value - previous;
+                    return `
+                        <button class="jira-week-metric ${metric.tone}" type="button" data-action="open-jira-week-detail" data-week-number="${e(week.weekNumber)}" data-week-metric="${metric.key}" title="Xem danh sách bug">
+                            <span><i class="fa-solid ${metric.icon}"></i>${metric.label}</span>
+                            <strong>${e(value)}</strong>
+                            ${delta === null ? `<small>Kỳ đầu tiên</small>` : `<small class="${delta > 0 ? "up" : delta < 0 ? "down" : ""}">${delta > 0 ? "+" : ""}${e(delta)} so với tuần trước</small>`}
+                        </button>
+                    `;
+                }).join("")}
+                <button class="jira-week-rate" type="button" data-action="open-jira-week-detail" data-week-number="${e(week.weekNumber)}" data-week-metric="handled">
+                    <span>Tỷ lệ xử lý lũy kế</span>
+                    <strong>${e(Number(week.handledRate || 0).toLocaleString("vi-VN"))}%</strong>
+                    <span class="jira-week-progress"><i style="width:${Math.max(0, Math.min(100, Number(week.handledRate || 0)))}%"></i></span>
+                </button>
+            </div>
+        </article>
+    `;
+}
+
+function formatWeeklyPeriod(week) {
+    const format = (value) => {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "-";
+        return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", timeZone: "Asia/Ho_Chi_Minh" }).format(date);
+    };
+    return `${format(week.startAt)} – ${format(week.cutoffAt)}`;
+}
+
+function renderJiraWeeklyDetail(dashboard) {
+    const detail = ui.jiraWeeklyDetail;
+    if (!detail) return "";
+    const week = (dashboard.weeks || []).find((item) => Number(item.weekNumber) === Number(detail.weekNumber));
+    if (!week) return "";
+    const labels = { created: "Bug phát sinh", handled: "Bug đã xử lý", remaining: "Bug còn tồn" };
+    const metric = Object.prototype.hasOwnProperty.call(labels, detail.metric) ? detail.metric : "remaining";
+    const issues = Array.isArray(week.issues?.[metric]) ? week.issues[metric] : [];
+    const baseUrl = String(dashboard.browseBaseUrl || "https://bidv-vn.atlassian.net/browse/");
+    return `
+        <section class="jira-week-detail">
+            <div class="jira-week-detail-head">
+                <div><span>Tuần ${e(week.weekNumber)}</span><h3>${e(labels[metric])} <b>${e(issues.length)}</b></h3></div>
+                <button class="icon-btn" type="button" data-action="close-jira-week-detail" aria-label="Đóng danh sách"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            ${issues.length ? `
+                <div class="jira-week-issue-list">
+                    ${issues.map((issue) => `
+                        <a href="${e(`${baseUrl}${encodeURIComponent(issue.key)}`)}" target="_blank" rel="noopener noreferrer" class="jira-week-issue">
+                            <span class="jira-week-issue-key"><i class="fa-solid fa-bug"></i>${e(issue.key)}</span>
+                            <strong>${e(issue.summary || "Không có tên bug")}</strong>
+                            <span class="jira-week-issue-meta"><em>${e(issue.status || "Chưa xác định")}</em><small>Log ${e(formatShortDateTime(issue.createdAt))}</small><i class="fa-solid fa-arrow-up-right-from-square"></i></span>
+                        </a>
+                    `).join("")}
+                </div>
+            ` : `<div class="jira-week-detail-empty"><i class="fa-solid fa-circle-check"></i> Không có bug trong nhóm này.</div>`}
+        </section>
     `;
 }
 
@@ -7901,6 +8103,7 @@ async function handleAuthAction(event) {
     accountDirectory = [];
     deadlineEmailState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
     googleSheetSyncUiState = { status: "idle", data: null, preview: null, busyAction: "", error: null };
+    jiraWeeklyDashboardState = { status: "idle", data: null, error: null };
     personalWorkspaceState = { status: "idle", tasks: [], activeSquad: "1", query: "", statusFilter: "", error: null };
     attachmentUiState = {
         workItemId: null,
@@ -8220,6 +8423,13 @@ function readFileAsDataUrl(file) {
 function handleAction(event) {
     const action = event.currentTarget.dataset.action;
     const id = event.currentTarget.dataset.id;
+    if (action === "set-defect-dashboard-view") return setDefectDashboardView(event.currentTarget.dataset.dashboardView);
+    if (action === "refresh-jira-weekly") return hydrateJiraWeeklyDashboard(true);
+    if (action === "open-jira-week-detail") return openJiraWeekDetail(event.currentTarget.dataset.weekNumber, event.currentTarget.dataset.weekMetric);
+    if (action === "close-jira-week-detail") {
+        ui.jiraWeeklyDetail = null;
+        return render();
+    }
     if (action === "toggle-unmapped-plan-bugs") return toggleUnmappedPlanBugs(event.currentTarget);
     if (action === "set-personal-squad") {
         personalWorkspaceState.activeSquad = event.currentTarget.dataset.squad || "1";

@@ -33,6 +33,7 @@ const {
   normalizeMimeType,
   DEFAULT_MAX_FILE_SIZE_BYTES
 } = require("./drive-attachments");
+const { createJiraWeeklyDashboardService } = require("./jira-weekly-dashboard");
 
 const app = express();
 let server = null;
@@ -68,6 +69,7 @@ const googleSheetSyncDefaultIntervalMinutes = Math.max(1, Math.min(60, Number(pr
 const googleSheetSyncSettingsMetaKey = "google_sheet_sync_settings";
 const googleSheetSyncStateMetaKey = "google_sheet_sync_state";
 let googleSheetSyncTimer = null;
+let jiraWeeklySyncTimer = null;
 const attachmentMaxFileSizeBytes = Math.max(
   1024,
   Number(process.env.WORK_ATTACHMENT_MAX_FILE_SIZE_MB || 50) * 1024 * 1024
@@ -86,6 +88,7 @@ const driveAttachmentService = createDriveAttachmentService({
   rootFolderName: process.env.GOOGLE_DRIVE_ATTACHMENT_ROOT_NAME || "Squad 2 UAT - Tep cong viec",
   maxFileSizeBytes: attachmentMaxFileSizeBytes || DEFAULT_MAX_FILE_SIZE_BYTES
 });
+const jiraWeeklyDashboardService = createJiraWeeklyDashboardService({ encryptionSecret: sessionSecret });
 const defaultUsers = [
   { username: "yenuth@bidv.com.vn", email: "yenuth@bidv.com.vn", name: "Uông Thị Hải Yến", password: "123456" },
   { username: "phuongbtm@bidv.com.vn", email: "phuongbtm@bidv.com.vn", name: "Bùi Thị Mai Phương", password: "123456" },
@@ -936,6 +939,38 @@ app.get("/api/email-notifications/oauth/callback", async (req, res) => {
 });
 
 app.use("/api", requireApiAuth);
+
+app.get("/api/jira/weekly-dashboard", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  let dashboard = await jiraWeeklyDashboardService.getDashboard(getPool());
+  if (dashboard.configured && !dashboard.syncedAt) {
+    await jiraWeeklyDashboardService.sync(getPool());
+    dashboard = await jiraWeeklyDashboardService.getDashboard(getPool());
+  }
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ dashboard });
+}));
+
+app.post("/api/jira/weekly-dashboard/sync", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const result = await jiraWeeklyDashboardService.sync(getPool());
+  const dashboard = await jiraWeeklyDashboardService.getDashboard(getPool());
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ result, dashboard });
+}));
+
+app.post("/api/jira/connection", requireAdmin, asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const connection = await jiraWeeklyDashboardService.saveConnection(getPool(), {
+    baseUrl: req.body.baseUrl,
+    email: req.body.email,
+    token: req.body.token,
+    projectKey: req.body.projectKey,
+    label: req.body.label
+  });
+  const result = await jiraWeeklyDashboardService.sync(getPool());
+  res.json({ connection, result });
+}));
 
 app.patch("/api/auth/profile", asyncHandler(async (req, res) => {
   await ensureSchema();
@@ -1987,6 +2022,7 @@ if (require.main === module) {
     }
     startDeadlineNotificationScheduler();
     startGoogleSheetSyncScheduler();
+    startJiraWeeklyDashboardScheduler();
   });
 
   process.on("SIGTERM", shutdown);
@@ -8341,6 +8377,30 @@ function startGoogleSheetSyncScheduler() {
   });
 }
 
+function startJiraWeeklyDashboardScheduler() {
+  if (jiraWeeklySyncTimer) return;
+  const runAndSchedule = async () => {
+    jiraWeeklySyncTimer = null;
+    try {
+      await ensureSchema();
+      const dashboard = await jiraWeeklyDashboardService.getDashboard(getPool());
+      if (dashboard.configured) {
+        const result = await jiraWeeklyDashboardService.sync(getPool());
+        console.log(`Jira TESTLUONG sync completed: ${Number(result.total || 0)} issues.`);
+      }
+    } catch (error) {
+      console.error("Jira TESTLUONG sync failed:", publicError(error));
+    } finally {
+      const delay = jiraWeeklyDashboardService.config.intervalMinutes * 60 * 1000;
+      jiraWeeklySyncTimer = setTimeout(runAndSchedule, delay);
+      jiraWeeklySyncTimer.unref?.();
+    }
+  };
+  const startupDelayMs = Math.max(1000, Number(process.env.JIRA_SYNC_STARTUP_DELAY_MS || 10000));
+  jiraWeeklySyncTimer = setTimeout(runAndSchedule, startupDelayMs);
+  jiraWeeklySyncTimer.unref?.();
+}
+
 async function scheduleNextGoogleSheetSync(options = {}) {
   if (options.reset && googleSheetSyncTimer) {
     clearTimeout(googleSheetSyncTimer);
@@ -8384,6 +8444,8 @@ async function shutdown() {
   deadlineSchedulerTimer = null;
   if (googleSheetSyncTimer) clearTimeout(googleSheetSyncTimer);
   googleSheetSyncTimer = null;
+  if (jiraWeeklySyncTimer) clearTimeout(jiraWeeklySyncTimer);
+  jiraWeeklySyncTimer = null;
   server.close(async () => {
     await closeDatabase();
     process.exit(0);
