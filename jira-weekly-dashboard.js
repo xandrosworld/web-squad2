@@ -6,10 +6,10 @@ const FIRST_WEEK_START = "2026-08-13T00:00:00+07:00";
 const FIRST_CUTOFF = "2026-08-20T15:00:00+07:00";
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const CACHE_META_KEY = "jira_testluong_cache_v1";
-const SNAPSHOT_META_KEY = "jira_testluong_weekly_snapshots_v2";
+const SNAPSHOT_META_KEY = "jira_testluong_weekly_snapshots_v3";
 const SYNC_LOCK_KEY = "jira_testluong_weekly_sync_v1";
 const CONNECTION_META_KEY = "jira_testluong_connection_v1";
-const HANDLED_STATUSES = new Set(["closed", "resolved", "sit pass", "cancelled", "canceled"]);
+const HANDLED_STATUSES = new Set(["closed"]);
 const PRIORITY_ORDER = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 
 function normalizeStatus(value) {
@@ -484,7 +484,7 @@ function createJiraWeeklyDashboardService(options = {}) {
       label: runtimeConfig.label,
       timeZone: runtimeConfig.timeZone,
       cutoffDescription: "Thứ Năm hằng tuần lúc 15:00",
-      handledStatuses: ["Closed", "Resolved", "SIT Pass", "Cancelled"],
+      handledStatuses: ["Closed"],
       syncedAt: cache?.syncedAt || null,
       total: Number(cache?.total || issues.length || 0),
       weeks,

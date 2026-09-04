@@ -9254,6 +9254,16 @@ body.is-column-resizing * {
     box-shadow: 0 24px 70px rgba(9, 26, 40, .3);
 }
 
+.jira-blocker-dialog .jira-week-detail {
+    position: relative;
+    z-index: 1;
+    width: min(960px, 100%);
+    max-height: min(720px, calc(100vh - 48px));
+    margin: 0;
+    overflow: hidden;
+    box-shadow: 0 24px 70px rgba(9, 26, 40, .3);
+}
+
 .jira-blocker-dialog .jira-week-issue-list { max-height: min(590px, calc(100vh - 150px)); }
 
 @media (max-width: 640px) {
@@ -9261,5 +9271,5 @@ body.is-column-resizing * {
     .jira-blocker-pivot-head { align-items: flex-start; flex-direction: column; }
     .jira-blocker-total { width: 100%; justify-content: space-between; }
     .jira-blocker-dialog { padding: 10px; }
-    .jira-blocker-dialog .blocker-detail { max-height: calc(100vh - 20px); }
+    .jira-blocker-dialog .jira-week-detail { max-height: calc(100vh - 20px); }
 }

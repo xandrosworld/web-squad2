@@ -27,15 +27,15 @@ function fixtureIssue(overrides = {}) {
 }
 
 async function runUnitChecks() {
-  ["Closed", "Resolved", "SIT Pass", "Cancelled", "Canceled"].forEach((status) => assert.equal(isHandledStatus(status), true));
-  ["Open", "Pending", "In Progress", "Reopen"].forEach((status) => assert.equal(isHandledStatus(status), false));
+  ["Closed", " CLOSED "].forEach((status) => assert.equal(isHandledStatus(status), true));
+  ["Resolved", "SIT Pass", "Cancelled", "Canceled", "Open", "Pending", "In Progress", "Reopen"].forEach((status) => assert.equal(isHandledStatus(status), false));
 
   const transitioned = fixtureIssue({
-    status: "Resolved",
-    histories: [{ changedAt: "2026-08-18T02:00:00.000Z", from: "Open", to: "Resolved" }]
+    status: "Closed",
+    histories: [{ changedAt: "2026-08-18T02:00:00.000Z", from: "Open", to: "Closed" }]
   });
   assert.equal(statusAt(transitioned, "2026-08-17T00:00:00.000Z"), "Open");
-  assert.equal(statusAt(transitioned, "2026-08-19T00:00:00.000Z"), "Resolved");
+  assert.equal(statusAt(transitioned, "2026-08-19T00:00:00.000Z"), "Closed");
 
   const periods = buildWeekPeriods(new Date("2026-09-03T09:30:00.000Z"));
   assert.equal(periods.length, 3, "Ngày chốt 03/09 vẫn phải hiển thị đến Tuần 3");
@@ -118,6 +118,8 @@ async function runLiveCheck() {
     assert.equal(week.created, week.issues.created.length);
     assert.equal(week.handled, week.issues.handled.length);
     assert.equal(week.remaining, week.issues.remaining.length);
+    assert(week.issues.handled.every((issue) => isHandledStatus(issue.status)), `Tuần ${week.weekNumber} có bug chưa Closed trong Đã xử lý`);
+    assert(week.issues.remaining.every((issue) => !isHandledStatus(issue.status)), `Tuần ${week.weekNumber} có bug Closed trong Còn tồn`);
     Object.values(week.priorityBreakdown || {}).forEach((counts) => {
       assert(Number.isInteger(counts.created) && Number.isInteger(counts.handled) && Number.isInteger(counts.remaining));
     });

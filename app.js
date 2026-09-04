@@ -1557,7 +1557,7 @@ function openJiraWeekDetail(weekNumber, metric, priority = "") {
         priority: String(priority || "").trim()
     };
     render();
-    requestAnimationFrame(() => document.querySelector(".jira-week-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+    requestAnimationFrame(() => document.querySelector(".jira-week-metric-dialog .icon-btn")?.focus());
 }
 
 function openJiraBlockerDetail(groupKey, weekNumber, issueKey = "") {
@@ -3223,8 +3223,8 @@ function renderJiraWeeklyDashboard() {
             </div>
             <div class="jira-weekly-method">
                 <span><i class="fa-solid fa-circle-info"></i> Phạm vi: Bug có label <strong>${e(dashboard.label)}</strong></span>
-                <span>Đã xử lý: ${e((dashboard.handledStatuses || []).join(", "))}</span>
-                <span>Đã xử lý/Còn tồn: lũy kế tại mốc chốt</span>
+                <span>Đã xử lý: chỉ trạng thái <strong>${e((dashboard.handledStatuses || ["Closed"]).join(", "))}</strong></span>
+                <span>Còn tồn: mọi bug chưa Closed tại mốc chốt</span>
                 <span>${e(dashboard.cutoffDescription || "")}</span>
             </div>
             ${weeks.length ? `
@@ -3337,14 +3337,18 @@ function renderJiraWeeklyDetail(dashboard) {
     const issues = (Array.isArray(week.issues?.[metric]) ? week.issues[metric] : [])
         .filter((issue) => !selectedPriority || String(issue.priority || "").trim() === selectedPriority);
     const baseUrl = String(dashboard.browseBaseUrl || "https://bidv-vn.atlassian.net/browse/");
+    const dialogLabel = `${labels[metric]} · Tuần ${week.weekNumber}${selectedPriority ? ` · ${selectedPriority}` : ""}`;
     return `
-        <section class="jira-week-detail">
-            <div class="jira-week-detail-head">
-                <div><span>Tuần ${e(week.weekNumber)}${selectedPriority ? ` · ${e(selectedPriority)}` : ""}</span><h3>${e(labels[metric])} <b>${e(issues.length)}</b></h3></div>
-                <button class="icon-btn" type="button" data-action="close-jira-week-detail" aria-label="Đóng danh sách"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            ${renderJiraIssueList(issues, baseUrl)}
-        </section>
+        <div class="jira-blocker-dialog jira-week-metric-dialog" role="presentation">
+            <button class="jira-blocker-dialog-scrim" type="button" data-action="close-jira-week-detail" aria-label="Đóng danh sách bug"></button>
+            <section class="jira-week-detail" role="dialog" aria-modal="true" aria-label="${e(dialogLabel)}">
+                <div class="jira-week-detail-head">
+                    <div><span>Tuần ${e(week.weekNumber)}${selectedPriority ? ` · ${e(selectedPriority)}` : ""}</span><h3>${e(labels[metric])} <b>${e(issues.length)}</b></h3></div>
+                    <button class="icon-btn" type="button" data-action="close-jira-week-detail" aria-label="Đóng danh sách"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                ${renderJiraIssueList(issues, baseUrl)}
+            </section>
+        </div>
     `;
 }
 

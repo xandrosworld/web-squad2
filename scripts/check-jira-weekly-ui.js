@@ -37,7 +37,7 @@ const dashboard = {
   projectKey: "PS0142025",
   label: "TESTLUONG",
   cutoffDescription: "Thứ Năm hằng tuần lúc 15:00",
-  handledStatuses: ["Closed", "Resolved", "SIT Pass", "Cancelled"],
+  handledStatuses: ["Closed"],
   syncedAt: "2026-09-03T08:05:00.000Z",
   total: 3,
   blockerPivot: {
@@ -57,14 +57,14 @@ const dashboard = {
     startAt: ["2026-08-13T00:00:00.000Z", "2026-08-20T08:00:00.000Z", "2026-08-27T08:00:00.000Z"][weekNumber - 1],
     cutoffAt: ["2026-08-20T08:00:00.000Z", "2026-08-27T08:00:00.000Z", "2026-09-03T08:00:00.000Z"][weekNumber - 1],
     finalized: weekNumber < 3,
-    created: weekNumber,
-    handled: weekNumber,
-    remaining: 3 - weekNumber,
-    total: 3,
-    handledRate: Math.round((weekNumber / 3) * 1000) / 10,
+    created: 1,
+    handled: 1,
+    remaining: weekNumber === 3 ? 0 : 1,
+    total: weekNumber === 3 ? 1 : 2,
+    handledRate: weekNumber === 3 ? 100 : 50,
     issues: {
       created: [issue(`PS0142025-${12000 + weekNumber}`, "Open", weekNumber === 2 ? "Blocker" : "Major")],
-      handled: [issue(`PS0142025-${12100 + weekNumber}`, "Resolved")],
+      handled: [issue(`PS0142025-${12100 + weekNumber}`, "Closed")],
       remaining: weekNumber === 3 ? [] : [issue(`PS0142025-${12200 + weekNumber}`, "Open")]
     },
     priorityBreakdown: {
@@ -118,15 +118,27 @@ const dashboard = {
     if (railLayout.scrollLeft <= 0) throw new Error("Giao diện chưa tự đưa tuần mới nhất vào vùng nhìn thấy.");
     if (await page.locator(".jira-week-card").nth(1).getByText("Blocker", { exact: true }).count() !== 1) throw new Error("Thiếu phân rã Priority trong tuần.");
     if (process.env.SMOKE_WEEKLY_SCREENSHOT) await page.screenshot({ path: process.env.SMOKE_WEEKLY_SCREENSHOT, fullPage: true });
+    for (const metric of ["created", "handled", "remaining"]) {
+      await page.locator(`.jira-week-card:nth-child(2) .jira-week-metric[data-week-metric="${metric}"]`).click();
+      await page.locator(".jira-week-metric-dialog .jira-week-detail").waitFor();
+      const displayedCount = Number(await page.locator(`.jira-week-card:nth-child(2) .jira-week-metric[data-week-metric="${metric}"] strong`).innerText());
+      const listedCount = await page.locator(".jira-week-metric-dialog a.jira-week-issue").count();
+      if (displayedCount !== listedCount) throw new Error(`Popup ${metric} có ${listedCount} bug nhưng thẻ hiển thị ${displayedCount}.`);
+      await page.locator('.jira-week-metric-dialog .icon-btn[data-action="close-jira-week-detail"]').click();
+    }
     await page.locator(".jira-week-card").nth(1).locator('[data-week-priority="Blocker"][data-week-metric="created"]').click();
-    await page.locator(".jira-week-detail").waitFor();
+    await page.locator(".jira-week-metric-dialog .jira-week-detail").waitFor();
+    if (await page.locator(".jira-week-metric-dialog").getAttribute("role") !== "presentation") throw new Error("Danh sách bug chưa hiển thị trong popup.");
+    if (await page.locator(".jira-week-metric-dialog a.jira-week-issue").count() !== 1) throw new Error("Popup Priority không hiển thị đúng danh sách bug.");
+    if (process.env.SMOKE_WEEKLY_POPUP_SCREENSHOT) await page.screenshot({ path: process.env.SMOKE_WEEKLY_POPUP_SCREENSHOT, fullPage: true });
     const priorityDetailText = await page.locator(".jira-week-detail-head").innerText();
     if (!priorityDetailText.toLowerCase().includes("blocker")) throw new Error(`Drill-down chưa lọc đúng Priority: ${priorityDetailText}`);
-    await page.locator('[data-action="close-jira-week-detail"]').click();
+    await page.locator('.jira-week-metric-dialog .icon-btn[data-action="close-jira-week-detail"]').click();
     await page.locator(".jira-week-card").nth(2).getByRole("button", { name: /Bug đã xử lý/ }).click();
-    await page.locator(".jira-week-detail").waitFor();
-    const href = await page.locator(".jira-week-detail a").first().getAttribute("href");
+    await page.locator(".jira-week-metric-dialog .jira-week-detail").waitFor();
+    const href = await page.locator(".jira-week-metric-dialog .jira-week-detail a").first().getAttribute("href");
     if (!href?.includes("https://bidv-vn.atlassian.net/browse/PS0142025-")) throw new Error(`Link Jira không đúng: ${href}`);
+    await page.locator('.jira-week-metric-dialog .icon-btn[data-action="close-jira-week-detail"]').click();
     const bodyText = await page.locator(".jira-weekly-panel").innerText();
     for (const text of ["Bug phát sinh", "Bug đã xử lý", "Bug còn tồn", "Tỷ lệ xử lý lũy kế", "Tạm tính", "Đã chốt", "Blocker TESTLUONG phát sinh theo tuần", "Tổng Blocker", "PS0142025-12563", "PHÁT SINH TẠI"]) {
       if (!bodyText.includes(text)) throw new Error(`Thiếu nội dung dashboard: ${text}`);
