@@ -68,15 +68,29 @@ async function runUnitChecks() {
 
   const blockerWeek = calculateWeek(periods[0], [
     fixtureIssue({ key: "PS0142025-B1", priority: "Blocker" }),
+    fixtureIssue({ key: "PS0142025-B2", priority: "Blocker", status: "Cancelled" }),
+    fixtureIssue({ key: "PS0142025-B3", priority: "Blocker", status: "Closed" }),
     fixtureIssue({ key: "PS0142025-M1", priority: "Major" })
   ]);
   const blockerPivot = buildBlockerPivot([blockerWeek]);
-  assert.equal(blockerPivot.total, 1);
+  assert.equal(blockerPivot.total, 2);
   assert.equal(blockerPivot.rows.length, 1);
   assert.equal(blockerPivot.rows[0].parentKey, "PS0142025-5");
-  assert.equal(blockerPivot.rows[0].counts["1"], 1);
-  assert.deepEqual(blockerWeek.priorityBreakdown.Blocker, { created: 1, handled: 0, remaining: 1, cancelled: 0 });
+  assert.equal(blockerPivot.rows[0].counts["1"], 2);
+  assert.deepEqual(blockerPivot.rows[0].issues["1"].map((issue) => issue.key).sort(), ["PS0142025-B1", "PS0142025-B3"]);
+  assert.deepEqual(blockerWeek.priorityBreakdown.Blocker, { created: 3, handled: 1, remaining: 1, cancelled: 1 });
   assert.deepEqual(blockerWeek.priorityBreakdown.Major, { created: 1, handled: 0, remaining: 1, cancelled: 0 });
+
+  const lateCancelledBlocker = fixtureIssue({
+    key: "PS0142025-LATE-CANCEL",
+    priority: "Blocker",
+    status: "Cancelled",
+    histories: [{ changedAt: "2026-08-21T02:00:00.000Z", from: "Open", to: "Cancelled" }]
+  });
+  const historicalBlockerWeek = calculateWeek(periods[0], [lateCancelledBlocker]);
+  const currentBlockerWeek = calculateWeek(periods[1], [lateCancelledBlocker]);
+  assert.equal(historicalBlockerWeek.issues.created[0].status, "Open");
+  assert.equal(buildBlockerPivot([historicalBlockerWeek, currentBlockerWeek]).total, 0, "Blocker Cancelled sau tuần phát sinh vẫn phải bị loại khỏi Pivot");
 
   const storedConfigService = createJiraWeeklyDashboardService({
     env: {
@@ -149,6 +163,11 @@ async function runLiveCheck() {
   });
   assert.equal(dashboard.blockerPivot.total, dashboard.blockerPivot.rows.reduce((total, row) => total + row.total, 0));
   dashboard.blockerPivot.rows.forEach((row) => assert(row.parentKey || row.components.length, "Blocker phải xác định được nguồn phát sinh"));
+  dashboard.blockerPivot.rows.forEach((row) => {
+    Object.values(row.issues || {}).flat().forEach((issue) => {
+      assert(!isCancelledStatus(issue.status), `Pivot còn bug Cancelled: ${issue.key}`);
+    });
+  });
   console.log(`Jira live check passed: ${dashboard.total} TESTLUONG bugs, ${dashboard.weeks.length} weekly periods, ${dashboard.blockerPivot.total} Blockers.`);
 }
 

@@ -47,15 +47,15 @@ const dashboard = {
   syncedAt: "2026-09-03T08:05:00.000Z",
   total: 3,
   blockerPivot: {
-    total: 2,
+    total: 1,
     rows: [{
       groupKey: "PS0142025-5",
       parentKey: "PS0142025-5",
       groupName: "[SQ2] Thẩm định và phê duyệt tín dụng",
       components: ["SQ02"],
-      total: 2,
-      counts: { "2": 2 },
-      issues: { "2": [issue("PS0142025-12563", "SIT Pass", "Blocker"), issue("PS0142025-12564", "Cancelled", "Blocker")] }
+      total: 1,
+      counts: { "2": 1 },
+      issues: { "2": [issue("PS0142025-12563", "SIT Pass", "Blocker")] }
     }]
   },
   weeks: [1, 2, 3].map((weekNumber) => ({
@@ -173,6 +173,8 @@ const dashboard = {
     for (const text of ["Bug phát sinh", "Bug đã xử lý", "Bug còn tồn", "Còn tồn không bao gồm", "bug Cancelled", "Tỷ lệ xử lý lũy kế", "Tạm tính", "Đã chốt", "Blocker TESTLUONG phát sinh theo tuần", "Tổng Blocker", "PS0142025-12563", "PHÁT SINH TẠI"]) {
       if (!bodyText.includes(text)) throw new Error(`Thiếu nội dung dashboard: ${text}`);
     }
+    if (Number(await page.locator(".jira-blocker-total strong").innerText()) !== 1) throw new Error("Tổng Blocker chưa loại bug Cancelled.");
+    if (await page.locator('[data-blocker-issue="PS0142025-12564"]').count()) throw new Error("Bảng Pivot vẫn hiển thị bug Blocker đã Cancelled.");
     await page.locator('.jira-blocker-table .jira-blocker-bug[data-blocker-issue="PS0142025-12563"]').click();
     await page.locator(".jira-week-detail.blocker-detail").waitFor();
     if (await page.locator(".jira-week-detail.blocker-detail a.jira-week-issue").count() !== 1) throw new Error("Drill-down phải hiển thị đúng bug đã chọn.");
@@ -185,7 +187,7 @@ const dashboard = {
     const cachedWeekCount = await page.evaluate((key) => {
       const cached = JSON.parse(localStorage.getItem(key) || "null");
       return Array.isArray(cached?.weeks) ? cached.weeks.length : 0;
-    }, "squad2_uat_command_center_v1_jira_weekly_dashboard_v1");
+    }, "squad2_uat_command_center_v1_jira_weekly_dashboard_v2");
     if (cachedWeekCount !== dashboard.weeks.length) throw new Error("Dashboard Jira gần nhất chưa được lưu vào cache trình duyệt.");
     jiraResponseMode = "error";
     await page.reload({ waitUntil: "domcontentloaded" });

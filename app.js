@@ -3,7 +3,7 @@ const MIGRATION_FLAG_KEY = `${STORAGE_KEY}_remote_migration_checked`;
 const LEGACY_BACKUP_KEY = `${STORAGE_KEY}_legacy_backup`;
 const COLUMN_WIDTHS_KEY = `${STORAGE_KEY}_column_widths_v3`;
 const TABLE_SCROLL_LEFTS_KEY = `${STORAGE_KEY}_table_scroll_lefts_v1`;
-const JIRA_WEEKLY_CACHE_KEY = `${STORAGE_KEY}_jira_weekly_dashboard_v1`;
+const JIRA_WEEKLY_CACHE_KEY = `${STORAGE_KEY}_jira_weekly_dashboard_v2`;
 const API_BASE = "/api";
 const SYNC_INTERVAL_MS = 30000;
 const GROUP_CHAT_POLL_INTERVAL_MS = 15000;
@@ -3455,7 +3455,7 @@ function renderJiraBlockerPivot(dashboard) {
                 <div>
                     <span><i class="fa-solid fa-table-cells"></i> Pivot TESTLUONG</span>
                     <h3>Blocker TESTLUONG phát sinh theo tuần</h3>
-                    <p>Hiển thị trực tiếp từng bug Blocker; Parent/User Story chỉ dùng để xác định nơi phát sinh.</p>
+                    <p>Hiển thị từng bug Blocker đã phát sinh, gồm cả Closed và không bao gồm Cancelled.</p>
                 </div>
                 <button class="jira-blocker-total" type="button" data-action="open-jira-blocker-detail" data-blocker-group="all" data-week-number="all">
                     <span>Tổng Blocker</span><strong>${e(Number(pivot.total || 0))}</strong>

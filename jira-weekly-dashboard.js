@@ -242,10 +242,20 @@ function withPriorityBreakdown(week) {
 }
 
 function buildBlockerPivot(weeks) {
+  const reportingWeeks = Array.isArray(weeks) ? weeks : [];
+  const latestWeek = reportingWeeks.at(-1);
+  const latestStatusByKey = new Map(
+    ["handled", "remaining", "cancelled"]
+      .flatMap((metric) => Array.isArray(latestWeek?.issues?.[metric]) ? latestWeek.issues[metric] : [])
+      .filter((issue) => issue?.key)
+      .map((issue) => [issue.key, issue.status || ""])
+  );
   const rowsByGroup = new Map();
-  (Array.isArray(weeks) ? weeks : []).forEach((week) => {
+  reportingWeeks.forEach((week) => {
     const blockers = (Array.isArray(week?.issues?.created) ? week.issues.created : [])
-      .filter((issue) => normalizeStatus(issue.priority) === "blocker");
+      .filter((issue) => normalizeStatus(issue.priority) === "blocker")
+      .map((issue) => ({ ...issue, status: latestStatusByKey.get(issue.key) || issue.status || "" }))
+      .filter((issue) => !isCancelledStatus(issue.status));
     blockers.forEach((issue) => {
       const components = Array.isArray(issue.components) ? issue.components.filter(Boolean) : [];
       const groupKey = issue.parentKey || components.join("|") || "unmapped";
