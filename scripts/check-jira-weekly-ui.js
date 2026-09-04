@@ -109,12 +109,17 @@ const dashboard = {
     const href = await page.locator(".jira-week-detail a").first().getAttribute("href");
     if (!href?.includes("https://bidv-vn.atlassian.net/browse/PS0142025-")) throw new Error(`Link Jira không đúng: ${href}`);
     const bodyText = await page.locator(".jira-weekly-panel").innerText();
-    for (const text of ["Bug phát sinh", "Bug đã xử lý", "Bug còn tồn", "Tỷ lệ xử lý lũy kế", "Tạm tính", "Đã chốt", "Blocker phát sinh theo User Story", "Tổng Blocker"]) {
+    for (const text of ["Bug phát sinh", "Bug đã xử lý", "Bug còn tồn", "Tỷ lệ xử lý lũy kế", "Tạm tính", "Đã chốt", "Blocker TESTLUONG phát sinh theo tuần", "Tổng Blocker", "PS0142025-12563", "PHÁT SINH TẠI"]) {
       if (!bodyText.includes(text)) throw new Error(`Thiếu nội dung dashboard: ${text}`);
     }
-    await page.locator('.jira-blocker-table [data-blocker-group="PS0142025-5"][data-week-number="2"]').click();
+    await page.locator('.jira-blocker-table .jira-blocker-bug[data-blocker-issue="PS0142025-12563"]').click();
     await page.locator(".jira-week-detail.blocker-detail").waitFor();
-    if (await page.locator(".jira-week-detail.blocker-detail a.jira-week-issue").count() !== 2) throw new Error("Drill-down Blocker không đủ 2 bug.");
+    if (await page.locator(".jira-week-detail.blocker-detail a.jira-week-issue").count() !== 1) throw new Error("Drill-down phải hiển thị đúng bug đã chọn.");
+    const dialogRect = await page.locator(".jira-week-detail.blocker-detail").evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    });
+    if (dialogRect.top < 0 || dialogRect.bottom > 900) throw new Error("Hộp chi tiết Blocker nằm ngoài màn hình.");
     if (process.env.SMOKE_SCREENSHOT) await page.screenshot({ path: process.env.SMOKE_SCREENSHOT, fullPage: true });
     console.log("Jira weekly dashboard UI check passed.");
   } finally {

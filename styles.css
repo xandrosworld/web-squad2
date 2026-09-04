@@ -9151,8 +9151,114 @@ body.is-column-resizing * {
 .jira-week-issue-meta em.priority { color: #984e00; background: #fff0d9; }
 .jira-week-detail.blocker-detail { border-color: #ead9bf; }
 
+.jira-blocker-week-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 20px;
+    border-bottom: 1px solid #edf0f2;
+    background: #fff;
+}
+
+.jira-blocker-week-summary > div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 92px;
+    padding: 7px 9px;
+    border: 1px solid #e3e8eb;
+    border-radius: 9px;
+    color: #647185;
+    background: #f8fafb;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.jira-blocker-week-summary .jira-blocker-count { margin-left: auto; }
+.jira-blocker-table th:first-child, .jira-blocker-table td:first-child { width: 34%; }
+.jira-blocker-table th:nth-child(2), .jira-blocker-table td:nth-child(2) { width: 34%; text-align: left; }
+
+.jira-blocker-bug {
+    display: grid;
+    gap: 5px;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+}
+
+.jira-blocker-bug > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #c25800;
+    font-size: 12px;
+    font-weight: 900;
+    text-decoration: underline;
+}
+
+.jira-blocker-bug > strong { color: #25334a; font-size: 13px; line-height: 1.4; }
+.jira-blocker-bug:hover > strong { color: #00786f; }
+.jira-blocker-week-badge { display: inline-flex; padding: 5px 9px; border-radius: 999px; color: #08776f; background: #e7f6f3; font-size: 11px; font-weight: 850; white-space: nowrap; }
+.jira-blocker-status { display: inline-flex; padding: 5px 9px; border-radius: 999px; color: #5b687b; background: #edf1f5; font-size: 11px; font-weight: 800; white-space: nowrap; }
+
+.jira-blocker-view {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 9px;
+    border: 1px solid #d7e2e5;
+    border-radius: 8px;
+    color: #08776f;
+    background: #fff;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.jira-blocker-view:hover { border-color: #78bdb7; background: #f0faf8; }
+
+.jira-blocker-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+}
+
+.jira-blocker-dialog-scrim {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: rgba(17, 31, 48, .55);
+    cursor: default;
+}
+
+.jira-blocker-dialog .blocker-detail {
+    position: relative;
+    z-index: 1;
+    width: min(960px, 100%);
+    max-height: min(720px, calc(100vh - 48px));
+    margin: 0;
+    overflow: hidden;
+    border-color: #e6c894;
+    box-shadow: 0 24px 70px rgba(9, 26, 40, .3);
+}
+
+.jira-blocker-dialog .jira-week-issue-list { max-height: min(590px, calc(100vh - 150px)); }
+
 @media (max-width: 640px) {
     .jira-blocker-pivot { margin: 0 14px 16px; }
     .jira-blocker-pivot-head { align-items: flex-start; flex-direction: column; }
     .jira-blocker-total { width: 100%; justify-content: space-between; }
+    .jira-blocker-dialog { padding: 10px; }
+    .jira-blocker-dialog .blocker-detail { max-height: calc(100vh - 20px); }
 }

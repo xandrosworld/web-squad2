@@ -1559,15 +1559,16 @@ function openJiraWeekDetail(weekNumber, metric) {
     requestAnimationFrame(() => document.querySelector(".jira-week-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
 }
 
-function openJiraBlockerDetail(groupKey, weekNumber) {
+function openJiraBlockerDetail(groupKey, weekNumber, issueKey = "") {
     if (!jiraWeeklyDashboardState.data) return;
     ui.jiraWeeklyDetail = {
         mode: "blocker",
         groupKey: groupKey || "all",
-        weekNumber: weekNumber || "all"
+        weekNumber: weekNumber || "all",
+        issueKey: issueKey || ""
     };
     render();
-    requestAnimationFrame(() => document.querySelector(".jira-week-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+    requestAnimationFrame(() => document.querySelector(".jira-blocker-dialog .icon-btn")?.focus());
 }
 
 function isPersonalWorkspaceOwner(user = authState.user) {
@@ -3283,50 +3284,59 @@ function renderJiraBlockerPivot(dashboard) {
     const pivot = dashboard.blockerPivot || { total: 0, rows: [] };
     const rows = Array.isArray(pivot.rows) ? pivot.rows : [];
     const weeks = Array.isArray(dashboard.weeks) ? dashboard.weeks : [];
+    const blockers = rows.flatMap((row) => Object.entries(row.issues || {}).flatMap(([weekNumber, issues]) =>
+        (Array.isArray(issues) ? issues : []).map((issue) => ({
+            ...issue,
+            weekNumber,
+            sourceKey: row.parentKey || "",
+            sourceName: row.groupName || "Chưa xác định nguồn phát sinh",
+            sourceComponents: row.components || [],
+            groupKey: row.groupKey
+        }))
+    )).sort((a, b) => Number(b.weekNumber) - Number(a.weekNumber) || new Date(b.createdAt) - new Date(a.createdAt));
     return `
         <section class="jira-blocker-pivot">
             <div class="jira-blocker-pivot-head">
                 <div>
                     <span><i class="fa-solid fa-table-cells"></i> Pivot TESTLUONG</span>
-                    <h3>Blocker phát sinh theo User Story</h3>
-                    <p>Tổng hợp nơi phát sinh theo Parent/User Story. Chọn một con số để xem bug chi tiết.</p>
+                    <h3>Blocker TESTLUONG phát sinh theo tuần</h3>
+                    <p>Hiển thị trực tiếp từng bug Blocker; Parent/User Story chỉ dùng để xác định nơi phát sinh.</p>
                 </div>
                 <button class="jira-blocker-total" type="button" data-action="open-jira-blocker-detail" data-blocker-group="all" data-week-number="all">
                     <span>Tổng Blocker</span><strong>${e(Number(pivot.total || 0))}</strong>
                 </button>
             </div>
-            ${rows.length ? `
+            ${blockers.length ? `
+                <div class="jira-blocker-week-summary" aria-label="Tổng Blocker theo tuần">
+                    ${weeks.map((week) => {
+                        const count = rows.reduce((total, row) => total + Number(row.counts?.[String(week.weekNumber)] || 0), 0);
+                        return `<div><span>Tuần ${e(week.weekNumber)}</span>${renderJiraBlockerCountButton(count, "all", week.weekNumber, `Tuần ${week.weekNumber}`)}</div>`;
+                    }).join("")}
+                </div>
                 <div class="jira-blocker-table-wrap">
                     <table class="jira-blocker-table">
-                        <thead><tr><th>USER STORY / NGUỒN PHÁT SINH</th>${weeks.map((week) => `<th>Tuần ${e(week.weekNumber)}</th>`).join("")}<th>TỔNG</th></tr></thead>
+                        <thead><tr><th>BUG BLOCKER</th><th>PHÁT SINH TẠI</th><th>TUẦN</th><th>TRẠNG THÁI</th><th>THAO TÁC</th></tr></thead>
                         <tbody>
-                            ${rows.map((row) => `
+                            ${blockers.map((issue) => `
                                 <tr>
                                     <td>
-                                        <div class="jira-blocker-source">
-                                            <span>${row.parentKey ? `<a href="${e(`${dashboard.browseBaseUrl}${encodeURIComponent(row.parentKey)}`)}" target="_blank" rel="noopener noreferrer">${e(row.parentKey)}</a>` : "Chưa có Parent"}${(row.components || []).map((component) => `<em>${e(component)}</em>`).join("")}</span>
-                                            <strong>${e(row.groupName || "Chưa xác định nguồn phát sinh")}</strong>
-                                        </div>
+                                        <button class="jira-blocker-bug" type="button" data-action="open-jira-blocker-detail" data-blocker-group="${e(issue.groupKey)}" data-week-number="${e(issue.weekNumber)}" data-blocker-issue="${e(issue.key)}">
+                                            <span><i class="fa-solid fa-bug"></i>${e(issue.key)}</span>
+                                            <strong>${e(issue.summary || "Không có tên bug")}</strong>
+                                        </button>
                                     </td>
-                                    ${weeks.map((week) => renderJiraBlockerCountCell(row, week.weekNumber)).join("")}
-                                    <td>${renderJiraBlockerCountButton(row.total, row.groupKey, "all", "Tổng")}</td>
+                                    <td><div class="jira-blocker-source"><span>${issue.sourceKey ? `<a href="${e(`${dashboard.browseBaseUrl}${encodeURIComponent(issue.sourceKey)}`)}" target="_blank" rel="noopener noreferrer">${e(issue.sourceKey)}</a>` : "Chưa có Parent"}${issue.sourceComponents.map((component) => `<em>${e(component)}</em>`).join("")}</span><strong>${e(issue.sourceName)}</strong></div></td>
+                                    <td><span class="jira-blocker-week-badge">Tuần ${e(issue.weekNumber)}</span></td>
+                                    <td><span class="jira-blocker-status">${e(issue.status || "Chưa xác định")}</span></td>
+                                    <td><button class="jira-blocker-view" type="button" data-action="open-jira-blocker-detail" data-blocker-group="${e(issue.groupKey)}" data-week-number="${e(issue.weekNumber)}" data-blocker-issue="${e(issue.key)}"><i class="fa-solid fa-eye"></i> Xem chi tiết</button></td>
                                 </tr>
                             `).join("")}
                         </tbody>
-                        <tfoot><tr><th>Tổng Blocker phát sinh</th>${weeks.map((week) => {
-                            const count = rows.reduce((total, row) => total + Number(row.counts?.[String(week.weekNumber)] || 0), 0);
-                            return `<th>${renderJiraBlockerCountButton(count, "all", week.weekNumber, `Tuần ${week.weekNumber}`)}</th>`;
-                        }).join("")}<th>${renderJiraBlockerCountButton(pivot.total, "all", "all", "Tổng")}</th></tr></tfoot>
                     </table>
                 </div>
             ` : `<div class="jira-blocker-empty"><i class="fa-solid fa-shield-check"></i><strong>Chưa phát sinh Blocker TESTLUONG trong các kỳ báo cáo.</strong></div>`}
         </section>
     `;
-}
-
-function renderJiraBlockerCountCell(row, weekNumber) {
-    const count = Number(row.counts?.[String(weekNumber)] || 0);
-    return `<td>${renderJiraBlockerCountButton(count, row.groupKey, weekNumber, `Tuần ${weekNumber}`)}</td>`;
 }
 
 function renderJiraBlockerCountButton(count, groupKey, weekNumber, label) {
@@ -3342,18 +3352,23 @@ function renderJiraBlockerDetail(dashboard, detail) {
         if (String(detail.weekNumber) === "all") return Object.values(row.issues || {}).flat();
         return row.issues?.[String(detail.weekNumber)] || [];
     });
-    const uniqueIssues = [...new Map(issues.map((issue) => [issue.key, issue])).values()];
+    let uniqueIssues = [...new Map(issues.map((issue) => [issue.key, issue])).values()];
+    if (detail.issueKey) uniqueIssues = uniqueIssues.filter((issue) => issue.key === detail.issueKey);
     const selectedRow = selectedRows.length === 1 ? selectedRows[0] : null;
+    const selectedIssue = uniqueIssues.length === 1 ? uniqueIssues[0] : null;
     const periodLabel = String(detail.weekNumber) === "all" ? "Tất cả các tuần" : `Tuần ${detail.weekNumber}`;
     const baseUrl = String(dashboard.browseBaseUrl || "https://bidv-vn.atlassian.net/browse/");
     return `
-        <section class="jira-week-detail blocker-detail">
-            <div class="jira-week-detail-head">
-                <div><span>${e(periodLabel)} · Blocker TESTLUONG</span><h3>${e(selectedRow?.groupName || "Tất cả nguồn phát sinh")} <b>${e(uniqueIssues.length)}</b></h3></div>
-                <button class="icon-btn" type="button" data-action="close-jira-week-detail" aria-label="Đóng danh sách"><i class="fa-solid fa-xmark"></i></button>
-            </div>
-            ${renderJiraIssueList(uniqueIssues, baseUrl)}
-        </section>
+        <div class="jira-blocker-dialog" role="presentation">
+            <button class="jira-blocker-dialog-scrim" type="button" data-action="close-jira-week-detail" aria-label="Đóng danh sách Blocker"></button>
+            <section class="jira-week-detail blocker-detail" role="dialog" aria-modal="true" aria-label="Chi tiết Blocker TESTLUONG">
+                <div class="jira-week-detail-head">
+                    <div><span>${e(periodLabel)} · Blocker TESTLUONG</span><h3>${e(selectedIssue ? `${selectedIssue.key} – ${selectedIssue.summary}` : selectedRow?.groupName || "Tất cả Blocker phát sinh")} <b>${e(uniqueIssues.length)}</b></h3></div>
+                    <button class="icon-btn" type="button" data-action="close-jira-week-detail" aria-label="Đóng danh sách"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+                ${renderJiraIssueList(uniqueIssues, baseUrl)}
+            </section>
+        </div>
     `;
 }
 
@@ -8522,7 +8537,7 @@ function handleAction(event) {
     if (action === "set-defect-dashboard-view") return setDefectDashboardView(event.currentTarget.dataset.dashboardView);
     if (action === "refresh-jira-weekly") return hydrateJiraWeeklyDashboard(true);
     if (action === "open-jira-week-detail") return openJiraWeekDetail(event.currentTarget.dataset.weekNumber, event.currentTarget.dataset.weekMetric);
-    if (action === "open-jira-blocker-detail") return openJiraBlockerDetail(event.currentTarget.dataset.blockerGroup, event.currentTarget.dataset.weekNumber);
+    if (action === "open-jira-blocker-detail") return openJiraBlockerDetail(event.currentTarget.dataset.blockerGroup, event.currentTarget.dataset.weekNumber, event.currentTarget.dataset.blockerIssue);
     if (action === "close-jira-week-detail") {
         ui.jiraWeeklyDetail = null;
         return render();
