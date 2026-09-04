@@ -43,6 +43,7 @@ const dashboard = {
   label: "TESTLUONG",
   cutoffDescription: "Thứ Năm hằng tuần lúc 15:00",
   handledStatuses: ["Closed"],
+  cancelledStatuses: ["Cancelled", "Canceled"],
   syncedAt: "2026-09-03T08:05:00.000Z",
   total: 3,
   blockerPivot: {
@@ -65,17 +66,19 @@ const dashboard = {
     created: 1,
     handled: 1,
     remaining: weekNumber === 3 ? 0 : 1,
-    total: weekNumber === 3 ? 1 : 2,
+    cancelled: weekNumber === 2 ? 1 : 0,
+    total: weekNumber === 3 ? 1 : weekNumber === 2 ? 3 : 2,
     handledRate: weekNumber === 3 ? 100 : 50,
     issues: {
       created: [issue(`PS0142025-${12000 + weekNumber}`, "Open", weekNumber === 2 ? "Blocker" : "Major")],
       handled: [issue(`PS0142025-${12100 + weekNumber}`, "Closed")],
-      remaining: weekNumber === 3 ? [] : [issue(`PS0142025-${12200 + weekNumber}`, "Open")]
+      remaining: weekNumber === 3 ? [] : [issue(`PS0142025-${12200 + weekNumber}`, "Open")],
+      cancelled: weekNumber === 2 ? [issue("PS0142025-12302", "Cancelled", "Minor")] : []
     },
     priorityBreakdown: {
-      Blocker: { created: weekNumber === 2 ? 1 : 0, handled: 0, remaining: 0 },
-      Major: { created: weekNumber === 2 ? 0 : 1, handled: 1, remaining: weekNumber === 3 ? 0 : 1 },
-      Minor: { created: 0, handled: 0, remaining: 0 }
+      Blocker: { created: weekNumber === 2 ? 1 : 0, handled: 0, remaining: 0, cancelled: 0 },
+      Major: { created: weekNumber === 2 ? 0 : 1, handled: 1, remaining: weekNumber === 3 ? 0 : 1, cancelled: 0 },
+      Minor: { created: 0, handled: 0, remaining: 0, cancelled: weekNumber === 2 ? 1 : 0 }
     }
   }))
 };
@@ -131,6 +134,13 @@ const dashboard = {
       if (displayedCount !== listedCount) throw new Error(`Popup ${metric} có ${listedCount} bug nhưng thẻ hiển thị ${displayedCount}.`);
       await page.locator('.jira-week-metric-dialog .icon-btn[data-action="close-jira-week-detail"]').click();
     }
+    const cancelledButton = page.locator('.jira-week-card:nth-child(2) .jira-week-cancelled[data-week-metric="cancelled"]');
+    if (!(await cancelledButton.innerText()).includes("Còn tồn không bao gồm\n1\nbug Cancelled")) throw new Error("Tuần chưa ghi rõ số bug Cancelled bị loại khỏi Còn tồn.");
+    await cancelledButton.click();
+    await page.locator(".jira-week-metric-dialog .jira-week-detail").waitFor();
+    if (await page.locator(".jira-week-metric-dialog a.jira-week-issue").count() !== 1) throw new Error("Popup Cancelled không hiển thị đúng số bug.");
+    if (!(await page.locator(".jira-week-metric-dialog a.jira-week-issue").first().innerText()).includes("Cancelled")) throw new Error("Popup loại trừ chứa bug không phải Cancelled.");
+    await page.locator('.jira-week-metric-dialog .icon-btn[data-action="close-jira-week-detail"]').click();
     await page.locator(".jira-week-card").nth(1).locator('[data-week-priority="Blocker"][data-week-metric="created"]').click();
     await page.locator(".jira-week-metric-dialog .jira-week-detail").waitFor();
     if (await page.locator(".jira-week-metric-dialog").getAttribute("role") !== "presentation") throw new Error("Danh sách bug chưa hiển thị trong popup.");
@@ -145,7 +155,7 @@ const dashboard = {
     if (!href?.includes("https://bidv-vn.atlassian.net/browse/PS0142025-")) throw new Error(`Link Jira không đúng: ${href}`);
     await page.locator('.jira-week-metric-dialog .icon-btn[data-action="close-jira-week-detail"]').click();
     const bodyText = await page.locator(".jira-weekly-panel").innerText();
-    for (const text of ["Bug phát sinh", "Bug đã xử lý", "Bug còn tồn", "Tỷ lệ xử lý lũy kế", "Tạm tính", "Đã chốt", "Blocker TESTLUONG phát sinh theo tuần", "Tổng Blocker", "PS0142025-12563", "PHÁT SINH TẠI"]) {
+    for (const text of ["Bug phát sinh", "Bug đã xử lý", "Bug còn tồn", "Còn tồn không bao gồm", "bug Cancelled", "Tỷ lệ xử lý lũy kế", "Tạm tính", "Đã chốt", "Blocker TESTLUONG phát sinh theo tuần", "Tổng Blocker", "PS0142025-12563", "PHÁT SINH TẠI"]) {
       if (!bodyText.includes(text)) throw new Error(`Thiếu nội dung dashboard: ${text}`);
     }
     await page.locator('.jira-blocker-table .jira-blocker-bug[data-blocker-issue="PS0142025-12563"]').click();

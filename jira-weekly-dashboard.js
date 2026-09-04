@@ -6,10 +6,11 @@ const FIRST_WEEK_START = "2026-08-13T00:00:00+07:00";
 const FIRST_CUTOFF = "2026-08-20T15:00:00+07:00";
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const CACHE_META_KEY = "jira_testluong_cache_v1";
-const SNAPSHOT_META_KEY = "jira_testluong_weekly_snapshots_v3";
+const SNAPSHOT_META_KEY = "jira_testluong_weekly_snapshots_v4";
 const SYNC_LOCK_KEY = "jira_testluong_weekly_sync_v1";
 const CONNECTION_META_KEY = "jira_testluong_connection_v1";
 const HANDLED_STATUSES = new Set(["closed"]);
+const CANCELLED_STATUSES = new Set(["cancelled", "canceled"]);
 const PRIORITY_ORDER = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 
 function normalizeStatus(value) {
@@ -22,6 +23,10 @@ function normalizeStatus(value) {
 
 function isHandledStatus(value) {
   return HANDLED_STATUSES.has(normalizeStatus(value));
+}
+
+function isCancelledStatus(value) {
+  return CANCELLED_STATUSES.has(normalizeStatus(value));
 }
 
 function asIso(value) {
@@ -170,13 +175,18 @@ function calculateWeek(period, issues) {
   });
   const handled = [];
   const remaining = [];
+  const cancelled = [];
   available.forEach((issue) => {
     const status = statusAt(issue, period.evaluatedAt);
-    (isHandledStatus(status) ? handled : remaining).push(publicIssue(issue, status));
+    const publicRow = publicIssue(issue, status);
+    if (isHandledStatus(status)) handled.push(publicRow);
+    else if (isCancelledStatus(status)) cancelled.push(publicRow);
+    else remaining.push(publicRow);
   });
   const total = available.length;
-  const handledRate = total ? Math.round((handled.length / total) * 1000) / 10 : 0;
-  const byStatus = [...handled, ...remaining].reduce((result, issue) => {
+  const actionableTotal = handled.length + remaining.length;
+  const handledRate = actionableTotal ? Math.round((handled.length / actionableTotal) * 1000) / 10 : 0;
+  const byStatus = [...handled, ...remaining, ...cancelled].reduce((result, issue) => {
     const key = issue.status || "Chưa xác định";
     result[key] = (result[key] || 0) + 1;
     return result;
@@ -188,19 +198,21 @@ function calculateWeek(period, issues) {
     created: created.length,
     handled: handled.length,
     remaining: remaining.length,
+    cancelled: cancelled.length,
     handledRate,
     byStatus,
     issues: {
       created: sortIssues(created.map((issue) => publicIssue(issue, statusAt(issue, period.evaluatedAt)))),
       handled: sortIssues(handled),
-      remaining: sortIssues(remaining)
+      remaining: sortIssues(remaining),
+      cancelled: sortIssues(cancelled)
     }
   });
 }
 
 function withPriorityBreakdown(week) {
   const issueGroups = week?.issues || {};
-  const metricKeys = ["created", "handled", "remaining"];
+  const metricKeys = ["created", "handled", "remaining", "cancelled"];
   const discovered = new Set(PRIORITY_ORDER);
   metricKeys.forEach((metric) => {
     (Array.isArray(issueGroups[metric]) ? issueGroups[metric] : []).forEach((issue) => {
@@ -485,6 +497,7 @@ function createJiraWeeklyDashboardService(options = {}) {
       timeZone: runtimeConfig.timeZone,
       cutoffDescription: "Thứ Năm hằng tuần lúc 15:00",
       handledStatuses: ["Closed"],
+      cancelledStatuses: ["Cancelled", "Canceled"],
       syncedAt: cache?.syncedAt || null,
       total: Number(cache?.total || issues.length || 0),
       weeks,
@@ -521,6 +534,7 @@ module.exports = {
   normalizeConfig,
   normalizeStatus,
   isHandledStatus,
+  isCancelledStatus,
   normalizeStatusHistories,
   statusAt,
   buildWeekPeriods,

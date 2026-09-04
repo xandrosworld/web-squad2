@@ -1561,7 +1561,7 @@ function openJiraWeekDetail(weekNumber, metric, priority = "") {
     if (!jiraWeeklyDashboardState.data) return;
     ui.jiraWeeklyDetail = {
         weekNumber: Number(weekNumber || 0),
-        metric: ["created", "handled", "remaining"].includes(metric) ? metric : "remaining",
+        metric: ["created", "handled", "remaining", "cancelled"].includes(metric) ? metric : "remaining",
         priority: String(priority || "").trim()
     };
     render();
@@ -3254,7 +3254,8 @@ function renderJiraWeeklyDashboard() {
             <div class="jira-weekly-method">
                 <span><i class="fa-solid fa-circle-info"></i> Phạm vi: Bug có label <strong>${e(dashboard.label)}</strong></span>
                 <span>Đã xử lý: chỉ trạng thái <strong>${e((dashboard.handledStatuses || ["Closed"]).join(", "))}</strong></span>
-                <span>Còn tồn: mọi bug chưa Closed tại mốc chốt</span>
+                <span>Còn tồn: bug chưa Closed, không bao gồm Cancelled</span>
+                <span>Tỷ lệ xử lý: Closed / (Closed + Còn tồn)</span>
                 <span>${e(dashboard.cutoffDescription || "")}</span>
             </div>
             ${weeks.length ? `
@@ -3304,6 +3305,12 @@ function renderJiraWeekCard(week, previousWeek, isLatest) {
                         </button>
                     `;
                 }).join("")}
+                <button class="jira-week-cancelled" type="button" data-action="open-jira-week-detail" data-week-number="${e(week.weekNumber)}" data-week-metric="cancelled" aria-label="Còn tồn không bao gồm ${e(Number(week.cancelled || 0))} bug Cancelled. Xem danh sách">
+                    <span><i class="fa-solid fa-ban"></i>Còn tồn không bao gồm</span>
+                    <strong>${e(Number(week.cancelled || 0))}</strong>
+                    <span>bug Cancelled</span>
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
                 <button class="jira-week-rate" type="button" data-action="open-jira-week-detail" data-week-number="${e(week.weekNumber)}" data-week-metric="handled">
                     <span>Tỷ lệ xử lý lũy kế</span>
                     <strong>${e(Number(week.handledRate || 0).toLocaleString("vi-VN"))}%</strong>
@@ -3352,7 +3359,7 @@ function formatWeeklyPeriod(week) {
         if (Number.isNaN(date.getTime())) return "-";
         return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", timeZone: "Asia/Ho_Chi_Minh" }).format(date);
     };
-    return `${format(week.startAt)} – ${format(week.cutoffAt)}`;
+    return `${format(week.startAt)} - ${format(week.cutoffAt)}`;
 }
 
 function renderJiraWeeklyDetail(dashboard) {
@@ -3361,7 +3368,12 @@ function renderJiraWeeklyDetail(dashboard) {
     if (detail.mode === "blocker") return renderJiraBlockerDetail(dashboard, detail);
     const week = (dashboard.weeks || []).find((item) => Number(item.weekNumber) === Number(detail.weekNumber));
     if (!week) return "";
-    const labels = { created: "Bug phát sinh", handled: "Bug đã xử lý", remaining: "Bug còn tồn" };
+    const labels = {
+        created: "Bug phát sinh",
+        handled: "Bug đã xử lý",
+        remaining: "Bug còn tồn",
+        cancelled: "Bug Cancelled không tính vào còn tồn"
+    };
     const metric = Object.prototype.hasOwnProperty.call(labels, detail.metric) ? detail.metric : "remaining";
     const selectedPriority = String(detail.priority || "").trim();
     const issues = (Array.isArray(week.issues?.[metric]) ? week.issues[metric] : [])

@@ -4,6 +4,7 @@ require("dotenv").config();
 const {
   createJiraWeeklyDashboardService,
   isHandledStatus,
+  isCancelledStatus,
   statusAt,
   buildWeekPeriods,
   calculateWeek,
@@ -29,6 +30,8 @@ function fixtureIssue(overrides = {}) {
 async function runUnitChecks() {
   ["Closed", " CLOSED "].forEach((status) => assert.equal(isHandledStatus(status), true));
   ["Resolved", "SIT Pass", "Cancelled", "Canceled", "Open", "Pending", "In Progress", "Reopen"].forEach((status) => assert.equal(isHandledStatus(status), false));
+  ["Cancelled", " CANCELED "].forEach((status) => assert.equal(isCancelledStatus(status), true));
+  ["Closed", "Resolved", "Open"].forEach((status) => assert.equal(isCancelledStatus(status), false));
 
   const transitioned = fixtureIssue({
     status: "Closed",
@@ -43,14 +46,25 @@ async function runUnitChecks() {
   const week = calculateWeek(periods[0], [
     transitioned,
     fixtureIssue({ key: "PS0142025-2", createdAt: "2026-08-15T02:00:00.000Z", status: "Open" }),
+    fixtureIssue({ key: "PS0142025-4", createdAt: "2026-08-16T02:00:00.000Z", status: "Cancelled" }),
     fixtureIssue({ key: "PS0142025-3", createdAt: "2026-08-21T02:00:00.000Z", status: "Open" })
   ]);
-  assert.equal(week.created, 2);
+  assert.equal(week.created, 3);
   assert.equal(week.handled, 1);
   assert.equal(week.remaining, 1);
-  assert.equal(week.total, week.handled + week.remaining);
+  assert.equal(week.cancelled, 1);
+  assert.equal(week.total, week.handled + week.remaining + week.cancelled);
   assert.equal(week.handledRate, 50);
-  assert.deepEqual(week.priorityBreakdown.Major, { created: 2, handled: 1, remaining: 1 });
+  assert.deepEqual(week.priorityBreakdown.Major, { created: 3, handled: 1, remaining: 1, cancelled: 1 });
+
+  const cancelledAfterCutoff = fixtureIssue({
+    key: "PS0142025-H1",
+    status: "Cancelled",
+    histories: [{ changedAt: "2026-08-21T02:00:00.000Z", from: "Open", to: "Cancelled" }]
+  });
+  const historicalWeek = calculateWeek(periods[0], [cancelledAfterCutoff]);
+  assert.equal(historicalWeek.remaining, 1, "Tuần cũ phải giữ bug chưa Cancelled tại mốc chốt");
+  assert.equal(historicalWeek.cancelled, 0, "Không được ghi trạng thái Cancelled hiện tại ngược về tuần cũ");
 
   const blockerWeek = calculateWeek(periods[0], [
     fixtureIssue({ key: "PS0142025-B1", priority: "Blocker" }),
@@ -61,8 +75,8 @@ async function runUnitChecks() {
   assert.equal(blockerPivot.rows.length, 1);
   assert.equal(blockerPivot.rows[0].parentKey, "PS0142025-5");
   assert.equal(blockerPivot.rows[0].counts["1"], 1);
-  assert.deepEqual(blockerWeek.priorityBreakdown.Blocker, { created: 1, handled: 0, remaining: 1 });
-  assert.deepEqual(blockerWeek.priorityBreakdown.Major, { created: 1, handled: 0, remaining: 1 });
+  assert.deepEqual(blockerWeek.priorityBreakdown.Blocker, { created: 1, handled: 0, remaining: 1, cancelled: 0 });
+  assert.deepEqual(blockerWeek.priorityBreakdown.Major, { created: 1, handled: 0, remaining: 1, cancelled: 0 });
 
   const storedConfigService = createJiraWeeklyDashboardService({
     env: {
@@ -114,16 +128,18 @@ async function runLiveCheck() {
   assert.equal(dashboard.total, result.total);
   assert(dashboard.weeks.length >= 3, "Dashboard phải có đủ các tuần từ 13/08/2026");
   dashboard.weeks.forEach((week) => {
-    assert.equal(week.total, week.handled + week.remaining, `Tuần ${week.weekNumber} sai phép đối chiếu`);
+    assert.equal(week.total, week.handled + week.remaining + week.cancelled, `Tuần ${week.weekNumber} sai phép đối chiếu`);
     assert.equal(week.created, week.issues.created.length);
     assert.equal(week.handled, week.issues.handled.length);
     assert.equal(week.remaining, week.issues.remaining.length);
+    assert.equal(week.cancelled, week.issues.cancelled.length);
     assert(week.issues.handled.every((issue) => isHandledStatus(issue.status)), `Tuần ${week.weekNumber} có bug chưa Closed trong Đã xử lý`);
-    assert(week.issues.remaining.every((issue) => !isHandledStatus(issue.status)), `Tuần ${week.weekNumber} có bug Closed trong Còn tồn`);
+    assert(week.issues.remaining.every((issue) => !isHandledStatus(issue.status) && !isCancelledStatus(issue.status)), `Tuần ${week.weekNumber} có bug Closed/Cancelled trong Còn tồn`);
+    assert(week.issues.cancelled.every((issue) => isCancelledStatus(issue.status)), `Tuần ${week.weekNumber} có bug không phải Cancelled trong nhóm loại trừ`);
     Object.values(week.priorityBreakdown || {}).forEach((counts) => {
-      assert(Number.isInteger(counts.created) && Number.isInteger(counts.handled) && Number.isInteger(counts.remaining));
+      assert(Number.isInteger(counts.created) && Number.isInteger(counts.handled) && Number.isInteger(counts.remaining) && Number.isInteger(counts.cancelled));
     });
-    ["created", "handled", "remaining"].forEach((metric) => {
+    ["created", "handled", "remaining", "cancelled"].forEach((metric) => {
       assert.equal(
         Object.values(week.priorityBreakdown || {}).reduce((total, counts) => total + Number(counts[metric] || 0), 0),
         week[metric],
