@@ -103,19 +103,34 @@ const dashboard = {
   const browser = await chromium.launch({ executablePath: browserPath, headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    let stateResponseFinished = false;
+    let jiraResponseMode = "ready";
     await page.route("**/api/**", async (route) => {
       const pathname = new URL(route.request().url()).pathname;
       let body = {};
       if (pathname === "/api/auth/me") body = { authenticated: true, user: { id: "admin", name: "Mai Tấn Thành", email: "thanhmt@bidv.com.vn", username: "thanhmt", role: "admin" } };
-      else if (pathname === "/api/state") body = { state: emptyState };
+      else if (pathname === "/api/state") {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        stateResponseFinished = true;
+        body = { state: emptyState };
+      }
       else if (pathname === "/api/directory/users") body = { users: [] };
-      else if (pathname === "/api/jira/weekly-dashboard") body = { dashboard };
+      else if (pathname === "/api/jira/weekly-dashboard") {
+        if (jiraResponseMode === "error") {
+          await new Promise((resolve) => setTimeout(resolve, 4000));
+          await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Jira tạm thời không phản hồi" }) });
+          return;
+        }
+        body = { dashboard };
+      }
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
     });
     await page.goto(`${baseUrl}/#work/group/pilot-t02/project`, { waitUntil: "domcontentloaded" });
     await page.locator('.flow-scope-tabs button[aria-current="page"]', { hasText: "Toàn bộ dự án" }).waitFor();
     await page.locator(".jira-weekly-panel").waitFor();
     await page.locator(".jira-week-card").first().waitFor();
+    if (stateResponseFinished) throw new Error("Dashboard Jira vẫn phải chờ toàn bộ /api/state tải xong.");
+    if (await page.getByText("Không tìm thấy nhóm", { exact: true }).count()) throw new Error("Route dự án hiển thị sai trạng thái không tìm thấy nhóm khi /api/state còn đang tải.");
     if (await page.locator(".jira-week-card").count() !== 3) throw new Error("Giao diện không hiển thị đủ 3 tuần.");
     const railLayout = await page.locator(".jira-weekly-scroll").evaluate((element) => ({
       scrollWidth: element.scrollWidth,
@@ -167,12 +182,27 @@ const dashboard = {
     });
     if (dialogRect.top < 0 || dialogRect.bottom > 900) throw new Error("Hộp chi tiết Blocker nằm ngoài màn hình.");
     await page.locator('.jira-blocker-dialog .icon-btn[data-action="close-jira-week-detail"]').click();
+    const cachedWeekCount = await page.evaluate((key) => {
+      const cached = JSON.parse(localStorage.getItem(key) || "null");
+      return Array.isArray(cached?.weeks) ? cached.weeks.length : 0;
+    }, "squad2_uat_command_center_v1_jira_weekly_dashboard_v1");
+    if (cachedWeekCount !== dashboard.weeks.length) throw new Error("Dashboard Jira gần nhất chưa được lưu vào cache trình duyệt.");
+    jiraResponseMode = "error";
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.locator(".jira-week-card").first().waitFor({ timeout: 2500 });
+    await page.locator(".jira-cache-status.refreshing", { hasText: "Đang cập nhật nền" }).waitFor({ timeout: 2500 });
+    await page.locator(".jira-cache-status.stale", { hasText: "Dữ liệu gần nhất" }).waitFor({ timeout: 7000 });
+    if (await page.locator(".jira-week-card").count() !== dashboard.weeks.length) throw new Error("Mất dữ liệu gần nhất khi Jira tạm thời lỗi.");
+    if (await page.getByText("Chưa tải được dashboard Jira", { exact: true }).count()) throw new Error("Có cache nhưng giao diện vẫn thay bằng màn lỗi Jira.");
+    if (process.env.SMOKE_WEEKLY_CACHE_SCREENSHOT) await page.screenshot({ path: process.env.SMOKE_WEEKLY_CACHE_SCREENSHOT, fullPage: false });
+    jiraResponseMode = "ready";
     await page.locator(".flow-scope-tabs").getByRole("button", { name: "Squad 2" }).click();
     await page.locator(".standalone-work-items").waitFor();
     if (new URL(page.url()).hash !== "#work/group/pilot-t02/squad2") throw new Error("Tab Squad 2 chưa có URL riêng.");
     if (await page.locator('[data-resizable-table="workItems"] tbody tr').count() !== 1) throw new Error("Tab Squad 2 không giữ đúng danh sách công việc kiểm thử luồng.");
     await page.locator(".flow-scope-tabs").getByRole("button", { name: "Toàn bộ dự án" }).click();
     await page.locator(".jira-weekly-panel").waitFor();
+    await page.locator(".jira-cache-status.stale").waitFor({ state: "detached", timeout: 5000 });
     if (new URL(page.url()).hash !== "#work/group/pilot-t02/project") throw new Error("Tab Toàn bộ dự án chưa có URL riêng.");
     await page.goto(`${baseUrl}/#work/group/pilot-t01/defectDashboard`, { waitUntil: "domcontentloaded" });
     await page.locator(".defect-dashboard-panel").waitFor();

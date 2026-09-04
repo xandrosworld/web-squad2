@@ -3,6 +3,7 @@ const MIGRATION_FLAG_KEY = `${STORAGE_KEY}_remote_migration_checked`;
 const LEGACY_BACKUP_KEY = `${STORAGE_KEY}_legacy_backup`;
 const COLUMN_WIDTHS_KEY = `${STORAGE_KEY}_column_widths_v3`;
 const TABLE_SCROLL_LEFTS_KEY = `${STORAGE_KEY}_table_scroll_lefts_v1`;
+const JIRA_WEEKLY_CACHE_KEY = `${STORAGE_KEY}_jira_weekly_dashboard_v1`;
 const API_BASE = "/api";
 const SYNC_INTERVAL_MS = 30000;
 const GROUP_CHAT_POLL_INTERVAL_MS = 15000;
@@ -20,6 +21,12 @@ const COLUMN_HEADER_CONTROL_WIDTH = 58;
 const COLUMN_HEADER_FIT_BUFFER = 8;
 const ROWS_PER_PAGE_OPTIONS = [10, 20, 50];
 const DEFAULT_ROWS_PER_PAGE = 20;
+const FLOW_PROJECT_FALLBACK_CATEGORY = Object.freeze({
+    id: "pilot-t02",
+    name: "Kiểm thử luồng",
+    taskPrefix: "SQ2-T02",
+    description: "Theo dõi các luồng nghiệp vụ cần kiểm thử end-to-end."
+});
 
 const computedFieldsByCollection = {
     features: [
@@ -1094,9 +1101,10 @@ let googleSheetSyncUiState = {
     busyAction: "",
     error: null
 };
+const cachedJiraWeeklyDashboard = loadCachedJiraWeeklyDashboard();
 let jiraWeeklyDashboardState = {
-    status: "idle",
-    data: null,
+    status: cachedJiraWeeklyDashboard ? "cached" : "idle",
+    data: cachedJiraWeeklyDashboard,
     error: null
 };
 let attachmentUiState = {
@@ -1317,6 +1325,27 @@ function cacheState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
 }
 
+function loadCachedJiraWeeklyDashboard() {
+    try {
+        const raw = localStorage.getItem(JIRA_WEEKLY_CACHE_KEY);
+        if (!raw) return null;
+        const cached = JSON.parse(raw);
+        return cached && typeof cached === "object" && Array.isArray(cached.weeks) ? cached : null;
+    } catch {
+        return null;
+    }
+}
+
+function cacheJiraWeeklyDashboard(dashboard) {
+    try {
+        if (dashboard && typeof dashboard === "object" && Array.isArray(dashboard.weeks)) {
+            localStorage.setItem(JIRA_WEEKLY_CACHE_KEY, JSON.stringify(dashboard));
+        }
+    } catch {
+        // Cache is an acceleration layer; storage limits must not block the dashboard.
+    }
+}
+
 function loadColumnWidths() {
     try {
         const raw = localStorage.getItem(COLUMN_WIDTHS_KEY);
@@ -1441,6 +1470,7 @@ async function requestJson(path, options = {}) {
             resetAiChatState();
             resetGroupChatState();
             localStorage.removeItem(STORAGE_KEY);
+            localStorage.removeItem(JIRA_WEEKLY_CACHE_KEY);
             render();
         }
         const error = new Error(data.error || `API lỗi ${response.status}`);
@@ -1545,11 +1575,12 @@ async function hydrateJiraWeeklyDashboard(forceSync = false) {
             data: data.dashboard || null,
             error: null
         };
+        cacheJiraWeeklyDashboard(jiraWeeklyDashboardState.data);
         if (forceSync) showToast(`Đã đồng bộ ${Number(data.result?.total || data.dashboard?.total || 0)} bug TESTLUONG từ Jira.`);
     } catch (error) {
         jiraWeeklyDashboardState = {
             ...jiraWeeklyDashboardState,
-            status: "error",
+            status: jiraWeeklyDashboardState.data ? "stale" : "error",
             error: error.message || "Không tải được dữ liệu Jira."
         };
         if (forceSync) showToast(jiraWeeklyDashboardState.error);
@@ -1930,7 +1961,10 @@ function renderLoginPage() {
 }
 
 function renderSidebar() {
-    const categories = getWorkCategories();
+    const categories = [...getWorkCategories()];
+    if (isJiraWeeklyProjectRoute() && !categories.some((category) => category.id === FLOW_PROJECT_FALLBACK_CATEGORY.id)) {
+        categories.push(FLOW_PROJECT_FALLBACK_CATEGORY);
+    }
     const urdCategory = categories.find((category) => category.id === "delivery-urd");
     const rsdCategory = categories.find((category) => category.id === "delivery-rsd");
     const uatCategories = categories.filter((category) => getSidebarWorkStage(category.id) === "uat");
@@ -2019,7 +2053,10 @@ function renderSidebar() {
                                     </button>
                                     <div id="sidebar-group-uat" class="tree-accordion-panel tree-work-stage-content ${uatExpanded ? "is-expanded" : ""}" aria-hidden="${!uatExpanded}" ${uatExpanded ? "" : "inert"}>
                                         <div class="tree-accordion-inner">
-                                            ${uatCategories.map((category, index) => renderWorkCategoryLink(category, `${index + 1}. ${getWorkCategoryShortName(category)}`)).join("")}
+                                            ${uatCategories.map((category, index) => {
+                                                const order = category.id === "pilot-t01" ? 1 : category.id === "pilot-t02" ? 2 : index + 1;
+                                                return renderWorkCategoryLink(category, `${order}. ${getWorkCategoryShortName(category)}`);
+                                            }).join("")}
                                         </div>
                                     </div>
                                     <button id="sidebar-group-prePilot-toggle" class="tree-parent tree-group-toggle tree-work-stage ${activeWorkStage === "prePilot" ? "branch-active" : ""} ${prePilotExpanded ? "is-expanded" : ""}" type="button" data-action="toggle-sidebar-group" data-sidebar-group="prePilot" aria-expanded="${prePilotExpanded}" aria-controls="sidebar-group-prePilot" title="Pre-Pilot">
@@ -2117,7 +2154,8 @@ function renderCommandBand() {
 }
 
 function getActiveViewMeta() {
-    const category = getWorkCategories().find((row) => row.id === ui.activeCategoryId);
+    const category = getWorkCategories().find((row) => row.id === ui.activeCategoryId)
+        || (isJiraWeeklyProjectRoute() ? FLOW_PROJECT_FALLBACK_CATEGORY : null);
     if (ui.activeView === "personnel-list") return { title: "Danh sách thành viên", subtitle: modules.personnel.description };
     if (ui.activeView === "personnel-map") return { title: "Sơ đồ hoạt động", subtitle: "Tổng quan vai trò, đơn vị và phạm vi phụ trách của thành viên Squad 2." };
     if (ui.activeView === "personnel-kpi") return { title: "Cấu hình KPI", subtitle: "Thiết lập trọng số, mục tiêu và dữ liệu đánh giá thủ công cho thành viên." };
@@ -2373,7 +2411,8 @@ function renderWorkItemsPanel({ title, subtitle, categoryId = "", showViews = tr
 }
 
 function renderWorkGroupPage() {
-    const category = getWorkCategories().find((row) => row.id === ui.activeCategoryId);
+    const category = getWorkCategories().find((row) => row.id === ui.activeCategoryId)
+        || (isJiraWeeklyProjectRoute() ? FLOW_PROJECT_FALLBACK_CATEGORY : null);
     if (!category) return `<div class="work-plan-page">${renderEmpty("fa-folder-open", "Không tìm thấy nhóm", "Nhóm công việc có thể đã được đổi hoặc xóa.", false)}</div>`;
     if (category.id === "pilot-t01") return renderT01WorkGroup(category);
     if (category.id === "pilot-t02") return renderT02WorkGroup(category);
@@ -3207,14 +3246,14 @@ function renderDefectDashboardPage() {
 
 function renderJiraWeeklyDashboard() {
     const state = jiraWeeklyDashboardState;
-    if (state.status === "idle" || state.status === "loading") {
+    if (!state.data && (state.status === "idle" || state.status === "loading" || state.status === "cached")) {
         return `
             <section class="panel jira-weekly-panel">
                 <div class="jira-weekly-loading"><i class="fa-solid fa-spinner fa-spin"></i><strong>Đang tải dữ liệu TESTLUONG từ Jira...</strong></div>
             </section>
         `;
     }
-    if (state.status === "error") {
+    if (!state.data && state.status === "error") {
         return `
             <section class="panel jira-weekly-panel">
                 <div class="jira-weekly-empty error">
@@ -3247,6 +3286,8 @@ function renderJiraWeeklyDashboard() {
                     <p>Mỗi tuần chốt vào 15:00 Thứ Năm. Tuần đã chốt được giữ nguyên; tuần hiện tại tự cập nhật theo Jira.</p>
                 </div>
                 <div class="jira-weekly-head-actions">
+                    ${state.status === "loading" || state.status === "syncing" ? `<span class="jira-cache-status refreshing"><i class="fa-solid fa-rotate fa-spin"></i> Đang cập nhật nền</span>` : ""}
+                    ${state.status === "stale" ? `<span class="jira-cache-status stale" title="${e(state.error || "Không kết nối được Jira")}"><i class="fa-solid fa-clock-rotate-left"></i> Dữ liệu gần nhất</span>` : ""}
                     <span class="jira-sync-time"><i class="fa-solid fa-arrows-rotate"></i> ${dashboard.syncedAt ? `Cập nhật ${e(formatShortDateTime(dashboard.syncedAt))}` : "Chưa đồng bộ"}</span>
                     ${authState.user?.role === "admin" ? `<button class="ghost-btn" type="button" data-action="refresh-jira-weekly" ${state.status === "syncing" ? "disabled" : ""}><i class="fa-solid fa-rotate ${state.status === "syncing" ? "fa-spin" : ""}"></i> Đồng bộ ngay</button>` : ""}
                 </div>
@@ -8235,9 +8276,9 @@ async function initAuth() {
         const data = await requestJson("/auth/me", { skipAuthRedirect: true });
         authState = { status: "authenticated", user: data.user, error: null };
         render();
-        await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings(), hydrateGoogleSheetSyncStatus()]);
+        const weeklyDashboardPromise = isJiraWeeklyProjectRoute() ? hydrateJiraWeeklyDashboard() : Promise.resolve();
+        await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings(), hydrateGoogleSheetSyncStatus(), weeklyDashboardPromise]);
         if (ui.activeView === "personal-cross-squad") await hydratePersonalWorkspace(true);
-        if (isJiraWeeklyProjectRoute()) await hydrateJiraWeeklyDashboard();
         consumeGmailCallbackNotice();
         render();
     } catch {
@@ -8277,9 +8318,9 @@ async function handleLogin(event) {
         });
         authState = { status: "authenticated", user: data.user, error: null };
         render();
-        await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings(), hydrateGoogleSheetSyncStatus()]);
+        const weeklyDashboardPromise = isJiraWeeklyProjectRoute() ? hydrateJiraWeeklyDashboard() : Promise.resolve();
+        await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings(), hydrateGoogleSheetSyncStatus(), weeklyDashboardPromise]);
         if (ui.activeView === "personal-cross-squad") await hydratePersonalWorkspace(true);
-        if (isJiraWeeklyProjectRoute()) await hydrateJiraWeeklyDashboard();
         consumeGmailCallbackNotice();
         render();
     } catch (error) {
@@ -8348,6 +8389,7 @@ async function handleAuthAction(event) {
     destroyAttachmentPresentationViewer();
     activeAttachmentUploads = 0;
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(JIRA_WEEKLY_CACHE_KEY);
     ui.modal = null;
     ui.profileOpen = false;
     ui.aiChatOpen = false;
@@ -10762,6 +10804,12 @@ window.addEventListener("storage", (event) => {
         const stored = readSidebarAccordionPreference();
         ui.sidebarOpenSection = stored.openSection;
         ui.sidebarOpenGroups = stored.openGroups;
+        render();
+        return;
+    }
+    if (event.key === JIRA_WEEKLY_CACHE_KEY) {
+        const dashboard = loadCachedJiraWeeklyDashboard();
+        if (dashboard) jiraWeeklyDashboardState = { status: "cached", data: dashboard, error: null };
         render();
     }
 });
