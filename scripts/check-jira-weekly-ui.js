@@ -15,7 +15,12 @@ if (!browserPath) throw new Error("Không tìm thấy Chrome/Edge để kiểm t
 const emptyState = {
   features: [], personnel: [], schedule: [], handoffs: [], plans: [], daily: [], defects: [],
   userStories: [], bugSources: [], defectSummary: [], weekly: [], readiness: [], matrix: [], guide: [],
-  workCategories: [{ id: "pilot-t01", name: "Kiểm thử chức năng", taskPrefix: "SQ2-UAT" }], workItems: [], kpiConfig: [], memberKpiInputs: [], memberKpiResults: [],
+  workCategories: [
+    { id: "pilot-t01", name: "Kiểm thử chức năng", taskPrefix: "SQ2-UAT" },
+    { id: "pilot-t02", name: "Kiểm thử luồng", taskPrefix: "SQ2-T02" }
+  ],
+  workItems: [{ id: "flow-task-1", categoryId: "pilot-t02", taskId: "SQ2-T02-001", name: "Kiểm thử luồng Squad 2", status: "Hoàn thành", progress: 100 }],
+  kpiConfig: [], memberKpiInputs: [], memberKpiResults: [],
   unmappedPlanBugGroups: [], updatedAt: new Date().toISOString()
 };
 
@@ -104,8 +109,8 @@ const dashboard = {
       else if (pathname === "/api/jira/weekly-dashboard") body = { dashboard };
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
     });
-    await page.goto(`${baseUrl}/#work/group/pilot-t01/defectDashboard`, { waitUntil: "domcontentloaded" });
-    await page.getByRole("button", { name: "Đối chiếu theo tuần" }).click();
+    await page.goto(`${baseUrl}/#work/group/pilot-t02/project`, { waitUntil: "domcontentloaded" });
+    await page.locator('.flow-scope-tabs button[aria-current="page"]', { hasText: "Toàn bộ dự án" }).waitFor();
     await page.locator(".jira-weekly-panel").waitFor();
     await page.locator(".jira-week-card").first().waitFor();
     if (await page.locator(".jira-week-card").count() !== 3) throw new Error("Giao diện không hiển thị đủ 3 tuần.");
@@ -151,6 +156,17 @@ const dashboard = {
       return { top: rect.top, bottom: rect.bottom };
     });
     if (dialogRect.top < 0 || dialogRect.bottom > 900) throw new Error("Hộp chi tiết Blocker nằm ngoài màn hình.");
+    await page.locator('.jira-blocker-dialog .icon-btn[data-action="close-jira-week-detail"]').click();
+    await page.locator(".flow-scope-tabs").getByRole("button", { name: "Squad 2" }).click();
+    await page.locator(".standalone-work-items").waitFor();
+    if (new URL(page.url()).hash !== "#work/group/pilot-t02/squad2") throw new Error("Tab Squad 2 chưa có URL riêng.");
+    if (await page.locator('[data-resizable-table="workItems"] tbody tr').count() !== 1) throw new Error("Tab Squad 2 không giữ đúng danh sách công việc kiểm thử luồng.");
+    await page.locator(".flow-scope-tabs").getByRole("button", { name: "Toàn bộ dự án" }).click();
+    await page.locator(".jira-weekly-panel").waitFor();
+    if (new URL(page.url()).hash !== "#work/group/pilot-t02/project") throw new Error("Tab Toàn bộ dự án chưa có URL riêng.");
+    await page.goto(`${baseUrl}/#work/group/pilot-t01/defectDashboard`, { waitUntil: "domcontentloaded" });
+    await page.locator(".defect-dashboard-panel").waitFor();
+    if (await page.locator(".jira-weekly-panel, .defect-dashboard-tabs").count()) throw new Error("Đối chiếu theo tuần vẫn còn ở Kiểm thử chức năng.");
     if (process.env.SMOKE_SCREENSHOT) await page.screenshot({ path: process.env.SMOKE_SCREENSHOT, fullPage: true });
     console.log("Jira weekly dashboard UI check passed.");
   } finally {

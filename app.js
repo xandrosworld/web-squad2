@@ -1023,12 +1023,19 @@ function getInitialRoute(pathOverride) {
         const categoryId = parts[2];
         const requestedTab = parts[3] || "dashboard";
         const t01Tab = [...t01ModuleIds, "defectSummary"].includes(requestedTab) ? requestedTab : "dashboard";
+        const flowTestView = categoryId === "pilot-t02" && ["project", "squad2"].includes(requestedTab)
+            ? requestedTab
+            : "project";
+        const routeSuffix = categoryId === "pilot-t01"
+            ? `/${t01Tab}`
+            : categoryId === "pilot-t02" ? `/${flowTestView}` : "";
         return {
-            path: `work/group/${categoryId}${categoryId === "pilot-t01" ? `/${t01Tab}` : ""}`,
+            path: `work/group/${categoryId}${routeSuffix}`,
             view: "work-group",
             activeTab: categoryId === "pilot-t01" ? t01Tab : "workItems",
             categoryId,
-            t01Tab
+            t01Tab,
+            flowTestView
         };
     }
     return { path: "work/dashboard", view: "work-dashboard", activeTab: "workItems", categoryId: "", t01Tab: "dashboard" };
@@ -1154,7 +1161,7 @@ let ui = {
     profileAvatarDraft: null,
     workView: "all",
     t01MetricView: "all",
-    defectDashboardView: "overview",
+    flowTestView: initialRoute.flowTestView || "project",
     jiraWeeklyDetail: null,
     profileSaving: false,
     passwordSaving: false,
@@ -1490,8 +1497,10 @@ function navigateToRoute(path, options = {}) {
     ui.activeTab = route.activeTab;
     ui.activeCategoryId = route.categoryId;
     ui.t01Tab = route.t01Tab;
+    ui.flowTestView = route.flowTestView || "project";
     ui.query = "";
     ui.openColumnFilter = null;
+    ui.jiraWeeklyDetail = null;
     ui.sidebarMobileOpen = false;
     syncSidebarAccordionForRoute(route);
     if (route.view === "work-group" && route.categoryId === "pilot-t01" && !options.preserveT01MetricView) {
@@ -1508,7 +1517,13 @@ function navigateToRoute(path, options = {}) {
     requestActiveTabScroll();
     render();
     if (route.view === "personal-cross-squad") hydratePersonalWorkspace();
-    if (route.t01Tab === "defectDashboard" && ui.defectDashboardView === "weekly") hydrateJiraWeeklyDashboard();
+    if (isJiraWeeklyProjectRoute(route)) hydrateJiraWeeklyDashboard();
+}
+
+function isJiraWeeklyProjectRoute(route = ui) {
+    return (route.view || route.activeView) === "work-group"
+        && (route.categoryId || route.activeCategoryId) === "pilot-t02"
+        && (route.flowTestView || "project") === "project";
 }
 
 async function hydrateJiraWeeklyDashboard(forceSync = false) {
@@ -1540,13 +1555,6 @@ async function hydrateJiraWeeklyDashboard(forceSync = false) {
         if (forceSync) showToast(jiraWeeklyDashboardState.error);
     }
     render();
-}
-
-function setDefectDashboardView(view) {
-    ui.defectDashboardView = view === "weekly" ? "weekly" : "overview";
-    ui.jiraWeeklyDetail = null;
-    render();
-    if (ui.defectDashboardView === "weekly") hydrateJiraWeeklyDashboard();
 }
 
 function openJiraWeekDetail(weekNumber, metric, priority = "") {
@@ -1945,7 +1953,9 @@ function renderSidebar() {
     const uatExpanded = railMode || ui.sidebarOpenGroups.uat;
     const prePilotExpanded = railMode || ui.sidebarOpenGroups.prePilot;
     const renderWorkCategoryLink = (category, label, level = 3) => renderSidebarRouteButton(
-        `work/group/${category.id}${category.id === "pilot-t01" ? `/${ui.t01Tab || "dashboard"}` : ""}`,
+        `work/group/${category.id}${category.id === "pilot-t01"
+            ? `/${ui.t01Tab || "dashboard"}`
+            : category.id === "pilot-t02" ? `/${ui.flowTestView || "project"}` : ""}`,
         "fa-circle",
         label,
         level,
@@ -2366,6 +2376,7 @@ function renderWorkGroupPage() {
     const category = getWorkCategories().find((row) => row.id === ui.activeCategoryId);
     if (!category) return `<div class="work-plan-page">${renderEmpty("fa-folder-open", "Không tìm thấy nhóm", "Nhóm công việc có thể đã được đổi hoặc xóa.", false)}</div>`;
     if (category.id === "pilot-t01") return renderT01WorkGroup(category);
+    if (category.id === "pilot-t02") return renderT02WorkGroup(category);
     const stats = getWorkGroupStats(category.id);
     return `
         <div class="work-plan-page">
@@ -2377,6 +2388,33 @@ function renderWorkGroupPage() {
                 showViews: false,
                 showGroupFilter: false
             })}
+        </div>
+    `;
+}
+
+function renderT02WorkGroup(category) {
+    const activeView = ui.flowTestView === "squad2" ? "squad2" : "project";
+    const stats = getWorkGroupStats(category.id);
+    return `
+        <div class="work-plan-page t02-workspace">
+            <nav class="flow-scope-tabs" aria-label="Phạm vi kiểm thử luồng">
+                <button class="${activeView === "project" ? "active" : ""}" type="button" data-route="work/group/${e(category.id)}/project" ${activeView === "project" ? `aria-current="page"` : ""}>
+                    <i class="fa-solid fa-globe"></i><span>Toàn bộ dự án</span>
+                </button>
+                <button class="${activeView === "squad2" ? "active" : ""}" type="button" data-route="work/group/${e(category.id)}/squad2" ${activeView === "squad2" ? `aria-current="page"` : ""}>
+                    <i class="fa-solid fa-people-group"></i><span>Squad 2</span>
+                </button>
+            </nav>
+            ${activeView === "project" ? renderJiraWeeklyDashboard() : `
+                ${renderWorkSummaryStrip(stats)}
+                ${renderWorkItemsPanel({
+                    title: getWorkCategoryShortName(category),
+                    subtitle: `${category.taskPrefix || ""} · ${stats.total} đầu việc`,
+                    categoryId: category.id,
+                    showViews: false,
+                    showGroupFilter: false
+                })}
+            `}
         </div>
     `;
 }
@@ -3162,15 +3200,7 @@ function renderDefectDashboardPanel() {
 function renderDefectDashboardPage() {
     return `
         <div class="sheet-dashboard">
-            <nav class="defect-dashboard-tabs" aria-label="Chế độ xem Dashboard Defect">
-                <button class="${ui.defectDashboardView === "overview" ? "active" : ""}" type="button" data-action="set-defect-dashboard-view" data-dashboard-view="overview">
-                    <i class="fa-solid fa-chart-pie"></i><span>Tổng quan hiện tại</span>
-                </button>
-                <button class="${ui.defectDashboardView === "weekly" ? "active" : ""}" type="button" data-action="set-defect-dashboard-view" data-dashboard-view="weekly">
-                    <i class="fa-solid fa-calendar-week"></i><span>Đối chiếu theo tuần</span>
-                </button>
-            </nav>
-            ${ui.defectDashboardView === "weekly" ? renderJiraWeeklyDashboard() : renderDefectDashboardPanel()}
+            ${renderDefectDashboardPanel()}
         </div>
     `;
 }
@@ -8195,6 +8225,7 @@ async function initAuth() {
         render();
         await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings(), hydrateGoogleSheetSyncStatus()]);
         if (ui.activeView === "personal-cross-squad") await hydratePersonalWorkspace(true);
+        if (isJiraWeeklyProjectRoute()) await hydrateJiraWeeklyDashboard();
         consumeGmailCallbackNotice();
         render();
     } catch {
@@ -8236,6 +8267,7 @@ async function handleLogin(event) {
         render();
         await Promise.all([hydrateState(true), hydrateAccountDirectory(), hydrateDeadlineEmailSettings(), hydrateGoogleSheetSyncStatus()]);
         if (ui.activeView === "personal-cross-squad") await hydratePersonalWorkspace(true);
+        if (isJiraWeeklyProjectRoute()) await hydrateJiraWeeklyDashboard();
         consumeGmailCallbackNotice();
         render();
     } catch (error) {
@@ -8606,7 +8638,6 @@ function readFileAsDataUrl(file) {
 function handleAction(event) {
     const action = event.currentTarget.dataset.action;
     const id = event.currentTarget.dataset.id;
-    if (action === "set-defect-dashboard-view") return setDefectDashboardView(event.currentTarget.dataset.dashboardView);
     if (action === "refresh-jira-weekly") return hydrateJiraWeeklyDashboard(true);
     if (action === "scroll-jira-weeks") return scrollJiraWeeks(event.currentTarget.dataset.direction);
     if (action === "open-jira-week-detail") return openJiraWeekDetail(event.currentTarget.dataset.weekNumber, event.currentTarget.dataset.weekMetric, event.currentTarget.dataset.weekPriority);
@@ -10733,13 +10764,16 @@ window.addEventListener("hashchange", () => {
     ui.activeRoute = route.path;
     ui.activeCategoryId = route.categoryId;
     ui.t01Tab = route.t01Tab;
+    ui.flowTestView = route.flowTestView || "project";
     ui.query = "";
     ui.openColumnFilter = null;
+    ui.jiraWeeklyDetail = null;
     ui.t01MetricView = "all";
     ui.sidebarMobileOpen = false;
     syncSidebarAccordionForRoute(route);
     requestActiveTabScroll();
     render();
+    if (isJiraWeeklyProjectRoute(route)) hydrateJiraWeeklyDashboard();
 });
 
 window.addEventListener("resize", () => {
