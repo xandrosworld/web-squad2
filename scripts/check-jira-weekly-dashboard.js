@@ -6,7 +6,8 @@ const {
   isHandledStatus,
   statusAt,
   buildWeekPeriods,
-  calculateWeek
+  calculateWeek,
+  buildBlockerPivot
 } = require("../jira-weekly-dashboard");
 
 function fixtureIssue(overrides = {}) {
@@ -16,6 +17,10 @@ function fixtureIssue(overrides = {}) {
     status: "Open",
     createdAt: "2026-08-14T02:00:00.000Z",
     updatedAt: "2026-08-18T02:00:00.000Z",
+    priority: "Major",
+    components: ["SQ02"],
+    parentKey: "PS0142025-5",
+    parentSummary: "[SQ2] Thẩm định và phê duyệt tín dụng",
     histories: [],
     ...overrides
   };
@@ -45,6 +50,16 @@ async function runUnitChecks() {
   assert.equal(week.remaining, 1);
   assert.equal(week.total, week.handled + week.remaining);
   assert.equal(week.handledRate, 50);
+
+  const blockerWeek = calculateWeek(periods[0], [
+    fixtureIssue({ key: "PS0142025-B1", priority: "Blocker" }),
+    fixtureIssue({ key: "PS0142025-M1", priority: "Major" })
+  ]);
+  const blockerPivot = buildBlockerPivot([blockerWeek]);
+  assert.equal(blockerPivot.total, 1);
+  assert.equal(blockerPivot.rows.length, 1);
+  assert.equal(blockerPivot.rows[0].parentKey, "PS0142025-5");
+  assert.equal(blockerPivot.rows[0].counts["1"], 1);
 
   const storedConfigService = createJiraWeeklyDashboardService({
     env: {
@@ -101,7 +116,9 @@ async function runLiveCheck() {
     assert.equal(week.handled, week.issues.handled.length);
     assert.equal(week.remaining, week.issues.remaining.length);
   });
-  console.log(`Jira live check passed: ${dashboard.total} TESTLUONG bugs, ${dashboard.weeks.length} weekly periods.`);
+  assert.equal(dashboard.blockerPivot.total, dashboard.blockerPivot.rows.reduce((total, row) => total + row.total, 0));
+  dashboard.blockerPivot.rows.forEach((row) => assert(row.parentKey || row.components.length, "Blocker phải xác định được nguồn phát sinh"));
+  console.log(`Jira live check passed: ${dashboard.total} TESTLUONG bugs, ${dashboard.weeks.length} weekly periods, ${dashboard.blockerPivot.total} Blockers.`);
 }
 
 (async () => {

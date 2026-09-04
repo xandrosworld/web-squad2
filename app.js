@@ -1559,6 +1559,17 @@ function openJiraWeekDetail(weekNumber, metric) {
     requestAnimationFrame(() => document.querySelector(".jira-week-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
 }
 
+function openJiraBlockerDetail(groupKey, weekNumber) {
+    if (!jiraWeeklyDashboardState.data) return;
+    ui.jiraWeeklyDetail = {
+        mode: "blocker",
+        groupKey: groupKey || "all",
+        weekNumber: weekNumber || "all"
+    };
+    render();
+    requestAnimationFrame(() => document.querySelector(".jira-week-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+}
+
 function isPersonalWorkspaceOwner(user = authState.user) {
     const identities = [user?.email, user?.username]
         .map((value) => String(value || "").trim().toLowerCase())
@@ -3194,6 +3205,7 @@ function renderJiraWeeklyDashboard() {
                 <div class="jira-weekly-grid">
                     ${weeks.map((week, index) => renderJiraWeekCard(week, weeks[index - 1], week === latest)).join("")}
                 </div>
+                ${renderJiraBlockerPivot(dashboard)}
                 ${renderJiraWeeklyDetail(dashboard)}
             ` : `
                 <div class="jira-weekly-empty"><i class="fa-solid fa-inbox"></i><div><strong>Chưa có kỳ báo cáo</strong><span>Kỳ đầu tiên bắt đầu từ 13/08/2026.</span></div></div>
@@ -3249,6 +3261,7 @@ function formatWeeklyPeriod(week) {
 function renderJiraWeeklyDetail(dashboard) {
     const detail = ui.jiraWeeklyDetail;
     if (!detail) return "";
+    if (detail.mode === "blocker") return renderJiraBlockerDetail(dashboard, detail);
     const week = (dashboard.weeks || []).find((item) => Number(item.weekNumber) === Number(detail.weekNumber));
     if (!week) return "";
     const labels = { created: "Bug phát sinh", handled: "Bug đã xử lý", remaining: "Bug còn tồn" };
@@ -3261,18 +3274,101 @@ function renderJiraWeeklyDetail(dashboard) {
                 <div><span>Tuần ${e(week.weekNumber)}</span><h3>${e(labels[metric])} <b>${e(issues.length)}</b></h3></div>
                 <button class="icon-btn" type="button" data-action="close-jira-week-detail" aria-label="Đóng danh sách"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            ${issues.length ? `
-                <div class="jira-week-issue-list">
-                    ${issues.map((issue) => `
-                        <a href="${e(`${baseUrl}${encodeURIComponent(issue.key)}`)}" target="_blank" rel="noopener noreferrer" class="jira-week-issue">
-                            <span class="jira-week-issue-key"><i class="fa-solid fa-bug"></i>${e(issue.key)}</span>
-                            <strong>${e(issue.summary || "Không có tên bug")}</strong>
-                            <span class="jira-week-issue-meta"><em>${e(issue.status || "Chưa xác định")}</em><small>Log ${e(formatShortDateTime(issue.createdAt))}</small><i class="fa-solid fa-arrow-up-right-from-square"></i></span>
-                        </a>
-                    `).join("")}
-                </div>
-            ` : `<div class="jira-week-detail-empty"><i class="fa-solid fa-circle-check"></i> Không có bug trong nhóm này.</div>`}
+            ${renderJiraIssueList(issues, baseUrl)}
         </section>
+    `;
+}
+
+function renderJiraBlockerPivot(dashboard) {
+    const pivot = dashboard.blockerPivot || { total: 0, rows: [] };
+    const rows = Array.isArray(pivot.rows) ? pivot.rows : [];
+    const weeks = Array.isArray(dashboard.weeks) ? dashboard.weeks : [];
+    return `
+        <section class="jira-blocker-pivot">
+            <div class="jira-blocker-pivot-head">
+                <div>
+                    <span><i class="fa-solid fa-table-cells"></i> Pivot TESTLUONG</span>
+                    <h3>Blocker phát sinh theo User Story</h3>
+                    <p>Tổng hợp nơi phát sinh theo Parent/User Story. Chọn một con số để xem bug chi tiết.</p>
+                </div>
+                <button class="jira-blocker-total" type="button" data-action="open-jira-blocker-detail" data-blocker-group="all" data-week-number="all">
+                    <span>Tổng Blocker</span><strong>${e(Number(pivot.total || 0))}</strong>
+                </button>
+            </div>
+            ${rows.length ? `
+                <div class="jira-blocker-table-wrap">
+                    <table class="jira-blocker-table">
+                        <thead><tr><th>USER STORY / NGUỒN PHÁT SINH</th>${weeks.map((week) => `<th>Tuần ${e(week.weekNumber)}</th>`).join("")}<th>TỔNG</th></tr></thead>
+                        <tbody>
+                            ${rows.map((row) => `
+                                <tr>
+                                    <td>
+                                        <div class="jira-blocker-source">
+                                            <span>${row.parentKey ? `<a href="${e(`${dashboard.browseBaseUrl}${encodeURIComponent(row.parentKey)}`)}" target="_blank" rel="noopener noreferrer">${e(row.parentKey)}</a>` : "Chưa có Parent"}${(row.components || []).map((component) => `<em>${e(component)}</em>`).join("")}</span>
+                                            <strong>${e(row.groupName || "Chưa xác định nguồn phát sinh")}</strong>
+                                        </div>
+                                    </td>
+                                    ${weeks.map((week) => renderJiraBlockerCountCell(row, week.weekNumber)).join("")}
+                                    <td>${renderJiraBlockerCountButton(row.total, row.groupKey, "all", "Tổng")}</td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                        <tfoot><tr><th>Tổng Blocker phát sinh</th>${weeks.map((week) => {
+                            const count = rows.reduce((total, row) => total + Number(row.counts?.[String(week.weekNumber)] || 0), 0);
+                            return `<th>${renderJiraBlockerCountButton(count, "all", week.weekNumber, `Tuần ${week.weekNumber}`)}</th>`;
+                        }).join("")}<th>${renderJiraBlockerCountButton(pivot.total, "all", "all", "Tổng")}</th></tr></tfoot>
+                    </table>
+                </div>
+            ` : `<div class="jira-blocker-empty"><i class="fa-solid fa-shield-check"></i><strong>Chưa phát sinh Blocker TESTLUONG trong các kỳ báo cáo.</strong></div>`}
+        </section>
+    `;
+}
+
+function renderJiraBlockerCountCell(row, weekNumber) {
+    const count = Number(row.counts?.[String(weekNumber)] || 0);
+    return `<td>${renderJiraBlockerCountButton(count, row.groupKey, weekNumber, `Tuần ${weekNumber}`)}</td>`;
+}
+
+function renderJiraBlockerCountButton(count, groupKey, weekNumber, label) {
+    const value = Number(count || 0);
+    if (!value) return `<span class="jira-blocker-zero">0</span>`;
+    return `<button class="jira-blocker-count" type="button" data-action="open-jira-blocker-detail" data-blocker-group="${e(groupKey)}" data-week-number="${e(weekNumber)}" title="Xem ${e(value)} Blocker · ${e(label)}">${e(value)}</button>`;
+}
+
+function renderJiraBlockerDetail(dashboard, detail) {
+    const rows = Array.isArray(dashboard.blockerPivot?.rows) ? dashboard.blockerPivot.rows : [];
+    const selectedRows = detail.groupKey === "all" ? rows : rows.filter((row) => row.groupKey === detail.groupKey);
+    const issues = selectedRows.flatMap((row) => {
+        if (String(detail.weekNumber) === "all") return Object.values(row.issues || {}).flat();
+        return row.issues?.[String(detail.weekNumber)] || [];
+    });
+    const uniqueIssues = [...new Map(issues.map((issue) => [issue.key, issue])).values()];
+    const selectedRow = selectedRows.length === 1 ? selectedRows[0] : null;
+    const periodLabel = String(detail.weekNumber) === "all" ? "Tất cả các tuần" : `Tuần ${detail.weekNumber}`;
+    const baseUrl = String(dashboard.browseBaseUrl || "https://bidv-vn.atlassian.net/browse/");
+    return `
+        <section class="jira-week-detail blocker-detail">
+            <div class="jira-week-detail-head">
+                <div><span>${e(periodLabel)} · Blocker TESTLUONG</span><h3>${e(selectedRow?.groupName || "Tất cả nguồn phát sinh")} <b>${e(uniqueIssues.length)}</b></h3></div>
+                <button class="icon-btn" type="button" data-action="close-jira-week-detail" aria-label="Đóng danh sách"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            ${renderJiraIssueList(uniqueIssues, baseUrl)}
+        </section>
+    `;
+}
+
+function renderJiraIssueList(issues, baseUrl) {
+    if (!issues.length) return `<div class="jira-week-detail-empty"><i class="fa-solid fa-circle-check"></i> Không có bug trong nhóm này.</div>`;
+    return `
+        <div class="jira-week-issue-list">
+            ${issues.map((issue) => `
+                <a href="${e(`${baseUrl}${encodeURIComponent(issue.key)}`)}" target="_blank" rel="noopener noreferrer" class="jira-week-issue">
+                    <span class="jira-week-issue-key"><i class="fa-solid fa-bug"></i>${e(issue.key)}</span>
+                    <strong>${e(issue.summary || "Không có tên bug")}</strong>
+                    <span class="jira-week-issue-meta"><em>${e(issue.status || "Chưa xác định")}</em>${issue.priority ? `<em class="priority">${e(issue.priority)}</em>` : ""}<small>Log ${e(formatShortDateTime(issue.createdAt))}</small><i class="fa-solid fa-arrow-up-right-from-square"></i></span>
+                </a>
+            `).join("")}
+        </div>
     `;
 }
 
@@ -8426,6 +8522,7 @@ function handleAction(event) {
     if (action === "set-defect-dashboard-view") return setDefectDashboardView(event.currentTarget.dataset.dashboardView);
     if (action === "refresh-jira-weekly") return hydrateJiraWeeklyDashboard(true);
     if (action === "open-jira-week-detail") return openJiraWeekDetail(event.currentTarget.dataset.weekNumber, event.currentTarget.dataset.weekMetric);
+    if (action === "open-jira-blocker-detail") return openJiraBlockerDetail(event.currentTarget.dataset.blockerGroup, event.currentTarget.dataset.weekNumber);
     if (action === "close-jira-week-detail") {
         ui.jiraWeeklyDetail = null;
         return render();

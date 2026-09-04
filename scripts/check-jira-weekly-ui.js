@@ -19,14 +19,16 @@ const emptyState = {
   unmappedPlanBugGroups: [], updatedAt: new Date().toISOString()
 };
 
-const issue = (key, status) => ({
+const issue = (key, status, priority = "Major") => ({
   key,
   summary: `Bug kiểm thử ${key}`,
   status,
   createdAt: "2026-08-14T02:00:00.000Z",
   updatedAt: "2026-09-03T02:00:00.000Z",
-  priority: "Medium",
-  components: ["Squad 2"]
+  priority,
+  components: ["SQ02"],
+  parentKey: "PS0142025-5",
+  parentSummary: "[SQ2] Thẩm định và phê duyệt tín dụng"
 });
 
 const dashboard = {
@@ -38,6 +40,18 @@ const dashboard = {
   handledStatuses: ["Closed", "Resolved", "SIT Pass", "Cancelled"],
   syncedAt: "2026-09-03T08:05:00.000Z",
   total: 3,
+  blockerPivot: {
+    total: 2,
+    rows: [{
+      groupKey: "PS0142025-5",
+      parentKey: "PS0142025-5",
+      groupName: "[SQ2] Thẩm định và phê duyệt tín dụng",
+      components: ["SQ02"],
+      total: 2,
+      counts: { "2": 2 },
+      issues: { "2": [issue("PS0142025-12563", "SIT Pass", "Blocker"), issue("PS0142025-12564", "Cancelled", "Blocker")] }
+    }]
+  },
   weeks: [1, 2, 3].map((weekNumber) => ({
     weekNumber,
     startAt: ["2026-08-13T00:00:00.000Z", "2026-08-20T08:00:00.000Z", "2026-08-27T08:00:00.000Z"][weekNumber - 1],
@@ -95,9 +109,12 @@ const dashboard = {
     const href = await page.locator(".jira-week-detail a").first().getAttribute("href");
     if (!href?.includes("https://bidv-vn.atlassian.net/browse/PS0142025-")) throw new Error(`Link Jira không đúng: ${href}`);
     const bodyText = await page.locator(".jira-weekly-panel").innerText();
-    for (const text of ["Bug phát sinh", "Bug đã xử lý", "Bug còn tồn", "Tỷ lệ xử lý lũy kế", "Tạm tính", "Đã chốt"]) {
+    for (const text of ["Bug phát sinh", "Bug đã xử lý", "Bug còn tồn", "Tỷ lệ xử lý lũy kế", "Tạm tính", "Đã chốt", "Blocker phát sinh theo User Story", "Tổng Blocker"]) {
       if (!bodyText.includes(text)) throw new Error(`Thiếu nội dung dashboard: ${text}`);
     }
+    await page.locator('.jira-blocker-table [data-blocker-group="PS0142025-5"][data-week-number="2"]').click();
+    await page.locator(".jira-week-detail.blocker-detail").waitFor();
+    if (await page.locator(".jira-week-detail.blocker-detail a.jira-week-issue").count() !== 2) throw new Error("Drill-down Blocker không đủ 2 bug.");
     if (process.env.SMOKE_SCREENSHOT) await page.screenshot({ path: process.env.SMOKE_SCREENSHOT, fullPage: true });
     console.log("Jira weekly dashboard UI check passed.");
   } finally {

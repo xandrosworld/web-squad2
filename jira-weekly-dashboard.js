@@ -6,7 +6,7 @@ const FIRST_WEEK_START = "2026-08-13T00:00:00+07:00";
 const FIRST_CUTOFF = "2026-08-20T15:00:00+07:00";
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const CACHE_META_KEY = "jira_testluong_cache_v1";
-const SNAPSHOT_META_KEY = "jira_testluong_weekly_snapshots_v1";
+const SNAPSHOT_META_KEY = "jira_testluong_weekly_snapshots_v2";
 const SYNC_LOCK_KEY = "jira_testluong_weekly_sync_v1";
 const CONNECTION_META_KEY = "jira_testluong_connection_v1";
 const HANDLED_STATUSES = new Set(["closed", "resolved", "sit pass", "cancelled", "canceled"]);
@@ -38,6 +38,8 @@ function toIssue(fields, key, histories = []) {
     resolutionAt: asIso(fields?.resolutiondate),
     priority: String(fields?.priority?.name || "").trim(),
     components: Array.isArray(fields?.components) ? fields.components.map((item) => String(item?.name || "").trim()).filter(Boolean) : [],
+    parentKey: String(fields?.parent?.key || "").trim(),
+    parentSummary: String(fields?.parent?.fields?.summary || "").trim(),
     labels: Array.isArray(fields?.labels) ? fields.labels.map(String) : [],
     histories: normalizeStatusHistories(histories)
   };
@@ -150,7 +152,9 @@ function publicIssue(issue, status) {
     createdAt: issue.createdAt,
     updatedAt: issue.updatedAt,
     priority: issue.priority || "",
-    components: issue.components || []
+    components: issue.components || [],
+    parentKey: issue.parentKey || "",
+    parentSummary: issue.parentSummary || ""
   };
 }
 
@@ -190,6 +194,39 @@ function calculateWeek(period, issues) {
       handled: sortIssues(handled),
       remaining: sortIssues(remaining)
     }
+  };
+}
+
+function buildBlockerPivot(weeks) {
+  const rowsByGroup = new Map();
+  (Array.isArray(weeks) ? weeks : []).forEach((week) => {
+    const blockers = (Array.isArray(week?.issues?.created) ? week.issues.created : [])
+      .filter((issue) => normalizeStatus(issue.priority) === "blocker");
+    blockers.forEach((issue) => {
+      const components = Array.isArray(issue.components) ? issue.components.filter(Boolean) : [];
+      const groupKey = issue.parentKey || components.join("|") || "unmapped";
+      if (!rowsByGroup.has(groupKey)) {
+        rowsByGroup.set(groupKey, {
+          groupKey,
+          parentKey: issue.parentKey || "",
+          groupName: issue.parentSummary || components.join(", ") || "Chưa xác định nguồn phát sinh",
+          components,
+          total: 0,
+          counts: {},
+          issues: {}
+        });
+      }
+      const row = rowsByGroup.get(groupKey);
+      const weekKey = String(week.weekNumber);
+      row.total += 1;
+      row.counts[weekKey] = (row.counts[weekKey] || 0) + 1;
+      row.issues[weekKey] = [...(row.issues[weekKey] || []), issue];
+    });
+  });
+  const rows = [...rowsByGroup.values()].sort((a, b) => b.total - a.total || a.groupName.localeCompare(b.groupName, "vi"));
+  return {
+    total: rows.reduce((total, row) => total + row.total, 0),
+    rows
   };
 }
 
@@ -250,7 +287,7 @@ function createJiraWeeklyDashboardService(options = {}) {
         jql,
         maxResults: 100,
         nextPageToken,
-        fields: "summary,status,created,updated,resolutiondate,priority,components,labels"
+        fields: "summary,status,created,updated,resolutiondate,priority,components,labels,parent"
       });
       issues.push(...(Array.isArray(data.issues) ? data.issues : []));
       nextPageToken = String(data.nextPageToken || "");
@@ -405,6 +442,7 @@ function createJiraWeeklyDashboardService(options = {}) {
       if (period.finalized && snapshotByWeek.has(period.weekNumber)) return snapshotByWeek.get(period.weekNumber);
       return calculateWeek(period, issues);
     });
+    const blockerPivot = buildBlockerPivot(weeks);
     return {
       configured: runtimeConfig.configured,
       browseBaseUrl: runtimeConfig.baseUrl ? `${runtimeConfig.baseUrl}/browse/` : "",
@@ -415,7 +453,8 @@ function createJiraWeeklyDashboardService(options = {}) {
       handledStatuses: ["Closed", "Resolved", "SIT Pass", "Cancelled"],
       syncedAt: cache?.syncedAt || null,
       total: Number(cache?.total || issues.length || 0),
-      weeks
+      weeks,
+      blockerPivot
     };
   }
 
@@ -452,6 +491,7 @@ module.exports = {
   statusAt,
   buildWeekPeriods,
   calculateWeek,
+  buildBlockerPivot,
   FIRST_WEEK_START,
   FIRST_CUTOFF
 };
