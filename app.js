@@ -1549,11 +1549,12 @@ function setDefectDashboardView(view) {
     if (ui.defectDashboardView === "weekly") hydrateJiraWeeklyDashboard();
 }
 
-function openJiraWeekDetail(weekNumber, metric) {
+function openJiraWeekDetail(weekNumber, metric, priority = "") {
     if (!jiraWeeklyDashboardState.data) return;
     ui.jiraWeeklyDetail = {
         weekNumber: Number(weekNumber || 0),
-        metric: ["created", "handled", "remaining"].includes(metric) ? metric : "remaining"
+        metric: ["created", "handled", "remaining"].includes(metric) ? metric : "remaining",
+        priority: String(priority || "").trim()
     };
     render();
     requestAnimationFrame(() => document.querySelector(".jira-week-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
@@ -1602,6 +1603,7 @@ function getRouteForPath(path) {
 function render() {
     const pageScroll = lastRenderedTab === ui.activeRoute ? capturePageScroll() : null;
     const previousTabbarScrollLeft = document.querySelector(".tabbar")?.scrollLeft || 0;
+    const previousJiraWeeksScrollLeft = document.querySelector(".jira-weekly-scroll")?.scrollLeft;
     const previousSidebar = document.querySelector(".sidebar-menu");
     const previousSidebarScrollTop = previousSidebar ? previousSidebar.scrollTop : null;
     if (authState.status === "checking") {
@@ -1681,10 +1683,33 @@ function render() {
         if (openedFilter) requestAnimationFrame(() => openedFilter.focus());
     }
     restorePageScroll(pageScroll);
+    restoreJiraWeeksScroll(previousJiraWeeksScrollLeft);
     const tabScrollBehavior = pendingActiveTabScroll || "auto";
     pendingActiveTabScroll = null;
     syncActiveTabScroll(tabScrollBehavior);
     requestAnimationFrame(() => syncActiveTabScroll("auto"));
+}
+
+function restoreJiraWeeksScroll(scrollLeft) {
+    const restore = () => {
+        const scroller = document.querySelector(".jira-weekly-scroll");
+        if (!scroller) return;
+        const maxScrollLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+        scroller.scrollLeft = typeof scrollLeft === "number"
+            ? Math.min(Math.max(0, scrollLeft), maxScrollLeft)
+            : maxScrollLeft;
+    };
+    requestAnimationFrame(() => {
+        restore();
+        requestAnimationFrame(restore);
+    });
+}
+
+function scrollJiraWeeks(direction) {
+    const scroller = document.querySelector(".jira-weekly-scroll");
+    if (!scroller) return;
+    const amount = Math.max(320, Math.round(scroller.clientWidth * .8));
+    scroller.scrollBy({ left: direction === "previous" ? -amount : amount, behavior: "smooth" });
 }
 
 function restoreSidebarScrollTop(scrollTop) {
@@ -3203,8 +3228,17 @@ function renderJiraWeeklyDashboard() {
                 <span>${e(dashboard.cutoffDescription || "")}</span>
             </div>
             ${weeks.length ? `
-                <div class="jira-weekly-grid">
-                    ${weeks.map((week, index) => renderJiraWeekCard(week, weeks[index - 1], week === latest)).join("")}
+                <div class="jira-weekly-rail-head">
+                    <div><strong>${e(weeks.length)} kỳ báo cáo</strong><span><i class="fa-solid fa-arrows-left-right"></i> Kéo thanh ngang để xem các tuần</span></div>
+                    <div class="jira-weekly-rail-actions" aria-label="Điều hướng tuần">
+                        <button class="icon-btn" type="button" data-action="scroll-jira-weeks" data-direction="previous" aria-label="Xem tuần trước"><i class="fa-solid fa-chevron-left"></i></button>
+                        <button class="icon-btn" type="button" data-action="scroll-jira-weeks" data-direction="next" aria-label="Xem tuần sau"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                </div>
+                <div class="jira-weekly-scroll" tabindex="0" aria-label="Các kỳ báo cáo tuần; kéo ngang để xem thêm">
+                    <div class="jira-weekly-grid">
+                        ${weeks.map((week, index) => renderJiraWeekCard(week, weeks[index - 1], week === latest)).join("")}
+                    </div>
                 </div>
                 ${renderJiraBlockerPivot(dashboard)}
                 ${renderJiraWeeklyDetail(dashboard)}
@@ -3246,7 +3280,39 @@ function renderJiraWeekCard(week, previousWeek, isLatest) {
                     <span class="jira-week-progress"><i style="width:${Math.max(0, Math.min(100, Number(week.handledRate || 0)))}%"></i></span>
                 </button>
             </div>
+            ${renderJiraWeekPriorityBreakdown(week)}
         </article>
+    `;
+}
+
+function renderJiraWeekPriorityBreakdown(week) {
+    const breakdown = week.priorityBreakdown || {};
+    const priorityOrder = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
+    const priorities = [
+        ...priorityOrder.filter((priority) => breakdown[priority]),
+        ...Object.keys(breakdown).filter((priority) => !priorityOrder.includes(priority)).sort((a, b) => a.localeCompare(b, "vi"))
+    ];
+    const visible = priorities.filter((priority) => {
+        const counts = breakdown[priority] || {};
+        return Number(counts.created || 0) + Number(counts.handled || 0) + Number(counts.remaining || 0) > 0;
+    });
+    if (!visible.length) return `<div class="jira-priority-empty">Chưa có dữ liệu mức độ ưu tiên</div>`;
+    const shortLabels = { created: "Phát sinh", handled: "Đã xử lý", remaining: "Còn tồn" };
+    return `
+        <div class="jira-priority-breakdown">
+            <div class="jira-priority-head"><strong>Mức độ ưu tiên</strong><span>Phát sinh</span><span>Đã xử lý</span><span>Còn tồn</span></div>
+            ${visible.map((priority) => `
+                <div class="jira-priority-row priority-${e(priority.toLowerCase().replace(/[^a-z0-9]+/g, "-"))}">
+                    <strong><i></i>${e(priority)}</strong>
+                    ${["created", "handled", "remaining"].map((metric) => {
+                        const count = Number(breakdown[priority]?.[metric] || 0);
+                        return count > 0
+                            ? `<button type="button" data-action="open-jira-week-detail" data-week-number="${e(week.weekNumber)}" data-week-metric="${metric}" data-week-priority="${e(priority)}" title="Xem ${e(shortLabels[metric].toLowerCase())}: ${e(priority)}">${e(count)}</button>`
+                            : `<span>0</span>`;
+                    }).join("")}
+                </div>
+            `).join("")}
+        </div>
     `;
 }
 
@@ -3267,12 +3333,14 @@ function renderJiraWeeklyDetail(dashboard) {
     if (!week) return "";
     const labels = { created: "Bug phát sinh", handled: "Bug đã xử lý", remaining: "Bug còn tồn" };
     const metric = Object.prototype.hasOwnProperty.call(labels, detail.metric) ? detail.metric : "remaining";
-    const issues = Array.isArray(week.issues?.[metric]) ? week.issues[metric] : [];
+    const selectedPriority = String(detail.priority || "").trim();
+    const issues = (Array.isArray(week.issues?.[metric]) ? week.issues[metric] : [])
+        .filter((issue) => !selectedPriority || String(issue.priority || "").trim() === selectedPriority);
     const baseUrl = String(dashboard.browseBaseUrl || "https://bidv-vn.atlassian.net/browse/");
     return `
         <section class="jira-week-detail">
             <div class="jira-week-detail-head">
-                <div><span>Tuần ${e(week.weekNumber)}</span><h3>${e(labels[metric])} <b>${e(issues.length)}</b></h3></div>
+                <div><span>Tuần ${e(week.weekNumber)}${selectedPriority ? ` · ${e(selectedPriority)}` : ""}</span><h3>${e(labels[metric])} <b>${e(issues.length)}</b></h3></div>
                 <button class="icon-btn" type="button" data-action="close-jira-week-detail" aria-label="Đóng danh sách"><i class="fa-solid fa-xmark"></i></button>
             </div>
             ${renderJiraIssueList(issues, baseUrl)}
@@ -8536,7 +8604,8 @@ function handleAction(event) {
     const id = event.currentTarget.dataset.id;
     if (action === "set-defect-dashboard-view") return setDefectDashboardView(event.currentTarget.dataset.dashboardView);
     if (action === "refresh-jira-weekly") return hydrateJiraWeeklyDashboard(true);
-    if (action === "open-jira-week-detail") return openJiraWeekDetail(event.currentTarget.dataset.weekNumber, event.currentTarget.dataset.weekMetric);
+    if (action === "scroll-jira-weeks") return scrollJiraWeeks(event.currentTarget.dataset.direction);
+    if (action === "open-jira-week-detail") return openJiraWeekDetail(event.currentTarget.dataset.weekNumber, event.currentTarget.dataset.weekMetric, event.currentTarget.dataset.weekPriority);
     if (action === "open-jira-blocker-detail") return openJiraBlockerDetail(event.currentTarget.dataset.blockerGroup, event.currentTarget.dataset.weekNumber, event.currentTarget.dataset.blockerIssue);
     if (action === "close-jira-week-detail") {
         ui.jiraWeeklyDetail = null;

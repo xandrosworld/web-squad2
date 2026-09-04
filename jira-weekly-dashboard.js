@@ -10,6 +10,7 @@ const SNAPSHOT_META_KEY = "jira_testluong_weekly_snapshots_v2";
 const SYNC_LOCK_KEY = "jira_testluong_weekly_sync_v1";
 const CONNECTION_META_KEY = "jira_testluong_connection_v1";
 const HANDLED_STATUSES = new Set(["closed", "resolved", "sit pass", "cancelled", "canceled"]);
+const PRIORITY_ORDER = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
 
 function normalizeStatus(value) {
   return String(value || "")
@@ -181,7 +182,7 @@ function calculateWeek(period, issues) {
     return result;
   }, {});
   const sortIssues = (rows) => rows.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt) || a.key.localeCompare(b.key));
-  return {
+  return withPriorityBreakdown({
     ...period,
     total,
     created: created.length,
@@ -194,7 +195,38 @@ function calculateWeek(period, issues) {
       handled: sortIssues(handled),
       remaining: sortIssues(remaining)
     }
-  };
+  });
+}
+
+function withPriorityBreakdown(week) {
+  const issueGroups = week?.issues || {};
+  const metricKeys = ["created", "handled", "remaining"];
+  const discovered = new Set(PRIORITY_ORDER);
+  metricKeys.forEach((metric) => {
+    (Array.isArray(issueGroups[metric]) ? issueGroups[metric] : []).forEach((issue) => {
+      discovered.add(String(issue?.priority || "Chưa xác định").trim() || "Chưa xác định");
+    });
+  });
+  const priorities = [...discovered].sort((a, b) => {
+    const aIndex = PRIORITY_ORDER.indexOf(a);
+    const bIndex = PRIORITY_ORDER.indexOf(b);
+    if (aIndex !== -1 || bIndex !== -1) {
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    }
+    return a.localeCompare(b, "vi");
+  });
+  const priorityBreakdown = Object.fromEntries(priorities.map((priority) => [
+    priority,
+    Object.fromEntries(metricKeys.map((metric) => [
+      metric,
+      (Array.isArray(issueGroups[metric]) ? issueGroups[metric] : [])
+        .filter((issue) => (String(issue?.priority || "Chưa xác định").trim() || "Chưa xác định") === priority)
+        .length
+    ]))
+  ]));
+  return { ...week, priorityBreakdown };
 }
 
 function buildBlockerPivot(weeks) {
@@ -439,8 +471,10 @@ function createJiraWeeklyDashboardService(options = {}) {
     const snapshotByWeek = new Map((Array.isArray(snapshots) ? snapshots : []).map((week) => [week.weekNumber, week]));
     const issues = Array.isArray(cache?.issues) ? cache.issues : [];
     const weeks = buildWeekPeriods(now, runtimeConfig).map((period) => {
-      if (period.finalized && snapshotByWeek.has(period.weekNumber)) return snapshotByWeek.get(period.weekNumber);
-      return calculateWeek(period, issues);
+      const week = period.finalized && snapshotByWeek.has(period.weekNumber)
+        ? snapshotByWeek.get(period.weekNumber)
+        : calculateWeek(period, issues);
+      return withPriorityBreakdown(week);
     });
     const blockerPivot = buildBlockerPivot(weeks);
     return {
@@ -491,6 +525,7 @@ module.exports = {
   statusAt,
   buildWeekPeriods,
   calculateWeek,
+  withPriorityBreakdown,
   buildBlockerPivot,
   FIRST_WEEK_START,
   FIRST_CUTOFF

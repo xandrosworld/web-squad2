@@ -50,6 +50,7 @@ async function runUnitChecks() {
   assert.equal(week.remaining, 1);
   assert.equal(week.total, week.handled + week.remaining);
   assert.equal(week.handledRate, 50);
+  assert.deepEqual(week.priorityBreakdown.Major, { created: 2, handled: 1, remaining: 1 });
 
   const blockerWeek = calculateWeek(periods[0], [
     fixtureIssue({ key: "PS0142025-B1", priority: "Blocker" }),
@@ -60,6 +61,8 @@ async function runUnitChecks() {
   assert.equal(blockerPivot.rows.length, 1);
   assert.equal(blockerPivot.rows[0].parentKey, "PS0142025-5");
   assert.equal(blockerPivot.rows[0].counts["1"], 1);
+  assert.deepEqual(blockerWeek.priorityBreakdown.Blocker, { created: 1, handled: 0, remaining: 1 });
+  assert.deepEqual(blockerWeek.priorityBreakdown.Major, { created: 1, handled: 0, remaining: 1 });
 
   const storedConfigService = createJiraWeeklyDashboardService({
     env: {
@@ -115,6 +118,16 @@ async function runLiveCheck() {
     assert.equal(week.created, week.issues.created.length);
     assert.equal(week.handled, week.issues.handled.length);
     assert.equal(week.remaining, week.issues.remaining.length);
+    Object.values(week.priorityBreakdown || {}).forEach((counts) => {
+      assert(Number.isInteger(counts.created) && Number.isInteger(counts.handled) && Number.isInteger(counts.remaining));
+    });
+    ["created", "handled", "remaining"].forEach((metric) => {
+      assert.equal(
+        Object.values(week.priorityBreakdown || {}).reduce((total, counts) => total + Number(counts[metric] || 0), 0),
+        week[metric],
+        `Tuần ${week.weekNumber} sai tổng Priority của ${metric}`
+      );
+    });
   });
   assert.equal(dashboard.blockerPivot.total, dashboard.blockerPivot.rows.reduce((total, row) => total + row.total, 0));
   dashboard.blockerPivot.rows.forEach((row) => assert(row.parentKey || row.components.length, "Blocker phải xác định được nguồn phát sinh"));

@@ -63,9 +63,14 @@ const dashboard = {
     total: 3,
     handledRate: Math.round((weekNumber / 3) * 1000) / 10,
     issues: {
-      created: [issue(`PS0142025-${12000 + weekNumber}`, "Open")],
+      created: [issue(`PS0142025-${12000 + weekNumber}`, "Open", weekNumber === 2 ? "Blocker" : "Major")],
       handled: [issue(`PS0142025-${12100 + weekNumber}`, "Resolved")],
       remaining: weekNumber === 3 ? [] : [issue(`PS0142025-${12200 + weekNumber}`, "Open")]
+    },
+    priorityBreakdown: {
+      Blocker: { created: weekNumber === 2 ? 1 : 0, handled: 0, remaining: 0 },
+      Major: { created: weekNumber === 2 ? 0 : 1, handled: 1, remaining: weekNumber === 3 ? 0 : 1 },
+      Minor: { created: 0, handled: 0, remaining: 0 }
     }
   }))
 };
@@ -104,6 +109,20 @@ const dashboard = {
     await page.locator(".jira-weekly-panel").waitFor();
     await page.locator(".jira-week-card").first().waitFor();
     if (await page.locator(".jira-week-card").count() !== 3) throw new Error("Giao diện không hiển thị đủ 3 tuần.");
+    const railLayout = await page.locator(".jira-weekly-scroll").evaluate((element) => ({
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      scrollLeft: element.scrollLeft
+    }));
+    if (railLayout.scrollWidth <= railLayout.clientWidth) throw new Error("Các tuần chưa được đặt trong vùng cuộn ngang.");
+    if (railLayout.scrollLeft <= 0) throw new Error("Giao diện chưa tự đưa tuần mới nhất vào vùng nhìn thấy.");
+    if (await page.locator(".jira-week-card").nth(1).getByText("Blocker", { exact: true }).count() !== 1) throw new Error("Thiếu phân rã Priority trong tuần.");
+    if (process.env.SMOKE_WEEKLY_SCREENSHOT) await page.screenshot({ path: process.env.SMOKE_WEEKLY_SCREENSHOT, fullPage: true });
+    await page.locator(".jira-week-card").nth(1).locator('[data-week-priority="Blocker"][data-week-metric="created"]').click();
+    await page.locator(".jira-week-detail").waitFor();
+    const priorityDetailText = await page.locator(".jira-week-detail-head").innerText();
+    if (!priorityDetailText.toLowerCase().includes("blocker")) throw new Error(`Drill-down chưa lọc đúng Priority: ${priorityDetailText}`);
+    await page.locator('[data-action="close-jira-week-detail"]').click();
     await page.locator(".jira-week-card").nth(2).getByRole("button", { name: /Bug đã xử lý/ }).click();
     await page.locator(".jira-week-detail").waitFor();
     const href = await page.locator(".jira-week-detail a").first().getAttribute("href");
