@@ -45,6 +45,7 @@ const dashboard = {
   handledStatuses: ["Closed"],
   cancelledStatuses: ["Cancelled", "Canceled"],
   syncedAt: "2026-09-03T08:05:00.000Z",
+  reportReady: true,
   total: 3,
   blockerPivot: {
     total: 1,
@@ -105,9 +106,20 @@ const dashboard = {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     let stateResponseFinished = false;
     let jiraResponseMode = "ready";
+    let reportRequests = 0;
     await page.route("**/api/**", async (route) => {
       const pathname = new URL(route.request().url()).pathname;
       let body = {};
+      if (pathname === "/api/jira/weekly-dashboard/report.xlsx") {
+        reportRequests += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          headers: { "Content-Disposition": 'attachment; filename="Bao_cao_bug_TESTLUONG_theo_Squad_2026-09-17.xlsx"' },
+          body: Buffer.from("sample workbook")
+        });
+        return;
+      }
       if (pathname === "/api/auth/me") body = { authenticated: true, user: { id: "admin", name: "Mai Tấn Thành", email: "thanhmt@bidv.com.vn", username: "thanhmt", role: "admin" } };
       else if (pathname === "/api/state") {
         await new Promise((resolve) => setTimeout(resolve, 2500));
@@ -129,6 +141,14 @@ const dashboard = {
     await page.locator('.flow-scope-tabs button[aria-current="page"]', { hasText: "Toàn bộ dự án" }).waitFor();
     await page.locator(".jira-weekly-panel").waitFor();
     await page.locator(".jira-week-card").first().waitFor();
+    const exportButton = page.locator('.jira-weekly-head-actions [data-action="export-jira-testluong"]');
+    if (!(await exportButton.isEnabled())) throw new Error("Nút tải báo cáo chưa sẵn sàng khi dữ liệu đã đồng bộ.");
+    const downloadPromise = page.waitForEvent("download");
+    await exportButton.click();
+    const download = await downloadPromise;
+    if (download.suggestedFilename() !== "Bao_cao_bug_TESTLUONG_theo_Squad_2026-09-17.xlsx" || reportRequests !== 1) {
+      throw new Error("Nút tải báo cáo không tải đúng Excel từ cache trên máy chủ.");
+    }
     if (stateResponseFinished) throw new Error("Dashboard Jira vẫn phải chờ toàn bộ /api/state tải xong.");
     if (await page.getByText("Không tìm thấy nhóm", { exact: true }).count()) throw new Error("Route dự án hiển thị sai trạng thái không tìm thấy nhóm khi /api/state còn đang tải.");
     if (await page.locator(".jira-week-card").count() !== 3) throw new Error("Giao diện không hiển thị đủ 3 tuần.");

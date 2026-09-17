@@ -25,6 +25,7 @@
     "check:deadline-notifications": "node scripts/check-deadline-notifications.js",
     "check:google-sheet-sync": "node scripts/check-google-sheet-sync.js",
     "check:jira-weekly": "node scripts/check-jira-weekly-dashboard.js",
+    "check:jira-report": "node scripts/check-jira-testluong-report.js",
     "check:jira-weekly-ui": "node scripts/check-jira-weekly-ui.js",
     "configure:jira-production": "node scripts/configure-production-jira.js",
     "check:drive-attachments": "node scripts/check-drive-attachments.js",

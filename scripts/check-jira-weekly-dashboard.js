@@ -10,6 +10,7 @@ const {
   calculateWeek,
   buildBlockerPivot
 } = require("../jira-weekly-dashboard");
+const { buildJiraTestluongWorkbook } = require("../jira-testluong-report");
 
 function fixtureIssue(overrides = {}) {
   return {
@@ -138,6 +139,13 @@ async function runLiveCheck() {
   const db = createMemoryDb();
   const result = await service.sync(db);
   const dashboard = await service.getDashboard(db, new Date());
+  const report = await service.getReportData(db);
+  assert.equal(dashboard.reportReady, true);
+  assert.equal(report.issues.length, result.total);
+  assert(report.issues.every((issue) => Object.hasOwn(issue, "assignee") && Object.hasOwn(issue, "reporter") && Array.isArray(issue.childOf)), "Cache Jira còn thiếu trường cho Excel");
+  const excel = buildJiraTestluongWorkbook(report);
+  assert.equal(excel.total, result.total);
+  assert((await excel.workbook.xlsx.writeBuffer()).length > 10000, "File Excel từ dữ liệu Jira quá nhỏ hoặc rỗng");
   assert(result.total > 0, "Jira phải trả về ít nhất một bug TESTLUONG");
   assert.equal(dashboard.total, result.total);
   assert(dashboard.weeks.length >= 3, "Dashboard phải có đủ các tuần từ 13/08/2026");

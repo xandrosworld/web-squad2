@@ -9,6 +9,7 @@ const CACHE_META_KEY = "jira_testluong_cache_v1";
 const SNAPSHOT_META_KEY = "jira_testluong_weekly_snapshots_v4";
 const SYNC_LOCK_KEY = "jira_testluong_weekly_sync_v1";
 const CONNECTION_META_KEY = "jira_testluong_connection_v1";
+const REPORT_SCHEMA_VERSION = 1;
 const HANDLED_STATUSES = new Set(["closed"]);
 const CANCELLED_STATUSES = new Set(["cancelled", "canceled"]);
 const PRIORITY_ORDER = ["Blocker", "Critical", "Major", "Minor", "Trivial"];
@@ -47,6 +48,13 @@ function toIssue(fields, key, histories = []) {
     parentKey: String(fields?.parent?.key || "").trim(),
     parentSummary: String(fields?.parent?.fields?.summary || "").trim(),
     labels: Array.isArray(fields?.labels) ? fields.labels.map(String) : [],
+    assignee: String(fields?.assignee?.displayName || fields?.assignee?.accountId || "").trim(),
+    reporter: String(fields?.reporter?.displayName || fields?.reporter?.accountId || "").trim(),
+    resolution: String(fields?.resolution?.name || "").trim(),
+    childOf: (Array.isArray(fields?.issuelinks) ? fields.issuelinks : [])
+      .filter((link) => String(link?.type?.inward || "").toLowerCase() === "child of" && link?.inwardIssue?.key)
+      .map((link) => String(link.inwardIssue.key).trim())
+      .filter((value, index, values) => value && values.indexOf(value) === index),
     histories: normalizeStatusHistories(histories)
   };
 }
@@ -341,7 +349,7 @@ function createJiraWeeklyDashboardService(options = {}) {
         jql,
         maxResults: 100,
         nextPageToken,
-        fields: "summary,status,created,updated,resolutiondate,priority,components,labels,parent"
+        fields: "summary,status,created,updated,resolutiondate,priority,components,labels,parent,assignee,reporter,resolution,issuelinks"
       });
       issues.push(...(Array.isArray(data.issues) ? data.issues : []));
       nextPageToken = String(data.nextPageToken || "");
@@ -464,6 +472,8 @@ function createJiraWeeklyDashboardService(options = {}) {
       });
       const snapshots = [...snapshotByWeek.values()].sort((a, b) => a.weekNumber - b.weekNumber);
       const cache = {
+        reportSchemaVersion: REPORT_SCHEMA_VERSION,
+        baseUrl: runtimeConfig.baseUrl,
         projectKey: runtimeConfig.projectKey,
         label: runtimeConfig.label,
         syncedAt: new Date().toISOString(),
@@ -509,13 +519,28 @@ function createJiraWeeklyDashboardService(options = {}) {
       handledStatuses: ["Closed"],
       cancelledStatuses: ["Cancelled", "Canceled"],
       syncedAt: cache?.syncedAt || null,
+      reportReady: cache?.reportSchemaVersion === REPORT_SCHEMA_VERSION && Array.isArray(cache?.issues),
       total: Number(cache?.total || issues.length || 0),
       weeks,
       blockerPivot
     };
   }
 
-  return { config, sync, getDashboard, saveConnection };
+  async function getReportData(db) {
+    const cache = await readMeta(db, CACHE_META_KEY, null);
+    if (cache?.reportSchemaVersion !== REPORT_SCHEMA_VERSION || !Array.isArray(cache?.issues) || !cache.baseUrl) {
+      throw serviceError(409, "Dữ liệu báo cáo đang được đồng bộ đầy đủ từ Jira. Vui lòng thử lại sau ít phút.");
+    }
+    return {
+      projectKey: cache.projectKey,
+      label: cache.label,
+      syncedAt: cache.syncedAt,
+      browseBaseUrl: `${cache.baseUrl}/browse/`,
+      issues: cache.issues
+    };
+  }
+
+  return { config, sync, getDashboard, getReportData, saveConnection };
 }
 
 function encryptValue(value, secret) {

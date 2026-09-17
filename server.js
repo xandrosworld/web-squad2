@@ -34,6 +34,7 @@ const {
   DEFAULT_MAX_FILE_SIZE_BYTES
 } = require("./drive-attachments");
 const { createJiraWeeklyDashboardService } = require("./jira-weekly-dashboard");
+const { buildJiraTestluongWorkbook } = require("./jira-testluong-report");
 
 const app = express();
 let server = null;
@@ -949,6 +950,17 @@ app.get("/api/jira/weekly-dashboard", asyncHandler(async (req, res) => {
   }
   res.setHeader("Cache-Control", "no-store");
   res.json({ dashboard });
+}));
+
+app.get("/api/jira/weekly-dashboard/report.xlsx", asyncHandler(async (req, res) => {
+  await ensureSchema();
+  const report = await jiraWeeklyDashboardService.getReportData(getPool());
+  const { workbook, filename } = buildJiraTestluongWorkbook(report);
+  const buffer = await workbook.xlsx.writeBuffer();
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(buffer);
 }));
 
 app.post("/api/jira/weekly-dashboard/sync", requireAdmin, asyncHandler(async (req, res) => {

@@ -1102,9 +1102,11 @@ let googleSheetSyncUiState = {
     error: null
 };
 const cachedJiraWeeklyDashboard = loadCachedJiraWeeklyDashboard();
+let jiraReportReadyCheckCount = 0;
 let jiraWeeklyDashboardState = {
     status: cachedJiraWeeklyDashboard ? "cached" : "idle",
     data: cachedJiraWeeklyDashboard,
+    downloading: false,
     error: null
 };
 let attachmentUiState = {
@@ -1558,7 +1560,7 @@ function isJiraWeeklyProjectRoute(route = ui) {
 
 async function hydrateJiraWeeklyDashboard(forceSync = false) {
     if (jiraWeeklyDashboardState.status === "loading" || jiraWeeklyDashboardState.status === "syncing") return;
-    if (!forceSync && jiraWeeklyDashboardState.status === "ready" && jiraWeeklyDashboardState.data) return;
+    if (!forceSync && jiraWeeklyDashboardState.status === "ready" && jiraWeeklyDashboardState.data?.reportReady) return;
     jiraWeeklyDashboardState = {
         ...jiraWeeklyDashboardState,
         status: forceSync ? "syncing" : "loading",
@@ -1571,11 +1573,19 @@ async function hydrateJiraWeeklyDashboard(forceSync = false) {
             body: "{}"
         } : {});
         jiraWeeklyDashboardState = {
+            ...jiraWeeklyDashboardState,
             status: "ready",
             data: data.dashboard || null,
             error: null
         };
         cacheJiraWeeklyDashboard(jiraWeeklyDashboardState.data);
+        if (jiraWeeklyDashboardState.data?.reportReady) jiraReportReadyCheckCount = 0;
+        else if (jiraWeeklyDashboardState.data?.configured && jiraReportReadyCheckCount < 6) {
+            jiraReportReadyCheckCount += 1;
+            setTimeout(() => {
+                if (isJiraWeeklyProjectRoute() && !jiraWeeklyDashboardState.data?.reportReady) hydrateJiraWeeklyDashboard();
+            }, 15000);
+        }
         if (forceSync) showToast(`Đã đồng bộ ${Number(data.result?.total || data.dashboard?.total || 0)} bug TESTLUONG từ Jira.`);
     } catch (error) {
         jiraWeeklyDashboardState = {
@@ -3289,6 +3299,7 @@ function renderJiraWeeklyDashboard() {
                     ${state.status === "loading" || state.status === "syncing" ? `<span class="jira-cache-status refreshing"><i class="fa-solid fa-rotate fa-spin"></i> Đang cập nhật nền</span>` : ""}
                     ${state.status === "stale" ? `<span class="jira-cache-status stale" title="${e(state.error || "Không kết nối được Jira")}"><i class="fa-solid fa-clock-rotate-left"></i> Dữ liệu gần nhất</span>` : ""}
                     <span class="jira-sync-time"><i class="fa-solid fa-arrows-rotate"></i> ${dashboard.syncedAt ? `Cập nhật ${e(formatShortDateTime(dashboard.syncedAt))}` : "Chưa đồng bộ"}</span>
+                    <button class="ghost-btn" type="button" data-action="export-jira-testluong" ${!dashboard.reportReady || state.downloading ? "disabled" : ""} title="${e(dashboard.reportReady ? "Tải Excel từ dữ liệu Jira đã đồng bộ, không phải chờ truy vấn Jira" : "Đang chuẩn bị dữ liệu đầy đủ cho báo cáo Excel")}"><i class="fa-solid ${state.downloading ? "fa-spinner fa-spin" : "fa-file-excel"}"></i> ${state.downloading ? "Đang tạo file..." : "Tải báo cáo Excel"}</button>
                     ${authState.user?.role === "admin" ? `<button class="ghost-btn" type="button" data-action="refresh-jira-weekly" ${state.status === "syncing" ? "disabled" : ""}><i class="fa-solid fa-rotate ${state.status === "syncing" ? "fa-spin" : ""}"></i> Đồng bộ ngay</button>` : ""}
                 </div>
             </div>
@@ -8693,6 +8704,7 @@ function handleAction(event) {
     const action = event.currentTarget.dataset.action;
     const id = event.currentTarget.dataset.id;
     if (action === "refresh-jira-weekly") return hydrateJiraWeeklyDashboard(true);
+    if (action === "export-jira-testluong") return exportJiraTestluongReport();
     if (action === "scroll-jira-weeks") return scrollJiraWeeks(event.currentTarget.dataset.direction);
     if (action === "open-jira-week-detail") return openJiraWeekDetail(event.currentTarget.dataset.weekNumber, event.currentTarget.dataset.weekMetric, event.currentTarget.dataset.weekPriority);
     if (action === "open-jira-blocker-detail") return openJiraBlockerDetail(event.currentTarget.dataset.blockerGroup, event.currentTarget.dataset.weekNumber, event.currentTarget.dataset.blockerIssue);
@@ -9474,6 +9486,31 @@ async function exportExcel() {
         showToast(error.message || "Không xuất được báo cáo.");
     } finally {
         ui.saving = false;
+    }
+}
+
+async function exportJiraTestluongReport() {
+    if (jiraWeeklyDashboardState.downloading || !jiraWeeklyDashboardState.data?.reportReady) return;
+    jiraWeeklyDashboardState.downloading = true;
+    render();
+    try {
+        const response = await fetch(`${API_BASE}/jira/weekly-dashboard/report.xlsx`, {
+            credentials: "same-origin",
+            cache: "no-store"
+        });
+        if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || `Không tải được báo cáo Excel (${response.status}).`);
+        }
+        const disposition = response.headers.get("Content-Disposition") || "";
+        const filename = disposition.match(/filename="([^"]+)"/i)?.[1] || `Bao_cao_bug_TESTLUONG_theo_Squad_${todayStamp()}.xlsx`;
+        downloadBlob(await response.blob(), filename);
+        showToast("Đã tải báo cáo TESTLUONG từ dữ liệu Jira đồng bộ gần nhất.");
+    } catch (error) {
+        showToast(error.message || "Không tải được báo cáo TESTLUONG.");
+    } finally {
+        jiraWeeklyDashboardState.downloading = false;
+        render();
     }
 }
 
