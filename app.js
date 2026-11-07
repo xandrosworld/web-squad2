@@ -7012,26 +7012,11 @@ function bindTableScrollbars() {
         syncStickyColumnOffsets(table);
         refreshFloatingTableHeader(shell, table);
         restoreTableScrollLeft(collection, top, main, floating);
-        let syncing = false;
         const scrollers = [top, main, floating];
-        const syncScroll = (source) => {
-            if (syncing) return;
-            syncing = true;
-            scrollers.forEach((target) => {
-                if (target !== source) target.scrollLeft = source.scrollLeft;
-            });
-            rememberTableScrollLeft(collection, source.scrollLeft);
+        cleanups.push(bindSynchronizedTableScroll(scrollers, (left) => {
+            rememberTableScrollLeft(collection, left);
             updateTableHorizontalState(shell);
-            requestAnimationFrame(() => {
-                syncing = false;
-            });
-        };
-
-        scrollers.forEach((scroller) => {
-            const handler = () => syncScroll(scroller);
-            scroller.addEventListener("scroll", handler, { passive: true });
-            cleanups.push(() => scroller.removeEventListener("scroll", handler));
-        });
+        }));
         updateTableHorizontalState(shell);
     });
 
@@ -7052,6 +7037,28 @@ function bindTableScrollbars() {
     requestAnimationFrame(updateNavigation);
 }
 
+function bindSynchronizedTableScroll(scrollers, onScroll) {
+    // Scroll events are asynchronous. Track the actual (possibly clamped)
+    // position written to each peer instead of unlocking after one frame.
+    const positions = new Map(scrollers.map((element) => [element, element.scrollLeft]));
+    const handlers = scrollers.map((source) => {
+        const handler = () => {
+            const left = source.scrollLeft;
+            if (left === positions.get(source)) return;
+            positions.set(source, left);
+            scrollers.forEach((target) => {
+                if (target === source) return;
+                if (target.scrollLeft !== left) target.scrollLeft = left;
+                positions.set(target, target.scrollLeft);
+            });
+            onScroll(left);
+        };
+        source.addEventListener("scroll", handler, { passive: true });
+        return () => source.removeEventListener("scroll", handler);
+    });
+    return () => handlers.forEach((remove) => remove());
+}
+
 function restoreTableScrollLeft(collection, top, main, floating) {
     const desired = Number(ui.tableScrollLefts?.[collection] || 0);
     const maxScrollLeft = Math.max(0, main.scrollWidth - main.clientWidth);
@@ -7059,11 +7066,6 @@ function restoreTableScrollLeft(collection, top, main, floating) {
     main.scrollLeft = nextScrollLeft;
     top.scrollLeft = nextScrollLeft;
     if (floating) floating.scrollLeft = nextScrollLeft;
-    requestAnimationFrame(() => {
-        main.scrollLeft = nextScrollLeft;
-        top.scrollLeft = nextScrollLeft;
-        if (floating) floating.scrollLeft = nextScrollLeft;
-    });
 }
 
 function refreshFloatingTableHeader(shell, table) {
