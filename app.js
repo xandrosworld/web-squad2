@@ -1899,7 +1899,7 @@ function renderLoginPage() {
                 <section class="login-form-side">
                     <div class="login-card">
                         <div class="login-mobile-logo">
-                            <img src="assets/bidv-logo-animated.svg" alt="BIDV">
+                            <img src="assets/bidv-logo-light.svg" alt="BIDV">
                         </div>
 
                         <div class="login-card-head">
