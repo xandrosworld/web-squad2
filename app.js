@@ -1881,32 +1881,18 @@ function renderAuthLoading() {
 function renderLoginPage() {
     return `
         <div class="login-page">
-            <div class="login-bg" aria-hidden="true">
-                <div class="login-bg-base"></div>
-                <div class="login-bg-dots"></div>
-                <div class="login-glow login-glow-one"></div>
-                <div class="login-glow login-glow-two"></div>
-            </div>
-
             <div class="login-wrap">
-                <section class="login-brand" aria-label="Squad 2 UAT">
-                    <div class="login-brand-inner">
-                        <div class="login-brand-logo">
-                            <img src="assets/bidv-logo-animated.svg" alt="BIDV">
-                            <div class="login-logo-text">
-                                <span>Squad 2</span>
-                                <small>UAT Dashboard</small>
-                            </div>
-                        </div>
-
-                        <h1>Bảng điều hành<br>UAT Squad 2</h1>
-                        <p>Theo dõi danh mục UAT, phân công Sprint, tiến độ kiểm thử, chất lượng tuần và readiness trước Pilot/Go-live.</p>
-
-                        <div class="login-stats">
-                            <div><strong>${e(getDataModuleCount())}</strong><span>Phân hệ dữ liệu</span></div>
-                            <div><strong>24/7</strong><span>Dữ liệu tập trung</span></div>
-                            <div><strong>DB</strong><span>PostgreSQL</span></div>
-                        </div>
+                <section class="login-team" aria-label="Đội ngũ Squad 2">
+                    <div class="login-team-heading">
+                        <span class="login-team-wordmark">SQUAD <b>2</b></span>
+                        <span class="login-team-caption">Cùng một đội. Cùng tiến lên.</span>
+                    </div>
+                    <div class="login-team-photo">
+                        <img src="assets/squad2-team-original.jpg" alt="Tập thể Squad 2 tại Trường Đào tạo cán bộ BIDV" fetchpriority="high" width="1280" height="873">
+                    </div>
+                    <div class="login-team-message">
+                        <h1>Mỗi ngày một bước tiến.<br>Cùng nhau, mình làm được.</h1>
+                        <p>Một nơi để kết nối, theo dõi công việc và cùng đưa Squad 2 về đích.</p>
                     </div>
                 </section>
 
@@ -1917,8 +1903,9 @@ function renderLoginPage() {
                         </div>
 
                         <div class="login-card-head">
-                            <h2>Đăng nhập</h2>
-                            <p>Truy cập Dashboard UAT Squad 2</p>
+                            <p class="login-welcome">SQUAD 2 DASHBOARD</p>
+                            <h2>Chào đồng đội!</h2>
+                            <p>Đăng nhập, cùng bắt đầu một ngày hiệu quả.</p>
                         </div>
 
                         <form id="loginForm" class="login-form">
@@ -1926,7 +1913,7 @@ function renderLoginPage() {
                                 <label for="loginIdentifier">Email / mã BIDV</label>
                                 <div class="login-input-wrap">
                                     <i class="fa-regular fa-user"></i>
-                                    <input id="loginIdentifier" name="identifier" type="text" autocomplete="username" placeholder="Ví dụ: huyng hoặc huyng@bidv.com.vn" required>
+                                    <input id="loginIdentifier" name="identifier" type="text" autocomplete="username" placeholder="Nhập email hoặc mã BIDV" required>
                                 </div>
                             </div>
 
@@ -1942,7 +1929,7 @@ function renderLoginPage() {
                                 <span>Đăng nhập</span>
                             </button>
 
-                            ${authState.error ? `<div class="login-error">${e(authState.error)}</div>` : ""}
+                            ${authState.error ? `<div class="login-error" role="alert">${e(authState.error)}</div>` : ""}
                         </form>
 
                         <div class="login-divider"><span>Tài khoản hệ thống</span></div>
