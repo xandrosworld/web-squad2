@@ -1275,7 +1275,7 @@ function applySidebarAccordionDomState() {
 }
 let dataStatus = {
     mode: "loading",
-    message: "Đang kết nối Railway DB",
+    message: "Đang kết nối cơ sở dữ liệu",
     lastSyncAt: null
 };
 let groupChatState = {
@@ -1399,29 +1399,29 @@ async function hydrateState(showNotice = false) {
         const cachedState = loadCachedState();
         if (authState.user?.role === "admin" && stateRecordCount(remoteState) === 0 && stateRecordCount(cachedState) > 0 && !localStorage.getItem(MIGRATION_FLAG_KEY)) {
             localStorage.setItem(LEGACY_BACKUP_KEY, JSON.stringify(cachedState));
-            const shouldMigrate = confirm("Phát hiện dữ liệu cũ đang lưu trên trình duyệt. Đưa dữ liệu này lên Railway DB ngay bây giờ?");
+            const shouldMigrate = confirm("Phát hiện dữ liệu cũ đang lưu trên trình duyệt. Đưa dữ liệu này lên cơ sở dữ liệu ngay bây giờ?");
             localStorage.setItem(MIGRATION_FLAG_KEY, shouldMigrate ? "uploaded" : "skipped");
             if (shouldMigrate) {
                 const result = await replaceRemoteState(cachedState);
                 appState = normalizeState(result.state || cachedState);
-                setDataStatus("online", "Railway Postgres đang hoạt động");
+                setDataStatus("online", "PostgreSQL đang hoạt động");
                 cacheState();
                 render();
-                showToast("Đã chuyển dữ liệu local lên Railway DB.");
+                showToast("Đã chuyển dữ liệu local lên cơ sở dữ liệu.");
                 return;
             }
         }
         const previousSignature = stateDataSignature(appState);
         const nextSignature = stateDataSignature(remoteState);
         appState = remoteState;
-        setDataStatus("online", "Railway Postgres đang hoạt động");
+        setDataStatus("online", "PostgreSQL đang hoạt động");
         cacheState();
         if (!showNotice && previousSignature === nextSignature) return;
         render();
-        if (showNotice) showToast("Đã kết nối Railway DB.");
+        if (showNotice) showToast("Đã kết nối cơ sở dữ liệu.");
     } catch (error) {
         if (error.status === 401) return;
-        setDataStatus("offline", error.message || "Không kết nối được Railway DB");
+        setDataStatus("offline", error.message || "Không kết nối được cơ sở dữ liệu");
         render();
     }
 }
@@ -1476,7 +1476,7 @@ async function requestJson(path, options = {}) {
 
 function ensureDbReady() {
     if (dataStatus.mode === "online") return true;
-    showToast("Chưa kết nối Railway DB, không thể lưu dữ liệu.");
+    showToast("Chưa kết nối cơ sở dữ liệu, không thể lưu dữ liệu.");
     return false;
 }
 
@@ -1905,7 +1905,7 @@ function renderLoginPage() {
                         <div class="login-stats">
                             <div><strong>${e(getDataModuleCount())}</strong><span>Phân hệ dữ liệu</span></div>
                             <div><strong>24/7</strong><span>Dữ liệu tập trung</span></div>
-                            <div><strong>DB</strong><span>Railway Postgres</span></div>
+                            <div><strong>DB</strong><span>PostgreSQL</span></div>
                         </div>
                     </div>
                 </section>
@@ -2953,7 +2953,7 @@ function renderDeadlineEmailPanel() {
                 <div class="email-connection-status ${connected ? "connected" : "disconnected"}"><span></span>${connected ? "Đã kết nối" : "Chưa kết nối"}</div>
             </div>
             <div class="panel-body deadline-email-body">
-                ${!configured ? `<div class="email-config-alert warning"><i class="fa-solid fa-key"></i><div><strong>Thiếu OAuth Client trên Railway</strong><span>Callback URL: <code>${e(data.callbackUrl || "-")}</code></span></div></div>` : ""}
+                ${!configured ? `<div class="email-config-alert warning"><i class="fa-solid fa-key"></i><div><strong>Thiếu OAuth Client trên máy chủ</strong><span>Callback URL: <code>${e(data.callbackUrl || "-")}</code></span></div></div>` : ""}
                 ${data.missingSendScope ? `<div class="email-config-alert warning"><i class="fa-solid fa-envelope-open-text"></i><div><strong>Gmail chưa cấp quyền gửi thư</strong><span>Bấm Kết nối Gmail và tích quyền “Send email on your behalf”.</span></div></div>` : ""}
                 <div class="deadline-email-grid">
                     <form id="deadlineEmailSettingsForm" class="email-settings-form">
@@ -3272,7 +3272,7 @@ function renderJiraWeeklyDashboard() {
             <section class="panel jira-weekly-panel">
                 <div class="jira-weekly-empty warning">
                     <i class="fa-solid fa-plug-circle-xmark"></i>
-                    <div><strong>Máy chủ chưa cấu hình Jira</strong><span>Admin cần bổ sung JIRA_EMAIL và JIRA_API_TOKEN trên Railway.</span></div>
+                    <div><strong>Máy chủ chưa cấu hình Jira</strong><span>Admin cần bổ sung JIRA_EMAIL và JIRA_API_TOKEN trên máy chủ.</span></div>
                 </div>
             </section>
         `;
@@ -5647,7 +5647,7 @@ function renderModal() {
                                 <div class="rail-card is-new">
                                     <span>Trạng thái</span>
                                     <strong>Bản ghi mới</strong>
-                                    <small>Sẽ lưu vào Railway DB sau khi xác nhận.</small>
+                                    <small>Sẽ lưu vào cơ sở dữ liệu sau khi xác nhận.</small>
                                 </div>
                             `}
                         </aside>
@@ -9041,7 +9041,7 @@ async function handlePlanNoteSubmit(event) {
             appState.plans = appState.plans.map((item) => item.id === row.id ? result.record : item);
         }
         appState.updatedAt = result.updatedAt || new Date().toISOString();
-        setDataStatus("online", "Railway Postgres đang hoạt động");
+        setDataStatus("online", "PostgreSQL đang hoạt động");
         localStorage.setItem(MIGRATION_FLAG_KEY, "active");
         cacheState();
         ui.modal = null;
@@ -9221,7 +9221,7 @@ async function handleSubmit(event) {
                 appState[mod.collection] = appState[mod.collection].map((row) => row.id === ui.modal.id ? result.record : row);
             }
             appState.updatedAt = result.updatedAt || now;
-            showToast(mod.collection === "workItems" ? "Đã cập nhật kế hoạch công việc." : "Đã cập nhật bản ghi vào Railway DB.");
+            showToast(mod.collection === "workItems" ? "Đã cập nhật kế hoạch công việc." : "Đã cập nhật bản ghi vào cơ sở dữ liệu.");
         } else {
             const record = {
                 id: createId(),
@@ -9236,14 +9236,14 @@ async function handleSubmit(event) {
                 appState[mod.collection].unshift(result.record);
             }
             appState.updatedAt = result.updatedAt || now;
-            showToast(mod.collection === "workCategories" ? "Đã thêm nhóm công việc." : mod.collection === "workItems" ? "Đã thêm đầu việc." : "Đã thêm bản ghi vào Railway DB.");
+            showToast(mod.collection === "workCategories" ? "Đã thêm nhóm công việc." : mod.collection === "workItems" ? "Đã thêm đầu việc." : "Đã thêm bản ghi vào cơ sở dữ liệu.");
         }
-        setDataStatus("online", "Railway Postgres đang hoạt động");
+        setDataStatus("online", "PostgreSQL đang hoạt động");
         localStorage.setItem(MIGRATION_FLAG_KEY, "active");
         cacheState();
         ui.modal = saveMode === "add-more" ? { tab: mod.collection, id: null } : null;
     } catch (error) {
-        setDataStatus("offline", error.message || "Không lưu được vào Railway DB");
+        setDataStatus("offline", error.message || "Không lưu được vào cơ sở dữ liệu");
         showToast(`Không lưu được vào DB: ${error.message}`);
     } finally {
         ui.saving = false;
@@ -9299,13 +9299,13 @@ async function handleWorkProgressSubmit(event) {
             appState.workItems = appState.workItems.map((row) => row.id === current.id ? result.record : row);
         }
         appState.updatedAt = result.updatedAt || now;
-        setDataStatus("online", "Railway Postgres đang hoạt động");
+        setDataStatus("online", "PostgreSQL đang hoạt động");
         localStorage.setItem(MIGRATION_FLAG_KEY, "active");
         cacheState();
         ui.modal = null;
         showToast("Đã cập nhật tiến độ.");
     } catch (error) {
-        setDataStatus("offline", error.message || "Không lưu được vào Railway DB");
+        setDataStatus("offline", error.message || "Không lưu được vào cơ sở dữ liệu");
         showToast(`Không lưu được tiến độ: ${error.message}`);
     } finally {
         ui.saving = false;
@@ -9334,10 +9334,10 @@ async function deleteRow(id) {
             appState[mod.collection] = appState[mod.collection].filter((item) => item.id !== id);
         }
         appState.updatedAt = result.updatedAt || new Date().toISOString();
-        setDataStatus("online", "Railway Postgres đang hoạt động");
+        setDataStatus("online", "PostgreSQL đang hoạt động");
         localStorage.setItem(MIGRATION_FLAG_KEY, "active");
         cacheState();
-        showToast("Đã xóa bản ghi khỏi Railway DB.");
+        showToast("Đã xóa bản ghi khỏi cơ sở dữ liệu.");
     } catch (error) {
         setDataStatus("offline", error.message || "Không xóa được dữ liệu");
         showToast(`Không xóa được: ${error.message}`);
@@ -9457,7 +9457,7 @@ async function handleWorkExportSubmit(event) {
 async function exportExcel() {
     if (ui.saving) return;
     ui.saving = true;
-        showToast("Đang tạo báo cáo từ Railway DB...");
+        showToast("Đang tạo báo cáo từ cơ sở dữ liệu...");
     try {
         const response = await fetch(`${API_BASE}/export/excel`, {
             credentials: "same-origin"
@@ -9552,17 +9552,17 @@ function importJsonFile(file, input) {
                 nextState[collection] = Array.isArray(parsed[collection]) ? parsed[collection] : [];
             });
             nextState.updatedAt = new Date().toISOString();
-            if (!confirm("Nhập JSON sẽ thay thế toàn bộ dữ liệu hiện có trên Railway DB. Tiếp tục?")) {
+            if (!confirm("Nhập JSON sẽ thay thế toàn bộ dữ liệu hiện có trên cơ sở dữ liệu. Tiếp tục?")) {
                 input.value = "";
                 return;
             }
             ui.saving = true;
             const result = await replaceRemoteState(nextState);
             appState = normalizeState(result.state || nextState);
-            setDataStatus("online", "Railway Postgres đang hoạt động");
+            setDataStatus("online", "PostgreSQL đang hoạt động");
             localStorage.setItem(MIGRATION_FLAG_KEY, "uploaded");
             cacheState();
-            showToast("Đã nhập dữ liệu JSON vào Railway DB.");
+            showToast("Đã nhập dữ liệu JSON vào cơ sở dữ liệu.");
             render();
         } catch (error) {
             setDataStatus("offline", error.message || "Không nhập được dữ liệu");
@@ -9608,7 +9608,7 @@ async function importExcelFile(file, input) {
         const data = await readImportApiResponse(response);
         if (!response.ok || !data.ok) throw new Error(importAuditError(data, response.status));
         appState = normalizeState(data.state || appState);
-        setDataStatus("online", "Railway Postgres đang hoạt động");
+        setDataStatus("online", "PostgreSQL đang hoạt động");
         localStorage.setItem(MIGRATION_FLAG_KEY, "uploaded");
         cacheState();
         const preservedCount = Object.values(data.merge || {}).reduce(
@@ -9709,10 +9709,10 @@ async function deleteWorkCategory(id) {
         }
         if (ui.filters["workItems:categoryId"] === id) ui.filters["workItems:categoryId"] = "";
         appState.updatedAt = result.updatedAt || new Date().toISOString();
-        setDataStatus("online", "Railway Postgres đang hoạt động");
+        setDataStatus("online", "PostgreSQL đang hoạt động");
         localStorage.setItem(MIGRATION_FLAG_KEY, "active");
         cacheState();
-        showToast("Đã xóa nhóm công việc khỏi Railway DB.");
+        showToast("Đã xóa nhóm công việc khỏi cơ sở dữ liệu.");
     } catch (error) {
         setDataStatus("offline", error.message || "Không xóa được nhóm công việc");
         showToast(`Không xóa được nhóm: ${error.message}`);

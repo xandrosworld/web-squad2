@@ -1722,7 +1722,7 @@ app.post("/api/chat/group", asyncHandler(async (req, res) => {
 app.post("/api/ai/chat", asyncHandler(async (req, res) => {
   await ensureSchema();
   if (!geminiApiKey) {
-    throw httpError(503, "Chưa cấu hình GEMINI_API_KEY trong .env hoặc Railway Variables.");
+    throw httpError(503, "Chưa cấu hình GEMINI_API_KEY trong cấu hình môi trường máy chủ.");
   }
   const message = normalizeAiMessage(req.body.message || req.body.body);
   const history = normalizeAiHistory(req.body.history);
