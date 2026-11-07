@@ -1,0 +1,7 @@
+[Unit]
+Description=Daily Squad 2 PostgreSQL backup
+Requires=docker.service
+After=docker.service
+[Service]
+Type=oneshot
+ExecStart=/opt/squad2/backup.sh
