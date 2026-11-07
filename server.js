@@ -7343,8 +7343,6 @@ async function ensureDefaultUsers() {
         set email = excluded.email,
             name = excluded.name,
             role = excluded.role,
-            password_hash = excluded.password_hash,
-            active = true,
             updated_at = now()
     `, [crypto.randomUUID(), username, email, name, role, passwordHash]);
   }
