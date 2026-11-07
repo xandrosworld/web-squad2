@@ -70,6 +70,8 @@ state.plans = [{
 }];
 
 applyWorkbookRules(state);
+assert.equal(state.personnel.some((person) => person.name === "Hoàng Thành Trí"), false);
+assert.equal(defaultUsers.some((person) => person.email === "triht@bidv.com.vn"), false);
 
 assert.deepEqual(
   Object.fromEntries(state.personnel.map((person) => [person.name, person.staffCode])),
@@ -77,7 +79,6 @@ assert.deepEqual(
     "Mai Tấn Thành": "T6",
     "Lê Trần Sơn": "T1",
     "Huỳnh Công Sinh": "T2",
-    "Hoàng Thành Trí": "T3",
     "Nguyễn Gia Huy": "T4",
     "Trần Đình Tuấn": "T5",
     "Bùi Thị Mai Phương": "NV1",

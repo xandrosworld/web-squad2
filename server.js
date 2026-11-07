@@ -98,7 +98,6 @@ const defaultUsers = [
   { username: "thanhmt@bidv.com.vn", email: "thanhmt@bidv.com.vn", name: "Mai Tấn Thành", password: "123456" },
   { username: "sonlt8@bidv.com.vn", email: "sonlt8@bidv.com.vn", name: "Lê Trần Sơn", password: "123456" },
   { username: "sinhhc@bidv.com.vn", email: "sinhhc@bidv.com.vn", name: "Huỳnh Công Sinh", password: "123456" },
-  { username: "triht@bidv.com.vn", email: "triht@bidv.com.vn", name: "Hoàng Thành Trí", password: "123456" },
   { username: "huyng@bidv.com.vn", email: "huyng@bidv.com.vn", name: "Nguyễn Gia Huy", password: "123456" },
   { username: "tuantd3@bidv.com.vn", email: "tuantd3@bidv.com.vn", name: "Trần Đình Tuấn", password: "123456" },
   { username: "huanphc@bidv.com.vn", email: "huanphc@bidv.com.vn", name: "Phạm Hoàng Công Huân", password: "123456" }
@@ -1042,7 +1041,7 @@ app.get("/api/directory/users", asyncHandler(async (req, res) => {
     where active = true
     order by name asc, username asc
   `);
-  res.json({ users: result.rows.map(toPublicUser) });
+  res.json({ users: result.rows.filter((user) => !isRetiredSquadMember(user)).map(toPublicUser) });
 }));
 
 app.get("/api/auth/users", requireAdmin, asyncHandler(async (req, res) => {
@@ -1052,7 +1051,7 @@ app.get("/api/auth/users", requireAdmin, asyncHandler(async (req, res) => {
     from app_users
     order by created_at asc
   `);
-  res.json({ users: result.rows.map(toPublicUser) });
+  res.json({ users: result.rows.filter((user) => !isRetiredSquadMember(user)).map(toPublicUser) });
 }));
 
 app.post("/api/auth/users", requireAdmin, asyncHandler(async (req, res) => {
@@ -3121,6 +3120,8 @@ function normalizeSeverityCount(severity, targets, status) {
 }
 
 function applyWorkbookRules(state) {
+  state.personnel = collectionRows(state, "personnel").filter((person) => !isRetiredSquadMember(person));
+  state.memberKpiInputs = collectionRows(state, "memberKpiInputs").filter((person) => !isRetiredSquadMember({ name: person.memberName, email: person.memberEmail }));
   const personnel = collectionRows(state, "personnel");
   const schedule = collectionRows(state, "schedule");
   const handoffs = collectionRows(state, "handoffs");
@@ -3342,6 +3343,12 @@ function testerIdentityKey(value) {
     .trim()
     .replace(/\s+/g, " ")
     .toLocaleLowerCase("vi");
+}
+
+function isRetiredSquadMember(person) {
+  const email = String(person?.email || person?.username || "").trim().toLowerCase();
+  const name = String(person?.name || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().replace(/\s+/g, " ");
+  return email === "triht@bidv.com.vn" || name === "hoang thanh tri";
 }
 
 function canonicalTesterForName(name) {
@@ -6177,7 +6184,7 @@ function applyWorkKpiRules(state) {
   });
 
   const today = localDateString(new Date());
-  state.memberKpiResults = [...people.values()]
+  state.memberKpiResults = [...people.values()].filter((person) => !isRetiredSquadMember(person))
     .map((person, index) => {
       const input = inputByEmail.get(person.email) || {};
       const tasks = (state.workItems || []).filter((row) => workItemAssignees(row)
@@ -6467,6 +6474,9 @@ function validateWorkbookImportState(state, options = {}) {
 }
 
 function validateRecordForCollection(collection, record, options = {}) {
+  if (collection === "personnel" && isRetiredSquadMember(record)) {
+    throw httpError(400, "Thành viên này đã rời Squad 2.");
+  }
   const rules = collectionRules[collection];
   if (!rules) throw httpError(404, "Phân hệ dữ liệu không hợp lệ.");
 
@@ -7316,6 +7326,10 @@ async function ensureSeedAdmin() {
 }
 
 async function ensureDefaultUsers() {
+  await getPool().query(`
+    update app_users set active = false, updated_at = now()
+    where active = true and (lower(username) = $1 or lower(coalesce(email, '')) = $1)
+  `, ["triht@bidv.com.vn"]);
   for (const user of defaultUsers) {
     const username = String(user.username).trim().toLowerCase();
     const email = String(user.email || username).trim().toLowerCase();
@@ -7824,6 +7838,9 @@ async function safeJson(response) {
 }
 
 function validateNewUser({ username, email, name, password }) {
+  if (isRetiredSquadMember({ username, email, name })) {
+    throw httpError(400, "Thành viên này đã rời Squad 2.");
+  }
   if (!username || username.length < 3) throw httpError(400, "Username phải có ít nhất 3 ký tự.");
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw httpError(400, "Email không hợp lệ.");
   if (!name) throw httpError(400, "Tên hiển thị là bắt buộc.");

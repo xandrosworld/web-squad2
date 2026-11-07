@@ -91,7 +91,6 @@ const ownerOptions = [
 ];
 const personnelNameOptions = [
     "Bùi Thị Mai Phương",
-    "Hoàng Thành Trí",
     "Huỳnh Công Sinh",
     "Lê Trần Sơn",
     "Mai Tấn Thành",
@@ -104,7 +103,6 @@ const personnelNameOptions = [
 const dailyTesterLabels = {
     "1": "T1 – Lê Trần Sơn",
     "2": "T2 – Huỳnh Công Sinh",
-    "3": "T3 – Hoàng Thành Trí",
     "4": "T4 – Nguyễn Gia Huy",
     "5": "T5 – Trần Đình Tuấn",
     "6": "T6 – Mai Tấn Thành",
@@ -153,7 +151,6 @@ const workAssigneeOptions = [
     "Trần Đình Tuấn",
     "Lê Trần Sơn",
     "Huỳnh Công Sinh",
-    "Hoàng Thành Trí",
     "Mai Tấn Thành",
     "Uông Thị Hải Yến"
 ];
@@ -166,7 +163,6 @@ const workAssigneeEmailByName = {
     "Trần Đình Tuấn": "tuantd3@bidv.com.vn",
     "Lê Trần Sơn": "sonlt8@bidv.com.vn",
     "Huỳnh Công Sinh": "sinhhc@bidv.com.vn",
-    "Hoàng Thành Trí": "triht@bidv.com.vn",
     "Mai Tấn Thành": "thanhmt@bidv.com.vn",
     "Uông Thị Hải Yến": "yenuth@bidv.com.vn"
 };
@@ -456,7 +452,6 @@ const modules = {
             { key: "nv", label: "NV", type: "number" },
             { key: "t1", label: "T1", type: "number" },
             { key: "t2", label: "T2", type: "number" },
-            { key: "t3", label: "T3", type: "number" },
             { key: "t4", label: "T4", type: "number" },
             { key: "t5", label: "T5", type: "number" },
             { key: "t6", label: "T6", type: "number" },
@@ -484,7 +479,6 @@ const modules = {
             { key: "nv", label: "NV", headerTop: "NV", width: "68px", render: (row) => numberText(row.nv) },
             { key: "t1", label: "T1", headerTop: "Sơn", width: "76px", render: (row) => numberText(row.t1) },
             { key: "t2", label: "T2", headerTop: "Sinh", width: "78px", render: (row) => numberText(row.t2) },
-            { key: "t3", label: "T3", headerTop: "Trí", width: "76px", render: (row) => numberText(row.t3) },
             { key: "t4", label: "T4", headerTop: "Huy", width: "76px", render: (row) => numberText(row.t4) },
             { key: "t5", label: "T5", headerTop: "Tuấn", width: "80px", render: (row) => numberText(row.t5) },
             { key: "t6", label: "T6", headerTop: "Thành", width: "84px", render: (row) => numberText(row.t6) },
@@ -520,7 +514,6 @@ const modules = {
             { key: "group", label: "Nhóm chức năng", type: "text", required: true, full: true },
             { key: "t1", label: "T1", type: "number" },
             { key: "t2", label: "T2", type: "number" },
-            { key: "t3", label: "T3", type: "number" },
             { key: "t4", label: "T4", type: "number" },
             { key: "t5", label: "T5", type: "number" },
             { key: "t6", label: "T6", type: "number" },
@@ -536,7 +529,6 @@ const modules = {
             { key: "group", label: "Nhóm chức năng", width: "300px", render: (row) => tag(row.group, "teal") },
             { key: "t1", label: "T1", width: "80px", render: (row) => numberText(row.t1) },
             { key: "t2", label: "T2", width: "80px", render: (row) => numberText(row.t2) },
-            { key: "t3", label: "T3", width: "80px", render: (row) => numberText(row.t3) },
             { key: "t4", label: "T4", width: "80px", render: (row) => numberText(row.t4) },
             { key: "t5", label: "T5", width: "80px", render: (row) => numberText(row.t5) },
             { key: "t6", label: "T6", width: "80px", render: (row) => numberText(row.t6) },
@@ -2635,7 +2627,7 @@ function getT01SheetDashboard(tabId) {
 
     if (normalizedTab === "plans") {
         const rows = getDisplayRows("plans");
-        const hasAssignment = (row) => ["nv", "t1", "t2", "t3", "t4", "t5", "t6", "t7"].some((key) => Number(row[key] || 0) > 0);
+        const hasAssignment = (row) => ["nv", "t1", "t2", "t4", "t5", "t6", "t7"].some((key) => Number(row[key] || 0) > 0);
         const predicates = {
             all: () => true,
             hasCases: (row) => Number(row.totalCases || 0) > 0,
@@ -2768,7 +2760,7 @@ function getT01SheetDashboard(tabId) {
     const rows = getDisplayRows("matrix");
     const reached = (row) => statusIs(row.warning, "Đạt") || (Number(row.target || 0) > 0 && Number(row.totalParticipation || 0) >= Number(row.target || 0));
     const insufficient = (row) => !reached(row);
-    const activeTesterCount = ["t1", "t2", "t3", "t4", "t5", "t6", "t7"].filter((key) => rows.some((row) => Number(row[key] || 0) > 0)).length;
+    const activeTesterCount = ["t1", "t2", "t4", "t5", "t6", "t7"].filter((key) => rows.some((row) => Number(row[key] || 0) > 0)).length;
     return {
         label: "Năng suất Tester",
         collection: "matrix",
@@ -2776,7 +2768,7 @@ function getT01SheetDashboard(tabId) {
             metric("all", "Nhóm chức năng", rows.length, "fa-layer-group", "teal", () => true),
             metric("participation", "Tổng lượt tham gia", sum(rows, "totalParticipation"), "fa-users", "blue", (row) => Number(row.totalParticipation || 0) > 0),
             metric("target", "Tổng mục tiêu", sum(rows, "target"), "fa-bullseye", "yellow", (row) => Number(row.target || 0) > 0),
-            metric("testers", "Tester có tham gia", activeTesterCount, "fa-user-check", "blue", (row) => ["t1", "t2", "t3", "t4", "t5", "t6", "t7"].some((key) => Number(row[key] || 0) > 0)),
+            metric("testers", "Tester có tham gia", activeTesterCount, "fa-user-check", "blue", (row) => ["t1", "t2", "t4", "t5", "t6", "t7"].some((key) => Number(row[key] || 0) > 0)),
             metric("reached", "Nhóm đạt", rows.filter(reached).length, "fa-circle-check", "green", reached),
             metric("insufficient", "Thiếu luân chuyển", rows.filter(insufficient).length, "fa-triangle-exclamation", "red", insufficient)
         ]
@@ -3757,7 +3749,7 @@ function calculateTrainingReadiness() {
     if (!appState.matrix.length) return 0;
     const matrixRows = appState.matrix.filter((row) => isFilled(row.group));
     if (!matrixRows.length) return 0;
-    const rates = ["t1", "t2", "t3", "t4", "t5", "t6", "t7"].map((testerKey) => (
+    const rates = ["t1", "t2", "t4", "t5", "t6", "t7"].map((testerKey) => (
         percent(matrixRows.filter((row) => Number(row[testerKey] || 0) > 0).length, matrixRows.length)
     ));
     return round(averageAll(rates));
@@ -4060,7 +4052,7 @@ function getGroupOverviewRows() {
 
     appState.matrix.forEach((row) => {
         const bucket = ensureBucket(row.group);
-        bucket.matrixAssignments += ["t1", "t2", "t3", "t4", "t5", "t6", "t7"].filter((key) => isFilled(row[key])).length;
+        bucket.matrixAssignments += ["t1", "t2", "t4", "t5", "t6", "t7"].filter((key) => isFilled(row[key])).length;
     });
 
     const rows = [...buckets.values()].map((bucket) => {
@@ -4182,7 +4174,7 @@ function getDashboardRisks(metrics) {
 
 function getUpcomingMilestones(limit = 7) {
     const today = getTodayDateOnly();
-    const milestoneKeys = ["t1", "t2", "t3", "t4", "t5", "t6", "t7"];
+    const milestoneKeys = ["t1", "t2", "t4", "t5", "t6", "t7"];
     const items = [];
 
     appState.plans.forEach((row) => {
@@ -10008,6 +10000,8 @@ function getWorkPeopleOptions() {
         ])
     ];
     return normalizeWorkPeopleList(people)
+        .filter((person) => String(person.email || "").toLowerCase() !== "triht@bidv.com.vn"
+            && normalizeWorkbookFormulaText(person.name) !== "hoang thanh tri")
         .sort((a, b) => String(a.name || a.email).localeCompare(String(b.name || b.email), "vi"))
         .map((person) => ({
             ...person,
