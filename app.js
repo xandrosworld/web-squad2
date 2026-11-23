@@ -2035,17 +2035,14 @@ function renderSidebar() {
                             </button>
                             <div id="sidebar-group-workGroups" class="tree-accordion-panel tree-group-content ${workGroupsExpanded ? "is-expanded" : ""}" aria-hidden="${!workGroupsExpanded}" ${workGroupsExpanded ? "" : "inert"}>
                                 <div class="tree-accordion-inner tree-category-list">
-                                    ${urdCategory ? renderSidebarWorkStageRoute(urdCategory, "URD") : ""}
-                                    ${rsdCategory ? renderSidebarWorkStageRoute(rsdCategory, "RSD") : ""}
+                                    ${urdCategory ? renderSidebarWorkStageRoute(urdCategory, workGroupLabel(urdCategory)) : ""}
+                                    ${rsdCategory ? renderSidebarWorkStageRoute(rsdCategory, workGroupLabel(rsdCategory)) : ""}
                                     <button id="sidebar-group-uat-toggle" class="tree-parent tree-group-toggle tree-work-stage ${activeWorkStage === "uat" ? "branch-active" : ""} ${uatExpanded ? "is-expanded" : ""}" type="button" data-action="toggle-sidebar-group" data-sidebar-group="uat" aria-expanded="${uatExpanded}" aria-controls="sidebar-group-uat" title="UAT">
                                         <i class="fa-regular fa-folder" aria-hidden="true"></i><b>UAT</b><i class="fa-solid fa-chevron-right tree-toggle-chevron" aria-hidden="true"></i>
                                     </button>
                                     <div id="sidebar-group-uat" class="tree-accordion-panel tree-work-stage-content ${uatExpanded ? "is-expanded" : ""}" aria-hidden="${!uatExpanded}" ${uatExpanded ? "" : "inert"}>
                                         <div class="tree-accordion-inner">
-                                            ${uatCategories.map((category, index) => {
-                                                const order = category.id === "pilot-t01" ? 1 : category.id === "pilot-t02" ? 2 : index + 1;
-                                                return renderWorkCategoryLink(category, `${order}. ${getWorkCategoryShortName(category)}`);
-                                            }).join("")}
+                                            ${uatCategories.map(category => renderWorkCategoryLink(category, workGroupLabel(category))).join("")}
                                         </div>
                                     </div>
                                     <button id="sidebar-group-prePilot-toggle" class="tree-parent tree-group-toggle tree-work-stage ${activeWorkStage === "prePilot" ? "branch-active" : ""} ${prePilotExpanded ? "is-expanded" : ""}" type="button" data-action="toggle-sidebar-group" data-sidebar-group="prePilot" aria-expanded="${prePilotExpanded}" aria-controls="sidebar-group-prePilot" title="Pilot - Golive">
@@ -2053,10 +2050,10 @@ function renderSidebar() {
                                     </button>
                                     <div id="sidebar-group-prePilot" class="tree-accordion-panel tree-work-stage-content ${prePilotExpanded ? "is-expanded" : ""}" aria-hidden="${!prePilotExpanded}" ${prePilotExpanded ? "" : "inert"}>
                                         <div class="tree-accordion-inner">
-                                            ${prePilotCategories.map((category, index) => renderWorkCategoryLink(category, `${index + 1}. ${getWorkCategoryShortName(category)}`)).join("")}
+                                            ${prePilotCategories.map(category => renderWorkCategoryLink(category, workGroupLabel(category))).join("")}
                                         </div>
                                     </div>
-                                    ${standaloneCategories.map((category) => renderWorkCategoryLink(category, getWorkCategoryShortName(category), 2)).join("")}
+                                    ${standaloneCategories.map((category) => renderWorkCategoryLink(category, workGroupLabel(category), 2)).join("")}
                                 </div>
                             </div>
                         </div>
@@ -9820,10 +9817,14 @@ function getNextSortOrder(rows) {
     return maxSortOrder + 1;
 }
 
+function workGroupLabel(category) {
+    return String(category.sortOrder).padStart(2, "0") + ". " + category.name;
+}
+
 function getWorkCategorySelectOptions() {
     return getWorkCategories().map((category) => ({
         value: category.id,
-        label: category.name
+        label: workGroupLabel(category)
     }));
 }
 
