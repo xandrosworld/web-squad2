@@ -2048,8 +2048,8 @@ function renderSidebar() {
                                             }).join("")}
                                         </div>
                                     </div>
-                                    <button id="sidebar-group-prePilot-toggle" class="tree-parent tree-group-toggle tree-work-stage ${activeWorkStage === "prePilot" ? "branch-active" : ""} ${prePilotExpanded ? "is-expanded" : ""}" type="button" data-action="toggle-sidebar-group" data-sidebar-group="prePilot" aria-expanded="${prePilotExpanded}" aria-controls="sidebar-group-prePilot" title="Pre-Pilot">
-                                        <i class="fa-regular fa-folder" aria-hidden="true"></i><b>Pre-Pilot</b><i class="fa-solid fa-chevron-right tree-toggle-chevron" aria-hidden="true"></i>
+                                    <button id="sidebar-group-prePilot-toggle" class="tree-parent tree-group-toggle tree-work-stage ${activeWorkStage === "prePilot" ? "branch-active" : ""} ${prePilotExpanded ? "is-expanded" : ""}" type="button" data-action="toggle-sidebar-group" data-sidebar-group="prePilot" aria-expanded="${prePilotExpanded}" aria-controls="sidebar-group-prePilot" title="Pilot - Golive">
+                                        <i class="fa-regular fa-folder" aria-hidden="true"></i><b>Pilot - Golive</b><i class="fa-solid fa-chevron-right tree-toggle-chevron" aria-hidden="true"></i>
                                     </button>
                                     <div id="sidebar-group-prePilot" class="tree-accordion-panel tree-work-stage-content ${prePilotExpanded ? "is-expanded" : ""}" aria-hidden="${!prePilotExpanded}" ${prePilotExpanded ? "" : "inert"}>
                                         <div class="tree-accordion-inner">
