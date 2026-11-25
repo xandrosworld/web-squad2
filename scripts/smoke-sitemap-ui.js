@@ -94,61 +94,19 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
 
     const commonSectionToggle = page.locator('[data-sidebar-section="common"]');
     const workSectionToggle = page.locator('[data-sidebar-section="work"]');
-    const workGroupToggle = page.locator('[data-sidebar-group="workGroups"]');
     if (await commonSectionToggle.getAttribute("aria-expanded") !== "false"
-      || await workSectionToggle.getAttribute("aria-expanded") !== "true"
-      || await workGroupToggle.getAttribute("aria-expanded") !== "false") {
+      || await workSectionToggle.getAttribute("aria-expanded") !== "true") {
       throw new Error("Sidebar không tự mở đúng nhánh của Dashboard công việc.");
     }
     if (await page.locator('.tree-link[aria-current="page"]').count() !== 1
       || !await page.locator('[data-route="work/dashboard"][aria-current="page"]').isVisible()) {
       throw new Error("Sidebar phải chỉ đánh dấu mạnh đúng một màn hình hiện tại.");
     }
-    await workGroupToggle.click();
-    await page.waitForFunction(() => document.querySelector('[data-sidebar-group="workGroups"]')?.getAttribute("aria-expanded") === "true");
-    const stageRoutes = (await page.locator(".tree-stage-route").allTextContents()).map((value) => value.trim());
-    if (JSON.stringify(stageRoutes) !== JSON.stringify(["URD", "RSD"])) {
-      throw new Error(`Sidebar cần hai màn URD/RSD, nhận ${JSON.stringify(stageRoutes)}.`);
-    }
-    const uatToggle = page.locator('[data-sidebar-group="uat"]');
-    const prePilotToggle = page.locator('[data-sidebar-group="prePilot"]');
-    if (await uatToggle.getAttribute("aria-expanded") !== "false"
-      || await prePilotToggle.getAttribute("aria-expanded") !== "false") {
-      throw new Error("UAT và Pre-Pilot phải thu gọn khi chưa được chọn.");
-    }
-    await uatToggle.click();
-    const uatLabels = (await page.locator("#sidebar-group-uat .tree-link").allTextContents()).map((value) => value.trim());
-    if (JSON.stringify(uatLabels) !== JSON.stringify(["1. Kiểm thử chức năng", "2. Kiểm thử luồng"])) {
-      throw new Error(`Nhánh UAT chưa đúng cấu trúc: ${JSON.stringify(uatLabels)}.`);
-    }
-    await prePilotToggle.click();
-    if (await uatToggle.getAttribute("aria-expanded") !== "false"
-      || await prePilotToggle.getAttribute("aria-expanded") !== "true") {
-      throw new Error("UAT/Pre-Pilot chưa hoạt động theo accordion một nhánh mở.");
-    }
-    const prePilotLabels = (await page.locator("#sidebar-group-prePilot .tree-link").allTextContents()).map((value) => value.trim());
-    const expectedPrePilotLabels = [
-      "1. HDSD Lending Hub",
-      "2. Quy trình tác nghiệp",
-      "3. HDSD vận hành",
-      "4. Quy định vận hành",
-      "5. Tài liệu đào tạo"
-    ];
-    if (JSON.stringify(prePilotLabels) !== JSON.stringify(expectedPrePilotLabels)) {
-      throw new Error(`Nhánh Pre-Pilot chưa đúng cấu trúc: ${JSON.stringify(prePilotLabels)}.`);
-    }
-    const standaloneLabels = (await page.locator("#sidebar-group-workGroups > .tree-accordion-inner > .tree-link.level-2:not(.tree-stage-route)").allTextContents()).map((value) => value.trim());
-    if (JSON.stringify(standaloneLabels) !== JSON.stringify(["Tham gia ý kiến", "Công tác Báo cáo", "Công việc khác"])) {
-      throw new Error(`Ba nhóm độc lập chưa đúng cấu trúc: ${JSON.stringify(standaloneLabels)}.`);
-    }
-    const storedAccordion = await page.evaluate(() => JSON.parse(localStorage.getItem("squad2-sidebar-accordion") || "null"));
-    if (storedAccordion?.openSection !== "work"
-      || storedAccordion?.openGroups?.workGroups !== true
-      || storedAccordion?.openGroups?.uat !== false
-      || storedAccordion?.openGroups?.prePilot !== true) {
-      throw new Error(`Sidebar chưa ghi nhớ trạng thái accordion: ${JSON.stringify(storedAccordion)}`);
-    }
-    await workGroupToggle.click();
+    const flatLinks = page.locator('#sidebar-section-work .tree-link.level-1[data-route^="work/group/"]');
+    const expectedLabels = [...state.workCategories].sort((a,b) => a.sortOrder - b.sortOrder)
+      .map(category => String(category.sortOrder).padStart(2, "0") + ". " + category.name);
+    const actualLabels = (await flatLinks.allTextContents()).map(label => label.trim());
+    if (JSON.stringify(actualLabels) !== JSON.stringify(expectedLabels)) throw new Error("Danh mục sidebar sai thứ tự hoặc thiếu nhóm.");
     await commonSectionToggle.focus();
     await page.keyboard.press("Enter");
     if (await commonSectionToggle.getAttribute("aria-expanded") !== "true"
@@ -536,10 +494,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     await assertT01MetricRowFilter(page, "matrix", "insufficient", 1);
     if (new Set(t01MetricSignatures).size !== t01MetricSignatures.length) throw new Error("Các sheet T01 còn dùng trùng bộ dashboard KPI.");
     await assertRoute(page, "work/group/pilot-t03", ".standalone-work-items");
-    if (await page.locator('[data-sidebar-group="prePilot"]').getAttribute("aria-expanded") !== "true"
-      || await page.locator('[data-sidebar-group="uat"]').getAttribute("aria-expanded") !== "false") {
-      throw new Error("Route T03 chưa tự mở đúng nhánh Pre-Pilot.");
-    }
+    if (!await page.locator('.tree-link[data-route="work/group/pilot-t03"][aria-current="page"]').isVisible()) throw new Error("Mục đang chọn phải hiển thị trực tiếp.");
     const firstLocalOrder = (await page.locator('[data-resizable-table="workItems"] tbody tr').first().locator("td").first().textContent() || "").trim();
     if (firstLocalOrder !== "22") throw new Error(`Công việc mới nhất của T03 phải nằm trên cùng với STT 22, nhận ${firstLocalOrder || "trống"}.`);
     const firstWorkTitle = page.locator('.work-title-link[data-action="open-edit"]').first();
@@ -594,10 +549,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     }
     await page.goto(`${baseUrl}/#work/group/pilot-t01/dashboard`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector(".sheet-dashboard");
-    if (await page.locator('[data-sidebar-group="uat"]').getAttribute("aria-expanded") !== "true"
-      || await page.locator('[data-sidebar-group="prePilot"]').getAttribute("aria-expanded") !== "false") {
-      throw new Error("Tải trực tiếp route T01 chưa tự mở duy nhất nhánh UAT.");
-    }
+    if (!await page.locator('.tree-link[data-route="work/group/pilot-t01/dashboard"][aria-current="page"]').isVisible()) throw new Error("Mục đang chọn phải hiển thị trực tiếp.");
     await page.screenshot({ path: desktopShot, fullPage: true });
     if (errors.length) throw new Error(`Lỗi trình duyệt desktop: ${errors.join(" | ")}`);
     await desktop.close();
@@ -676,11 +628,7 @@ if (!executablePath) throw new Error("Không tìm thấy Chrome/Edge để chạ
     }
     const mobileDrawerWidth = await mobilePage.locator(".navigation-tree").evaluate((sidebar) => sidebar.getBoundingClientRect().width);
     if (mobileDrawerWidth < 250) throw new Error(`Mobile drawer remained collapsed at ${mobileDrawerWidth}px.`);
-    await mobilePage.locator('[data-sidebar-group="workGroups"]').click();
-    await mobilePage.locator('[data-sidebar-group="prePilot"]').click();
-    if (!await mobilePage.locator('#sidebar-group-prePilot .tree-link[data-route="work/group/pilot-t03"]').isVisible()) {
-      throw new Error("Mobile drawer không mở được nhóm con Pre-Pilot.");
-    }
+    if (!await mobilePage.locator('.tree-link.level-1[data-route="work/group/pilot-t03"]').isVisible()) throw new Error("Thiếu mục công việc trên điện thoại.");
     await mobilePage.waitForTimeout(300);
     await mobilePage.screenshot({ path: mobileShot, fullPage: true });
     await mobilePage.locator(".sidebar-mobile-close").click();
@@ -1074,18 +1022,12 @@ async function revealSidebarRoute(page, route) {
   if (await sectionToggle.getAttribute("aria-expanded") !== "true") await sectionToggle.click();
   const group = route.startsWith("common/personnel/")
     ? "personnel"
-    : route.startsWith("work/group/") ? "workGroups" : null;
+    : null;
   if (group) {
     const groupToggle = page.locator(`[data-sidebar-group="${group}"]`);
     if (await groupToggle.getAttribute("aria-expanded") !== "true") await groupToggle.click();
   }
-  const workStage = /^work\/group\/pilot-t0[12](?:\/|$)/.test(route)
-    ? "uat"
-    : /^work\/group\/pilot-t0[3-7](?:\/|$)/.test(route) ? "prePilot" : null;
-  if (workStage) {
-    const stageToggle = page.locator(`[data-sidebar-group="${workStage}"]`);
-    if (await stageToggle.getAttribute("aria-expanded") !== "true") await stageToggle.click();
-  }
+
 }
 
 async function assertOptionCount(page, name, expected) {
